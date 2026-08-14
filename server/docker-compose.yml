@@ -1,0 +1,23 @@
+# PP'nin server/ klasörü de "server" adını taşıdığı için docker compose'un varsayılan proje adı
+# (klasör basename'i) iki projede de aynı olur — bu, `docker compose up` çalıştırıldığında PP'nin
+# container'ının yerine geçilmesine yol açar (bir kez oldu, PP'nin postgres'i durup kocluk'un ayarlarıyla
+# yeniden oluşturuldu). `name:` ile proje adı burada sabitlenip çakışma kalıcı olarak engellenir.
+name: kocluk
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kocluk
+      POSTGRES_PASSWORD: kocluk
+      POSTGRES_DB: kocluk
+    ports:
+      # PP (yedisekiz) projesinin lokal postgres'i 5432'yi kullanıyor olabilir — çakışmasın diye
+      # host tarafında 5433 kullanılıyor, konteyner içi hâlâ standart 5432.
+      - "5433:5432"
+    volumes:
+      - kocluk_pg_data:/var/lib/postgresql/data
+
+volumes:
+  kocluk_pg_data:

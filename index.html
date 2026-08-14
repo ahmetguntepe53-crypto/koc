@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="color-scheme" content="light" />
+    <title>Kocluk</title>
+    <link rel="icon" href="/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body, #root { height: 100%; margin: 0; }
+      body {
+        background: #F5F6FB;
+        font-family: 'Manrope', -apple-system, 'Segoe UI', Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      ::selection { background: #4338CA; color: #fff; }
+
+      /* Kaydırma çubuğu — varsayılan kalın/gri tarayıcı çubuğu yerine daha ince, sayfayla uyumlu. */
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: rgba(15,23,42,0.16); border-radius: 999px; border: 2px solid #F5F6FB; }
+      ::-webkit-scrollbar-thumb:hover { background: rgba(15,23,42,0.28); }
+
+      /* Inline style'larla ifade edilemeyen etkileşim durumları (:hover/:focus) burada toplanır —
+         renk DEĞERLERİ src/theme.js > C ile elle senkron tutulmalı (paylaşılan bir kaynak yok). */
+      .k-btn { transition: filter .12s ease, transform .05s ease, box-shadow .12s ease; }
+      .k-btn:hover { filter: brightness(0.95); }
+      .k-btn:active { transform: translateY(1px); }
+      .k-btn:disabled { pointer-events: none; }
+
+      .k-card-hover { transition: box-shadow .15s ease, transform .15s ease, border-color .15s ease; }
+      .k-card-hover:hover { box-shadow: 0 4px 10px rgba(15,23,42,0.06), 0 16px 40px rgba(15,23,42,0.12); border-color: rgba(15,23,42,0.16); transform: translateY(-1px); }
+
+      .k-field { transition: border-color .12s ease, box-shadow .12s ease; }
+      .k-field:focus { outline: none; border-color: #4338CA !important; box-shadow: 0 0 0 3px rgba(67,56,202,0.13); }
+
+      .k-sidebar-item { transition: background-color .12s ease, color .12s ease; }
+      .k-sidebar-item:hover { background: rgba(255,255,255,0.07); }
+
+      .k-icon-btn { transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
+      .k-icon-btn:hover { background: #E9EBF4 !important; }
+
+      .k-link-btn:hover { color: #4338CA !important; }
+
+      /* Kenar çubuğu dar ekranlarda simge-yalnız moda geçer — telefon/dar pencere yerine masaüstünde
+         de pencere küçültüldüğünde metin taşmasın diye. */
+      @media (max-width: 860px) {
+        .k-sidebar { width: 76px !important; }
+        .k-sidebar-label, .k-sidebar-brand-text, .k-sidebar-user-text { display: none !important; }
+        .k-sidebar-item { justify-content: center !important; padding-left: 0 !important; padding-right: 0 !important; }
+      }
+      @media (max-width: 900px) {
+        .k-login-brand { display: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

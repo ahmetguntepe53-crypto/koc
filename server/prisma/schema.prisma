@@ -1,0 +1,222 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+// LGS: 7-8. sınıf (ortaokul, liselere geçiş sınavı). TYT/AYT: 9-12. sınıf (lise, YKS'nin iki bileşeni).
+// Hangi türün geçerli olduğu Assignment/StudySession oluşturulurken User.gradeLevel'dan türetilir
+// (bkz. server/src/subjects.js > trackForGrade/trackForExamType) — burada ayrı bir "sınav grubu"
+// alanı YOK, gradeLevel tek doğruluk kaynağı.
+enum ExamType {
+  TYT
+  AYT
+  LGS
+}
+
+// Bir ödevin tekrar sıklığı sınıflandırması — YALNIZCA bir ETİKETTİR. "Haftalık" seçilince sistem
+// otomatik olarak her hafta yeni bir ödev ÜRETMEZ; koç her ödevi kendisi tek tek oluşturur.
+enum Period {
+  WEEKLY
+  MONTHLY
+  YEARLY
+}
+
+// Ödevin öğrenciye ne zaman görünür/bildirim gideceğini belirler:
+// AUTO_ON_DATE    — scheduledDate geldiğinde scheduler.js otomatik gönderir.
+// AUTO_DAY_BEFORE — scheduledDate'ten bir gün önce scheduler.js otomatik gönderir.
+// MANUAL_NOW      — koç oluşturduğu anda (ya da sonradan "Şimdi Gönder" ile) elle gönderir.
+enum SendMode {
+  AUTO_ON_DATE
+  AUTO_DAY_BEFORE
+  MANUAL_NOW
+}
+
+enum AssignmentStatus {
+  DRAFT // "Bekliyor" — henüz öğrenciye gönderilmedi, koç tarafından düzenlenebilir/silinebilir
+  SENT // "Gönderildi" — öğrenciye bildirim gitti, artık düzenlenemez
+}
+
+// Ödev oluşturulduğu anda hedef kitle sabitlenir (AssignmentRecipient satırları o anda yaratılır) —
+// bu alan yalnızca arayüzde "kime gönderildi" bilgisini göstermek içindir.
+enum AssignmentTarget {
+  WHOLE_GROUP
+  SINGLE_STUDENT
+  SELECTED_STUDENTS // koç, roster'daki (aynı sınav türündeki) öğrencilerden tik ile bir alt küme seçti
+}
+
+model User {
+  id    String @id @default(cuid())
+  email String @unique
+  // Hesap admin tarafından oluşturulduğunda bilerek null bırakılır — kullanıcı e-postasına gelen
+  // "şifreni belirle" bağlantısıyla (resetToken) kendi şifresini kendisi koyar.
+  passwordHash String?
+  role         Role
+  name         String
+  phone        String?
+  // Admin tarafından hesabın devre dışı bırakılması — true iken giriş tamamen reddedilir.
+  banned Boolean @default(false)
+  // Şifre değişince / hesap ban'lanıp tekrar açılınca artırılır — requireAuth tüm eski JWT'leri
+  // (süresi dolmamış olsa bile) anında geçersiz kılar.
+  tokenVersion Int @default(0)
+  // Hem ilk şifre belirleme (admin hesap oluşturunca) hem "şifremi unuttum" için ortak kullanılır.
+  resetToken        String?   @unique
+  resetTokenExpires DateTime?
+
+  // --- Yalnızca role=STUDENT için anlamlı ---
+  // Yalnızca bilgi/raporlama amaçlı serbest metin (ör. "12/A") — ödev hedefleme bunun üzerinden
+  // yapılmaz, ayrı bir Sınıf/roster tablosu bilinçli olarak yok.
+  className String?
+  // Öğrencinin gerçek sınıf düzeyi (7-12) — kayıt aşamasında admin girer. LGS mi (7-8) yoksa
+  // TYT/AYT mi (9-12) gösterileceğini bu alan belirler (bkz. server/src/subjects.js). Nullable:
+  // admin henüz girmemiş eski kayıtlarda geçici olarak boş kalabilir, o durumda YKS'ye düşülür.
+  gradeLevel Int?
+  // Öğrencinin sabit (1'e-çok) koçu — yalnızca admin atar/değiştirir. Koç tüm derslerde bu
+  // öğrenciye ödev verebilir (derse göre yetki kısıtlaması yok).
+  teacherId String?
+  teacher   User?   @relation("CoachAssignment", fields: [teacherId], references: [id], onDelete: SetNull)
+  // --- Yalnızca role=TEACHER için anlamlı ters ilişki ---
+  students User[] @relation("CoachAssignment")
+
+  createdAt DateTime @default(now())
+
+  assignmentsCreated   Assignment[]
+  assignmentRecipients AssignmentRecipient[]
+  studySessions        StudySession[]
+  notifications        Notification[]
+  pushSubscriptions    PushSubscription[]
+
+  @@index([role])
+  @@index([teacherId])
+}
+
+// Bir koçun oluşturduğu ödev ŞABLONU — "kime gönderildi/tamamlandı mı" bilgisi AssignmentRecipient
+// satırlarında tutulur (aynı içerik birden fazla öğrenciye paylaşılsa da tamamlama durumu bağımsızdır).
+model Assignment {
+  id        String   @id @default(cuid())
+  teacherId String
+  teacher   User     @relation(fields: [teacherId], references: [id])
+  examType  ExamType
+  // Sabit TYT/AYT ders listesinden biri — Prisma enum DEĞİL, server/src/subjects.js içindeki sabit
+  // listeye karşı doğrulanan serbest metin (yeni ders eklemek/düzeltmek migration gerektirmesin diye).
+  subject String
+  // "Müfredat Konusu" — MVP'de serbest metin (tam müfredat ağacını elle kürase etmekten kaçınmak
+  // için bilinçli bir basitleştirme).
+  topic String
+  // "Kaynak Kitap" — serbest metin; istemci GET /api/assignments/source-books ile aynı koçun daha
+  // önce kullandığı isimleri otomatik-tamamlama önerisi olarak gösterir.
+  sourceBook String?
+  // "Sayfa/Soru Aralığı" — tek serbest metin alanı (ör. "45-60" ya da "120 soru").
+  pageRange String?
+
+  period        Period // yalnızca sınıflandırma etiketi, otomatik tekrar üretmez
+  // Ödevin başlangıç tarihi — takvimde/otomatik gönderim tetiklemesinde (AUTO_ON_DATE/AUTO_DAY_BEFORE)
+  // kullanılan tarih budur.
+  scheduledDate DateTime
+  // Ödevin bitiş/teslim tarihi — koç tek bir gün yerine bir ARALIK vermek isterse (ör. bir haftalık
+  // ödev) burası scheduledDate'ten ileri bir tarih olur. Formda başlangıç girilince otomatik olarak
+  // aynı gün önerilir, koç isterse değiştirir; bu yüzden scheduledDate'ten KÜÇÜK olamaz ama optional
+  // değil — her zaman en az scheduledDate'e eşit bir değer taşır (bkz. routes/assignments.js).
+  endDate  DateTime
+  sendMode SendMode
+  status        AssignmentStatus @default(DRAFT)
+  targetMode    AssignmentTarget
+  sentAt        DateTime?
+  createdAt     DateTime         @default(now())
+
+  recipients AssignmentRecipient[]
+
+  @@index([teacherId, status])
+  @@index([status, sendMode, scheduledDate])
+}
+
+// Bir ödevin tek bir hedef öğrenciye düşen kopyası — tamamlanma durumu öğrenci başına bağımsız.
+model AssignmentRecipient {
+  id           String     @id @default(cuid())
+  assignmentId String
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId    String
+  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // Submission oluşturulduğunda birlikte (tek transaction'da) true yapılır — ayrı bir "tamamlandı
+  // işaretle" adımı yok, öğrenci doğrudan sonucu girerek tamamlar.
+  completed   Boolean   @default(false)
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  submission Submission?
+
+  @@unique([assignmentId, studentId])
+  @@index([studentId, completed])
+}
+
+// Öğrencinin bir AssignmentRecipient için girdiği sonuç — 1'e-1.
+model Submission {
+  id           String              @id @default(cuid())
+  recipientId  String              @unique
+  recipient    AssignmentRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  correctCount Int // Doğru
+  wrongCount   Int // Yanlış
+  blankCount   Int // Boş
+  note         String?
+  // Yanlış/boş yapılan soru numaraları — isteğe bağlı.
+  questionNumbers Int[]    @default([])
+  createdAt       DateTime @default(now())
+}
+
+// Öğrencinin herhangi bir atanmış ödeve bağlı OLMAYAN, kendi başlattığı serbest çalışma kaydı —
+// Assignment+Submission'ın alan şekliyle birebir aynı, ama DRAFT/SENT yaşam döngüsü yok; oluşturulduğu
+// an zaten kayda geçmiş sayılır (koç onayı gerekmez).
+model StudySession {
+  id         String   @id @default(cuid())
+  studentId  String
+  student    User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  examType   ExamType
+  subject    String
+  topic      String
+  sourceBook String?
+  pageRange  String?
+
+  correctCount Int
+  wrongCount   Int
+  blankCount   Int
+  note         String?
+
+  questionNumbers Int[] @default([])
+  // Öğrencinin "ne zaman çalıştım" dediği tarih — kayıt anından (createdAt) ayrı, dünkü çalışmasını
+  // bugün girebilir.
+  studyDate DateTime @default(now())
+  createdAt DateTime @default(now())
+
+  @@index([studentId, studyDate])
+}
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  text   String
+  type   String  @default("info")
+  read   Boolean @default(false)
+  // Bildirime dokununca nereye gidileceği (ör. {"recipientId":"...","screen":"assignmentSubmit"}).
+  data      Json?
+  createdAt DateTime @default(now())
+}
+
+// Bir kullanıcının bir cihazdaki FCM kayıt token'ı — upsert edilir. Bu proje kendi Firebase
+// projesine bağlanır, başka bir projeyle paylaşılmaz.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  createdAt DateTime @default(now())
+}
