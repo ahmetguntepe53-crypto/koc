@@ -1,6 +1,6 @@
 require_relative '../../node_modules/@capacitor/ios/scripts/pods_helpers'
 
-platform :ios, '14.0'
+platform :ios, '15.0'
 use_frameworks!
 
 # workaround to avoid Xcode caching of Pods that requires
@@ -26,4 +26,16 @@ end
 
 post_install do |installer|
   assertDeploymentTarget(installer)
+  # Capacitor'ın yardımcısı pod'ları yalnızca 14.0'a yükseltir (pods_helpers.rb). Uygulamanın
+  # tabanı 15.0 olduğu için — App Store Connect Bahar 2027'den itibaren 15.0 şart koşuyor —
+  # gömülen framework'ler de aynı tabana çekilir, ikisi ayrışmasın diye.
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      current = config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'].to_f
+      # 0.0 = ayar yok, projeden miras alınır; ona dokunulmaz (Capacitor'ın yardımcısıyla aynı kural).
+      if current != 0.0 && current < 15.0
+        config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      end
+    end
+  end
 end

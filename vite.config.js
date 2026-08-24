@@ -12,10 +12,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: nativeAliases },
   build: {
-    // ios/App/Podfile > platform :ios, '14.0' ile aynı taban — Vite'ın varsayılan hedefi daha yeni
+    // ios/App/Podfile > platform :ios, '15.0' ile aynı taban — Vite'ın varsayılan hedefi daha yeni
     // sözdizimi üretip eski iOS sürümlerinde BEYAZ EKRANA yol açabilir (WKWebView'da sözdizimi
     // hatası sessizce kalır, konsol görünmez).
-    target: "safari14",
+    target: "safari15",
   },
   server: {
     port: 5183,

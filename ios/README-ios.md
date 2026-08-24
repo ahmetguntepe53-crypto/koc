@@ -9,7 +9,7 @@ değişiklikleri `src/` altında yapılır, buraya yalnızca native ayarlar gire
 | Bundle ID | `com.kocluk.app` |
 | App Store Connect | uygulama adı `maikocluk`, SKU `kocluk-ios-app`, Apple ID `6803681138` |
 | Görünen ad | Koçluk (`Info.plist > CFBundleDisplayName`) |
-| Minimum iOS | 14.0 |
+| Minimum iOS | 15.0 |
 | Yönelim | iPhone'da yalnızca dikey, iPad'de serbest |
 | Workspace | `ios/App/App.xcworkspace` (**`.xcodeproj` DEĞİL** — CocoaPods var) |
 
