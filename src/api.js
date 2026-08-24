@@ -11,7 +11,15 @@ export function setToken(token) {
     if (token) localStorage.setItem(TOKEN_KEY, token);
     else localStorage.removeItem(TOKEN_KEY);
   } catch (_) { /* depolamaya erişilemiyor olabilir */ }
+  try { tokenMirror?.(token); } catch (_) { /* yansıtma başarısızsa localStorage yine de yazıldı */ }
 }
+
+// iOS kabuğunda (WKWebView) localStorage, sistem depolama baskısı altında TEMİZLENEBİLİR — bu
+// olduğunda kullanıcı sebepsiz yere çıkış yapmış olur. native.js açılışta Capacitor Preferences'a
+// yazan bir yansıtma fonksiyonu takar ve token'ı oradan geri yükler. Web'de kanca takılmaz,
+// davranış değişmez — bu yüzden api.js'in Capacitor'a bağımlılığı yoktur (testler de etkilenmez).
+let tokenMirror = null;
+export function setTokenMirror(fn) { tokenMirror = fn; }
 
 async function request(path, { method = "GET", body } = {}) {
   const headers = { "Content-Type": "application/json" };
@@ -92,4 +100,8 @@ export const api = {
   // --- özet istatistikler ---
   teacherStats: () => request("/stats/teacher"),
   studentStats: () => request("/stats/student"),
+
+  // --- push bildirim aboneliği (yalnızca native kabuk; bkz. src/push.js) ---
+  pushSubscribe: (token) => request("/push/subscribe", { method: "POST", body: { token } }),
+  pushUnsubscribe: (token) => request("/push/unsubscribe", { method: "POST", body: { token } }),
 };

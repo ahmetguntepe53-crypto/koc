@@ -53,10 +53,73 @@
         .k-sidebar { width: 76px !important; }
         .k-sidebar-label, .k-sidebar-brand-text, .k-sidebar-user-text { display: none !important; }
         .k-sidebar-item { justify-content: center !important; padding-left: 0 !important; padding-right: 0 !important; }
+        /* Okunmamış bildirim sayısı simge-yalnız modda da görünmeli — sekme metniyle birlikte
+           gizlenmek yerine simgenin sağ üst köşesine küçültülerek taşınır. */
+        .k-sidebar-badge {
+          position: absolute !important; top: 3px !important; right: 13px !important;
+          margin-left: 0 !important; min-width: 16px !important; height: 16px !important;
+          font-size: 9.5px !important; padding: 0 4px !important;
+        }
+        /* Avatar + çıkış düğmesi yan yana 76px'e sığmıyor (34+10+30+32 = 106px), düğme kırpılıyordu. */
+        .k-sidebar-user {
+          flex-direction: column !important; gap: 9px !important;
+          padding-left: 6px !important; padding-right: 6px !important;
+        }
       }
       @media (max-width: 900px) {
         .k-login-brand { display: none !important; }
+        /* Marka paneli gizlenince giriş ekranında hiç logo kalmıyordu — dar ekranda formun
+           üstünde kompakt bir amblem gösterilir. */
+        .k-login-mobile-brand { display: flex !important; }
       }
+
+      /* ==========================================================================
+         iOS kabuğu (Capacitor). env(safe-area-inset-*) tarayıcıda 0 döndüğü için bu kuralların
+         HİÇBİRİ web görünümünü değiştirmez — ayrı bir mobil yapı gerekmiyor.
+         ========================================================================== */
+
+      /* Durum çubuğunun altındaki şerit TEK renk olmalı: solda koyu kenar çubuğu, sağda beyaz
+         başlık olsaydı saat ve pil simgeleri şeridin bir yarısında okunmaz kalırdı. Şerit beyaza
+         boyanır, simgeler koyu yapılır (src/native/index.js > StatusBar.setStyle > Style.Light).
+         z-index modalların (50) ÜSTÜNDE: modal arka planı şeridi karartsa simgeler yine okunmaz olurdu. */
+      .k-app-root { padding-top: env(safe-area-inset-top); }
+      .k-app-root::before {
+        content: ""; position: fixed; top: 0; left: 0; right: 0;
+        height: env(safe-area-inset-top); background: #FFFFFF; z-index: 60; pointer-events: none;
+      }
+
+      /* Kenar çubuğu sticky/100vh — kök artık üstten dolgulu olduğu için ikisi de kaydırılmalı,
+         yoksa çubuk ekranın altından taşar. */
+      .k-sidebar {
+        top: env(safe-area-inset-top) !important;
+        height: calc(100vh - env(safe-area-inset-top)) !important;
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+
+      /* Ana ekran çubuğunun (home indicator) içeriği örtmemesi için. */
+      .k-content-col { padding-bottom: env(safe-area-inset-bottom); }
+      /* Klavye açıkken ana ekran çubuğu zaten görünmüyor — alt boşluk iki kez uygulanmasın. */
+      html.kb-open .k-content-col { padding-bottom: 0; }
+
+      /* Giriş ekranı kök düzeni ayrı (kenar çubuğu yok) — güvenli alanlar orada da uygulanmalı. */
+      .k-login-root {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+      }
+
+      /* Dokunma davranışı: gri "tıklandı" parlaması ve uzun basınca çıkan sistem menüsü
+         yalnızca ETKİLEŞİM öğelerinde kapatılır — metin seçme/kopyalama (ödev metni, geri dönüt)
+         bilerek açık bırakılır. */
+      body { -webkit-tap-highlight-color: transparent; }
+      button, .k-sidebar, .k-btn, .k-icon-btn, .k-sidebar-item {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      /* Sayfanın tamamının lastik gibi esnemesi (rubber-band) native hissi bozuyor; iç kaydırma
+         alanları etkilenmez. */
+      html, body { overscroll-behavior-y: none; }
     </style>
   </head>
   <body>

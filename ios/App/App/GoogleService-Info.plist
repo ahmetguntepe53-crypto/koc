@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- ============================================================================
+	     YER TUTUCU — GERÇEK DOSYAYLA DEĞİŞTİRİLMELİ.
+
+	     @capacitor-firebase/messaging eklentisi açılışta FirebaseApp.configure() çağırır ve bu
+	     dosya YOKSA uygulama daha ilk karede ÇÖKER (çalışma zamanı hatası değil, uncaught
+	     exception). Bu yüzden geçerli biçimde ama sahte değerlerle bir yer tutucu bırakıldı:
+	     uygulama sorunsuz açılır, yalnızca push kaydı sessizce başarısız olur
+	     (src/native/push.js hatayı yutar, konsola "[push] kayıt yapılamadı" yazar).
+
+	     Gerçek dosya: Firebase Console > Proje Ayarları > iOS uygulaması (bundle id:
+	     com.kocluk.app) > GoogleService-Info.plist indir → bu dosyanın ÜZERİNE yaz.
+	     Ayrıntılar: ios/README-ios.md
+	     ============================================================================ -->
+	<!-- Firebase, API_KEY biçimini DOĞRULAR (39 karakter, A ile başlar) — yer tutucu bu
+	     kurala uyacak şekilde yazıldı, aksi halde uygulama açılışta çöker. -->
+	<key>API_KEY</key>
+	<string>AIzaSyREPLACE_ME_REPLACE_ME_REPLACE_ME_</string>
+	<key>GCM_SENDER_ID</key>
+	<string>000000000000</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.kocluk.app</string>
+	<key>PROJECT_ID</key>
+	<string>replace-me-kocluk</string>
+	<key>STORAGE_BUCKET</key>
+	<string>replace-me-kocluk.appspot.com</string>
+	<key>IS_ADS_ENABLED</key>
+	<false/>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false/>
+	<key>IS_APPINVITE_ENABLED</key>
+	<false/>
+	<key>IS_GCM_ENABLED</key>
+	<true/>
+	<key>IS_SIGNIN_ENABLED</key>
+	<false/>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:000000000000:ios:0000000000000000000000</string>
+</dict>
+</plist>

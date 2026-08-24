@@ -4,6 +4,7 @@ import { C } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader } from "./components/common.jsx";
 import { api } from "./api.js";
+import { registerPush, unregisterPush } from "./native/push.js";
 import LoginScreen from "./screens/LoginScreen.jsx";
 import ProfileScreen from "./screens/ProfileScreen.jsx";
 import NotificationsScreen from "./screens/NotificationsScreen.jsx";
@@ -37,8 +38,14 @@ export default function App() {
   const [assignmentsRefreshKey, setAssignmentsRefreshKey] = useState(0);
   const [myAssignmentsRefreshKey, setMyAssignmentsRefreshKey] = useState(0);
   const [unreadCount, setUnreadCount] = useState(0);
+  // Native kabuk olayları (arka plandan dönüş / gelen push) rozeti tazelemek için bu sayacı artırır.
+  const [notificationsRefreshKey, setNotificationsRefreshKey] = useState(0);
 
-  const { login, logout, forgotPassword } = useAuthSession({ setAuthUser, setAuthChecked, setScreen });
+  const { login, logout: endSession, forgotPassword } = useAuthSession({ setAuthUser, setAuthChecked, setScreen });
+
+  // Çıkışta cihazın push token'ı sunucudan silinir; aksi halde telefon, çıkmış kullanıcının
+  // bildirimlerini almaya devam ederdi. Ağ hatası çıkışı ENGELLEMEZ.
+  const logout = () => { unregisterPush().catch(() => {}); endSession(); };
 
   // logout() kasıtlı olarak screen'i "login"a çeker (LoginScreen zaten !authUser'a bakarak
   // gösteriliyor olsa da tutarlı bir "sıfırlanmış" durum bırakmak için) — bir sonraki başarılı
@@ -55,7 +62,30 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return;
     api.listNotifications().then(({ unreadCount }) => setUnreadCount(unreadCount)).catch(() => {});
-  }, [authUser, screen]);
+  }, [authUser, screen, notificationsRefreshKey]);
+
+  // Push aboneliği giriş yapıldıktan SONRA kurulur: /api/push/subscribe kimlik doğrulaması ister
+  // ve token oturum sahibi kullanıcıya yazılır. Web'de no-op.
+  useEffect(() => {
+    if (!authUser) return;
+    registerPush();
+  }, [authUser]);
+
+  // Native kabuk olayları: uygulama arka plandan döndüğünde ya da ön plandayken push geldiğinde
+  // rozeti tazele; bildirime dokunularak açıldıysa doğrudan Bildirimler ekranına git.
+  useEffect(() => {
+    if (!authUser) return;
+    const refresh = () => setNotificationsRefreshKey((k) => k + 1);
+    const openNotifications = () => { refresh(); setScreen("notifications"); };
+    window.addEventListener("kocluk:resume", refresh);
+    window.addEventListener("kocluk:push", refresh);
+    window.addEventListener("kocluk:push-open", openNotifications);
+    return () => {
+      window.removeEventListener("kocluk:resume", refresh);
+      window.removeEventListener("kocluk:push", refresh);
+      window.removeEventListener("kocluk:push-open", openNotifications);
+    };
+  }, [authUser]);
 
   if (!authChecked) {
     return <div style={{ minHeight: "100vh", background: C.bg }} />;
@@ -82,9 +112,9 @@ export default function App() {
   const activeTabId = screen === "assignmentDetail" ? "assignments" : screen === "assignmentSubmit" ? "myAssignments" : screen;
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, display: "flex" }}>
+    <div className="k-app-root" style={{ minHeight: "100vh", background: C.bg, display: "flex" }}>
       <Sidebar user={authUser} tabs={tabs} activeId={activeTabId} onSelect={setScreen} onLogout={logout} />
-      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <div className="k-content-col" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <PageHeader title={screenTitle(screen, authUser.role)} subtitle={screenSubtitle(screen, authUser)} />
         <div style={{ flex: 1 }}>
           {renderScreen({

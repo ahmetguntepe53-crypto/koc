@@ -36,7 +36,7 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex" }}>
+    <div className="k-login-root" style={{ minHeight: "100vh", display: "flex" }}>
       <div className="k-login-brand" style={{
         flex: 1, background: `radial-gradient(120% 100% at 0% 0%, ${C.sidebarBgAlt}, ${C.sidebarBg} 55%)`,
         color: "#fff", padding: "56px 60px", display: "flex", flexDirection: "column", justifyContent: "space-between",
@@ -72,6 +72,10 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
 
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: C.bg }}>
         <div style={{ width: "100%", maxWidth: 380 }}>
+          {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand */}
+          <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26 }}>
+            <LogoMark width={76} radius={14} />
+          </div>
           <div style={{ marginBottom: 28 }}>
             <div style={{ fontFamily: displayFont, fontSize: 22, fontWeight: 800, color: C.text }}>
               {forgotSent ? "" : forgotMode ? "Şifreni sıfırla" : "Tekrar hoş geldin"}

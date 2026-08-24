@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Push bildirimleri. Bu dosya Xcode projesine KASITLI olarak bağlanmamıştır:
+	     aps-environment yetkisi, Apple Developer hesabında Push Notifications özelliği açık bir
+	     App ID gerektirir; ücretsiz hesapla ya da özellik açılmadan imzalama HATA verir.
+	     Xcode > App hedefi > Signing & Capabilities > "+ Capability" > Push Notifications
+	     eklendiğinde Xcode bu dosyayı bulup projeye kendisi bağlar. -->
+	<key>aps-environment</key>
+	<string>development</string>
+</dict>
+</plist>

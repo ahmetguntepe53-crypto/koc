@@ -216,7 +216,7 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
               {Icon && <Icon size={17} strokeWidth={2.1} style={{ flexShrink: 0 }} />}
               <span className="k-sidebar-label" style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: active ? 700 : 600, whiteSpace: "nowrap" }}>{t.label}</span>
               {t.badge > 0 && (
-                <span className="k-sidebar-label" style={{
+                <span className="k-sidebar-badge" style={{
                   marginLeft: "auto", background: C.sidebarAccent, color: "#fff", fontSize: 10.5, fontWeight: 800,
                   borderRadius: 999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px",
                 }}>{t.badge}</span>
@@ -226,7 +226,7 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
         })}
       </nav>
 
-      <div style={{ borderTop: `1px solid ${C.sidebarBorder}`, padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
+      <div className="k-sidebar-user" style={{ borderTop: `1px solid ${C.sidebarBorder}`, padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
         <Avatar name={user.name} size={34} dark />
         <div className="k-sidebar-user-text" style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.name}</div>
