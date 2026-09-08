@@ -90,6 +90,10 @@ model User {
   // öğrenciye ödev verebilir (derse göre yetki kısıtlaması yok).
   teacherId String?
   teacher   User?   @relation("CoachAssignment", fields: [teacherId], references: [id], onDelete: SetNull)
+  // Koçun bu öğrenci için tuttuğu serbest metin not — yalnızca koç görür/düzenler, öğrenciye HİÇBİR
+  // zaman gösterilmez (bkz. routes/teacher.js > GET/PUT students/:id/note, öğrenciye ait endpoint'ler
+  // bu alanı select'e almaz).
+  coachNote String?
   // --- Yalnızca role=TEACHER için anlamlı ters ilişki ---
   students User[] @relation("CoachAssignment")
   // --- Yalnızca role=TEACHER için anlamlı ---

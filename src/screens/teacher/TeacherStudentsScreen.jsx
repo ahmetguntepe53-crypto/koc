@@ -35,22 +35,27 @@ export default function TeacherStudentsScreen({ onOpen }) {
         <EmptyState text="Henüz sana atanmış bir öğrenci yok — okul yöneticinden öğrenci ataması istemen gerekebilir." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {students.map((s) => (
-            <Card key={s.id} hover={!!onOpen} style={{ padding: 16, cursor: onOpen ? "pointer" : "default" }}>
-              <div onClick={onOpen ? () => onOpen(s.id) : undefined} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                <Avatar name={s.name} size={38} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{s.name}</span>
-                    {s.className && <Pill>{s.className}</Pill>}
-                    {s.gradeLevel && <Pill tone="amber">{s.gradeLevel}. Sınıf ({trackForGrade(s.gradeLevel)})</Pill>}
-                    {s.banned && <Pill tone="red">Askıda</Pill>}
+          {students.map((s) => {
+            const track = trackForGrade(s.gradeLevel);
+            return (
+              <Card key={s.id} hover={!!onOpen} style={{ padding: 16, cursor: onOpen ? "pointer" : "default" }}>
+                <div onClick={onOpen ? () => onOpen(s.id) : undefined} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <Avatar name={s.name} size={38} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{s.name}</span>
+                      {/* Sınıf (className) ile sınav türü (track) ayrı kutucuklarda — track'in rengi
+                          YKS/LGS'yi göze bir bakışta ayırt etsin diye farklı (YKS: mor/accent, LGS: yeşil). */}
+                      {s.className ? <Pill>{s.className}</Pill> : s.gradeLevel ? <Pill>{s.gradeLevel}. Sınıf</Pill> : null}
+                      {track && <Pill tone={track === "YKS" ? "accent" : "green"}>{track}</Pill>}
+                      {s.banned && <Pill tone="red">Askıda</Pill>}
+                    </div>
                   </div>
+                  {onOpen && <ChevronRight size={18} color={C.muted} />}
                 </div>
-                {onOpen && <ChevronRight size={18} color={C.muted} />}
-              </div>
-            </Card>
-          ))}
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>

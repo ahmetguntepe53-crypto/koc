@@ -97,6 +97,7 @@ export const api = {
   // --- öğretmen ---
   teacherListStudents: () => request("/teacher/students"),
   teacherStudentOverview: (studentId) => request(`/teacher/students/${studentId}/overview`),
+  teacherUpdateStudentNote: (studentId, note) => request(`/teacher/students/${studentId}/note`, { method: "PUT", body: { note } }),
 
   // --- ödevler ---
   listAssignments: (params = {}) => {

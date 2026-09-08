@@ -42,7 +42,7 @@ teacherRouter.get("/students/:id/overview", async (req, res) => {
   try {
     const student = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, name: true, email: true, className: true, gradeLevel: true, banned: true, teacherId: true, role: true },
+      select: { id: true, name: true, email: true, className: true, gradeLevel: true, banned: true, teacherId: true, role: true, coachNote: true },
     });
     assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
     const [recipients, studySessions] = await Promise.all([
@@ -54,6 +54,21 @@ teacherRouter.get("/students/:id/overview", async (req, res) => {
       prisma.studySession.findMany({ where: { studentId: student.id }, orderBy: { studyDate: "desc" } }),
     ]);
     res.json({ student, recipients, studySessions });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Koçun bir öğrenci için tuttuğu serbest metin not — öğrenciye asla gösterilmez (bkz. schema.prisma
+// > User.coachNote). Boş string kaydedilirse "not silindi" anlamına gelir, null'a normalize edilir.
+teacherRouter.put("/students/:id/note", async (req, res) => {
+  try {
+    const { note } = req.body || {};
+    const student = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true, teacherId: true } });
+    assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
+    const cleanNote = note && String(note).trim() ? String(note).trim() : null;
+    await prisma.user.update({ where: { id: req.params.id }, data: { coachNote: cleanNote } });
+    res.json({ coachNote: cleanNote });
   } catch (e) {
     handleErr(res, e);
   }

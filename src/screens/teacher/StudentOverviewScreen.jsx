@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BarChart3, ChevronRight, Plus, AlertTriangle } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Pill, EmptyState, StatCard, Avatar } from "../../components/common.jsx";
+import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, Avatar } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { trackForGrade } from "../../subjects.js";
 import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
@@ -82,6 +82,51 @@ function RecipientRow({ r, onOpen }) {
           </div>
         </div>
         <ChevronRight size={16} color={C.muted} />
+      </div>
+    </Card>
+  );
+}
+
+// Koçun bu öğrenci için tuttuğu özel not — yalnızca koç görür, öğrenciye hiç gösterilmez (bkz.
+// server/src/serialize.js > safeUser, coachNote orada bilerek süzülüyor). key={studentId} ile
+// üst bileşende her öğrenci değişiminde sıfırdan mount edilir, bir önceki öğrencinin taslak metni
+// kalmasın diye.
+function CoachNoteCard({ studentId, initialNote }) {
+  const [note, setNote] = useState(initialNote || "");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(null), 3000);
+    return () => clearTimeout(t);
+  }, [msg]);
+
+  const save = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      await api.teacherUpdateStudentNote(studentId, note);
+      setMsg({ type: "ok", text: "Kaydedildi." });
+    } catch (e) {
+      setMsg({ type: "error", text: e.message || "Kaydedilemedi" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card style={{ marginBottom: 20, padding: 18 }}>
+      <div style={{ fontFamily: displayFont, fontSize: 13, fontWeight: 800, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>
+        Notlarım
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+        Bu öğrenci hakkında yalnızca sen görürsün — öğrenciye hiçbir zaman gösterilmez.
+      </div>
+      <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="ör. Matematik konularında tekrar gerekiyor, sınav kaygısı yüksek..." />
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: -6 }}>
+        <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
+        {msg && <span style={{ fontSize: 12, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</span>}
       </div>
     </Card>
   );
@@ -177,6 +222,8 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
           )}
         </div>
       </Card>
+
+      <CoachNoteCard key={studentId} studentId={studentId} initialNote={student.coachNote} />
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         {DATE_FILTERS.map((f) => (
