@@ -3,18 +3,44 @@ import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
 import { isValidSubject, trackForGrade, trackForExamType } from "../subjects.js";
+import { notifyUser } from "../notify.js";
 
 // Bu router server/src/app.js'de requireAuth ile mount edilir (rol karışık: TEACHER oluşturur/
 // düzenler, ADMIN yalnızca okur) — her uç nokta kendi içinde req.userRole'e göre yetki kontrolü yapar.
 export const assignmentsRouter = Router();
 
-const EXAM_TYPES = ["TYT", "AYT", "LGS"];
+export const EXAM_TYPES = ["TYT", "AYT", "LGS"];
 const PERIODS = ["WEEKLY", "MONTHLY", "YEARLY"];
 const SEND_MODES = ["AUTO_ON_DATE", "AUTO_DAY_BEFORE", "MANUAL_NOW"];
 
-const recipientInclude = {
-  recipients: { include: { student: { select: { id: true, name: true, className: true } }, submission: true } },
+export const recipientInclude = {
+  recipients: {
+    include: {
+      student: { select: { id: true, name: true, className: true } },
+      submission: true,
+      photos: { orderBy: { createdAt: "asc" } },
+    },
+  },
 };
+
+// Bir ödev DRAFT'tan SENT'e geçtiğinde (elle "şimdi gönder" ya da scheduler.js'in otomatik akışı)
+// her alıcıya kendi AssignmentRecipient.id'siyle bildirim gider — AssignmentSubmitScreen bu id ile
+// açılır (bkz. src/App.jsx > goToNotificationTarget).
+// Çağrıldığı noktada ödev zaten DB'ye SENT olarak yazılmış oluyor — bu adım yalnızca bildirimi
+// dener. notifyUser'ın kendi DB yazımı (push'un aksine) sarmalanmamıştı; burada patlarsa çağıran
+// route'un try/catch'i bunu yakalayıp istemciye 500 dönerdi, oysa ödev zaten gönderilmiş olurdu —
+// öğretmen "hata oldu" sanıp tekrar denerse aynı ödev ikinci kez oluşturulup gönderilirdi. Bildirim
+// best-effort'tur (push gönderimi zaten aynı şekilde sessizce yutuluyor, bkz. notify.js).
+export async function notifyRecipientsAssignmentSent(assignment, teacherName) {
+  const text = `${teacherName} sana yeni bir ödev gönderdi: ${assignment.subject} — ${assignment.topic}`;
+  try {
+    await Promise.all(assignment.recipients.map((r) =>
+      notifyUser(r.studentId, text, { type: "assignment", data: { screen: "assignmentSubmit", recipientId: r.id } })
+    ));
+  } catch (e) {
+    console.error(`[assignments] gönderim bildirimi yazılamadı (assignment ${assignment.id}):`, e.message);
+  }
+}
 
 assignmentsRouter.post("/", async (req, res) => {
   try {
@@ -77,6 +103,10 @@ assignmentsRouter.post("/", async (req, res) => {
       },
       include: recipientInclude,
     });
+    if (publishNow) {
+      const teacher = await prisma.user.findUnique({ where: { id: req.userId }, select: { name: true } });
+      await notifyRecipientsAssignmentSent(assignment, teacher.name);
+    }
     res.status(201).json({ assignment });
   } catch (e) {
     handleErr(res, e);
@@ -152,6 +182,12 @@ assignmentsRouter.patch("/:id", async (req, res) => {
         const newTrack = trackForExamType(examType);
         const mismatched = recipients.some((r) => { const t = trackForGrade(r.student.gradeLevel); return t !== null && t !== newTrack; });
         assert(!mismatched, "Bu ödevin hedef öğrencilerinden biri farklı bir sınav türüne hazırlanıyor — sınav türünü değiştiremezsin");
+        // Ders listesi sınav türüne göre değişir (bkz. subjects.js) — istek sınav türünü değiştirip
+        // yeni bir subject GÖNDERMEMİŞSE, mevcut ders yeni türde geçersiz kalabilir (ör. TYT'den
+        // LGS'ye geçince "Fizik" gibi LGS'de olmayan bir ders sessizce Assignment'ta kalırdı).
+        if (subject === undefined) {
+          assert(isValidSubject(examType, existing.subject), "Sınav türünü değiştirince ders de artık geçersiz oluyor — aynı istekte yeni bir ders de seç");
+        }
       }
       data.examType = examType;
     }
@@ -187,12 +223,15 @@ assignmentsRouter.delete("/:id", async (req, res) => {
 
 assignmentsRouter.post("/:id/send-now", async (req, res) => {
   try {
-    await loadOwnedDraftAssignment(req);
-    const assignment = await prisma.assignment.update({
-      where: { id: req.params.id },
-      data: { status: "SENT", sentAt: new Date() },
-      include: recipientInclude,
-    });
+    const existing = await loadOwnedDraftAssignment(req);
+    // status:"DRAFT" koşullu updateMany: çift tıklama ya da iki sekmeden aynı anda gelen "Şimdi
+    // Gönder" isteklerinin ikisi de yukarıdaki DRAFT kontrolünü geçebilir, ama yalnızca biri satırı
+    // gerçekten SENT'e çevirebilir — count 0 dönen istek bildirim GÖNDERMEZ (aksi halde her öğrenciye
+    // aynı ödev için çift bildirim giderdi).
+    const claim = await prisma.assignment.updateMany({ where: { id: existing.id, status: "DRAFT" }, data: { status: "SENT", sentAt: new Date() } });
+    assert(claim.count === 1, "Bu ödev az önce başka bir istekle gönderildi", 409);
+    const assignment = await prisma.assignment.findUnique({ where: { id: existing.id }, include: { ...recipientInclude, teacher: { select: { name: true } } } });
+    await notifyRecipientsAssignmentSent(assignment, assignment.teacher.name);
     res.json({ assignment });
   } catch (e) {
     handleErr(res, e);

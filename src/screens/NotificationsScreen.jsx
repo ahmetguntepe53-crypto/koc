@@ -17,9 +17,10 @@ function timeAgo(iso) {
 export default function NotificationsScreen() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   const load = () => {
-    api.listNotifications().then(({ notifications }) => setNotifications(notifications)).finally(() => setLoading(false));
+    api.listNotifications().then(({ notifications }) => setNotifications(notifications)).catch((e) => setLoadError(e.message || "Bildirimler yüklenemedi")).finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);
@@ -45,6 +46,8 @@ export default function NotificationsScreen() {
       )}
       {loading ? (
         <EmptyState text="Yükleniyor..." />
+      ) : loadError ? (
+        <EmptyState text={loadError} />
       ) : notifications.length === 0 ? (
         <EmptyState text="Henüz bildirim yok." />
       ) : (

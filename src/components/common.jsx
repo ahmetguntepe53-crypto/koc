@@ -1,6 +1,43 @@
-import { useRef } from "react";
+import { Component, useRef } from "react";
 import { X, LogOut } from "lucide-react";
 import { C, displayFont, bodyFont } from "../theme.js";
+
+// Herhangi bir ekranın render sırasında beklenmedik bir hata fırlatması (ör. eksik/tutarsız bir
+// alan üzerinden yapılan güvencesiz bir erişim) React'i tüm uygulamayı bembeyaz bir sayfaya
+// düşürmeye zorlar — bu sınır, hatayı yalnızca bulunduğu ekranla sınırlı tutup kullanıcıya "sayfayı
+// yenile" gibi bir çıkış yolu bırakır. main.jsx'te <App/>'i sarmalar.
+export class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { error };
+  }
+  componentDidCatch(error, info) {
+    console.error("[ErrorBoundary]", error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: C.bg, fontFamily: bodyFont, textAlign: "center" }}>
+          <div>
+            <div style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 8 }}>Bir şeyler ters gitti</div>
+            <div style={{ fontSize: 13.5, color: C.muted, marginBottom: 18 }}>Sayfayı yenilemeyi dene — sorun devam ederse okul yöneticine haber ver.</div>
+            <button
+              onClick={() => window.location.reload()}
+              className="k-btn"
+              style={{ background: C.accent, color: C.onAccent, border: "none", borderRadius: C.radiusSm, padding: "11px 20px", fontSize: 14, fontWeight: 700, fontFamily: bodyFont, cursor: "pointer" }}
+            >
+              Sayfayı Yenile
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Okulun gerçek amblemi (public/logo.png — amblem+"MAİ"+okul adı yazılarıyla birlikte tek bir görsel,
 // arka planı opak beyaz, dikey/portre oranlı 985x1400). HİÇBİR yerde kırpılmaz (object-fit: contain) —
@@ -52,7 +89,7 @@ export function Button({ children, onClick, variant = "primary", full, disabled,
     danger: { background: C.redSoft, color: C.red },
   };
   return (
-    <button type={type} className="k-btn" onClick={disabled ? undefined : onClick} style={{ ...base, ...variants[variant] }}>
+    <button type={type} disabled={disabled} className="k-btn" onClick={disabled ? undefined : onClick} style={{ ...base, ...variants[variant] }}>
       {Icon ? <Icon size={small ? 14 : 16} /> : null}
       {children}
     </button>
@@ -69,7 +106,11 @@ function FieldLabel({ children }) {
 }
 
 const fieldBaseStyle = {
-  width: "100%", boxSizing: "border-box", background: C.surface2,
+  // width:100 + boxSizing tek başına yetmiyor: iOS'ta <input type="date"> kendi iç metin/takvim
+  // simgesi için bir asgari genişlik dayatıyor ve bunu CSS width'i yok sayarak taşırabiliyor —
+  // özellikle bir modal ya da flex sütun gibi dar bir kapta (bkz. Yıllık Plan > Tarih alanı).
+  // minWidth:0 + maxWidth:100% bu asgari genişliği geçersiz kılıp kabına sıkıştırıyor.
+  width: "100%", minWidth: 0, maxWidth: "100%", boxSizing: "border-box", background: C.surface2,
   border: `1px solid ${C.border}`, borderRadius: C.radiusSm,
   padding: "10px 13px", fontSize: 14, fontFamily: bodyFont, color: C.text, outline: "none",
 };
@@ -240,6 +281,52 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
           <LogOut size={14} color={C.sidebarText} />
         </button>
       </div>
+    </div>
+  );
+}
+
+// Telefon genişliğinde (bkz. index.html > @media max-width:640px) kenar çubuğunun yerini alan yatay
+// alt menü — doğal telefon uygulaması alışkanlığı, dar ekranda simge-yalnız dikey çubuktan daha
+// okunaklı/dokunması kolay. Görünürlüğü CSS medya sorgusu belirler; burada her zaman render edilir.
+export function BottomNav({ tabs, activeId, onSelect }) {
+  return (
+    <div className="k-bottom-nav" style={{
+      display: "none", background: C.surface, borderTop: `1px solid ${C.border}`,
+      padding: "6px 4px calc(env(safe-area-inset-bottom, 0px) + 6px)", boxShadow: "0 -2px 10px rgba(15,23,42,0.08)",
+    }}>
+      {tabs.map((t) => {
+        const active = t.id === activeId;
+        const Icon = t.icon;
+        return (
+          <button
+            key={t.id}
+            onClick={() => onSelect(t.id)}
+            aria-label={t.label}
+            style={{
+              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+              background: "none", border: "none", cursor: "pointer", padding: "4px 2px", position: "relative",
+              color: active ? C.accent : C.muted, minWidth: 0,
+            }}
+          >
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "center", width: 38, height: 26,
+              borderRadius: 10, background: active ? C.accentSoft : "transparent",
+            }}>
+              {Icon && <Icon size={17} strokeWidth={2.1} />}
+              {t.badge > 0 && (
+                <span style={{
+                  position: "absolute", top: 0, right: "16%", background: C.red, color: "#fff", fontSize: 9.5, fontWeight: 800,
+                  borderRadius: 999, minWidth: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px",
+                }}>{t.badge}</span>
+              )}
+            </div>
+            <span style={{
+              fontFamily: bodyFont, fontSize: 9.5, fontWeight: active ? 700 : 600, marginTop: 2,
+              whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%",
+            }}>{t.label}</span>
+          </button>
+        );
+      })}
     </div>
   );
 }

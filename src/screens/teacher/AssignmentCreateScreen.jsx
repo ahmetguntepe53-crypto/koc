@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { C, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Select, Pill, Avatar } from "../../components/common.jsx";
+import { Card, Button, Input, Select, Pill, Avatar, EmptyState } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { SUBJECTS_BY_EXAM, PERIOD_LABELS, SEND_MODE_LABELS, trackForGrade } from "../../subjects.js";
 
@@ -36,7 +36,7 @@ function FieldLabel({ children }) {
   return <div style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 700, color: C.mutedLight, marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 }}>{children}</div>;
 }
 
-export default function AssignmentCreateScreen({ onCreated }) {
+export default function AssignmentCreateScreen({ onCreated, initialStudentId }) {
   const [students, setStudents] = useState([]);
   const [manualTrack, setManualTrack] = useState(null); // roster karma sınav türlerinden oluşuyorsa koçun elle seçtiği
   const [checkedIds, setCheckedIds] = useState(() => new Set());
@@ -55,8 +55,11 @@ export default function AssignmentCreateScreen({ onCreated }) {
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { api.teacherListStudents().then(({ students }) => setStudents(students)); }, []);
-  useEffect(() => { api.listSourceBooks(examType).then(({ sourceBooks }) => setSourceBooks(sourceBooks)); }, [examType]);
+  const [rosterError, setRosterError] = useState("");
+  useEffect(() => {
+    api.teacherListStudents().then(({ students }) => setStudents(students)).catch((e) => setRosterError(e.message || "Öğrenci listesi yüklenemedi"));
+  }, []);
+  useEffect(() => { api.listSourceBooks(examType).then(({ sourceBooks }) => setSourceBooks(sourceBooks)).catch(() => {}); }, [examType]);
 
   const activeStudents = useMemo(() => students.filter((s) => !s.banned).map((s) => ({ ...s, track: trackForGrade(s.gradeLevel) })), [students]);
   const tracksPresent = useMemo(() => [...new Set(activeStudents.map((s) => s.track).filter(Boolean))], [activeStudents]);
@@ -74,11 +77,44 @@ export default function AssignmentCreateScreen({ onCreated }) {
   const eligibleStudents = useMemo(() => activeStudents.filter((s) => s.track === effectiveTrack), [activeStudents, effectiveTrack]);
   const eligibleIdsKey = eligibleStudents.map((s) => s.id).join(",");
 
-  // Uygun öğrenci havuzu değiştiğinde (sınav türü değişti, roster yüklendi vb.) varsayılan olarak
-  // hepsi tiklenir — eskiden "Tüm Öğrencilerim" olan davranışın karşılığı, ama artık koç isterse tikini kaldırabilir.
+  // Uygun öğrenci havuzu İLK KEZ görüldüğünde (roster yüklendi, ya da yeni bir öğrenci roster'a
+  // eklendi) varsayılan olarak tiklenir. Daha önce de eligible olan bir öğrencinin tik durumu
+  // KORUNUR — aksi halde (karma LGS/YKS roster'da) "Sınav Grubu" arasında ileri geri geçmek, koçun
+  // az önce kaldırdığı tikleri sessizce geri koyup o öğrencilere de ödev gönderirdi.
+  const seenEligibleIdsRef = useRef(new Set());
   useEffect(() => {
-    setCheckedIds(new Set(eligibleStudents.map((s) => s.id)));
+    const prevSeen = seenEligibleIdsRef.current;
+    const nextEligible = new Set(eligibleStudents.map((s) => s.id));
+    setCheckedIds((prevChecked) => {
+      const next = new Set();
+      for (const id of nextEligible) {
+        if (prevSeen.has(id)) { if (prevChecked.has(id)) next.add(id); }
+        else next.add(id);
+      }
+      return next;
+    });
+    seenEligibleIdsRef.current = nextEligible;
   }, [eligibleIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Öğrenci Özeti ekranındaki "Yeni Ödev Ata" hızlı eylemiyle açıldıysa (initialStudentId dolu) yukarıdaki
+  // "tüm uygun öğrenciler tikli" varsayılanını GEÇERSİZ KILIP yalnızca bu öğrenciyi tikler. Hedef öğrencinin
+  // sınav grubu farklıysa önce ona geçilir (checkedIds daraltması bir SONRAKİ render'da, eligibleStudents o
+  // gruba göre yeniden hesaplanınca uygulanır) — bu yüzden bayrak yalnızca hedef gerçekten eligible listede
+  // görününce "uygulandı" sayılır, tek seferlik zorlamayı erken bitirip koçun sonraki tik değişikliklerini
+  // ezmemek için.
+  const initialStudentAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!initialStudentId || initialStudentAppliedRef.current) return;
+    const target = activeStudents.find((s) => s.id === initialStudentId);
+    if (!target || !target.track) return;
+    if (target.track !== effectiveTrack) {
+      if (tracksPresent.length > 1) setManualTrack(target.track);
+      return;
+    }
+    if (!eligibleStudents.some((s) => s.id === initialStudentId)) return;
+    initialStudentAppliedRef.current = true;
+    setCheckedIds(new Set([initialStudentId]));
+  }, [initialStudentId, activeStudents, effectiveTrack, tracksPresent, eligibleStudents]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (effectiveTrack === "LGS" && examType !== "LGS") setExamType("LGS");
@@ -112,6 +148,9 @@ export default function AssignmentCreateScreen({ onCreated }) {
     setSuccess("");
     if (checkedIds.size === 0) { setError("En az bir öğrenci seçmelisin"); return; }
     if (!topic.trim()) { setError("Müfredat konusu gerekli"); return; }
+    // HTML'in date input'undaki min= özelliği bazı mobil klavye/tarih seçicilerde elle girişte
+    // katı uygulanmayabilir — sunucuya gitmeden önce burada da açıkça doğrulanır.
+    if (endDate < scheduledDate) { setError("Bitiş tarihi başlangıç tarihinden önce olamaz"); return; }
     setSaving(true);
     try {
       const { assignment } = await api.createAssignment({
@@ -134,6 +173,8 @@ export default function AssignmentCreateScreen({ onCreated }) {
       setSaving(false);
     }
   };
+
+  if (rosterError) return <EmptyState text={rosterError} />;
 
   return (
     <div style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
@@ -224,10 +265,10 @@ export default function AssignmentCreateScreen({ onCreated }) {
           <Input label="Sayfa / Soru Aralığı (opsiyonel)" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="ör. 45-60" />
 
           <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <Input label="Başlangıç Tarihi" type="date" value={scheduledDate} onChange={(e) => onStartDateChange(e.target.value)} required />
             </div>
-            <div style={{ flex: 1 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
               <Input label="Bitiş Tarihi" type="date" value={endDate} min={scheduledDate} onChange={(e) => onEndDateChange(e.target.value)} required />
             </div>
           </div>

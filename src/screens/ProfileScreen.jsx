@@ -1,10 +1,11 @@
 import { useState } from "react";
+import { BarChart3 } from "lucide-react";
 import { C, displayFont, bodyFont } from "../theme.js";
 import { Card, Button, Input, Pill, Avatar, roleLabel } from "../components/common.jsx";
 import { api, setToken } from "../api.js";
 import { trackForGrade } from "../subjects.js";
 
-export default function ProfileScreen({ user, onLogout }) {
+export default function ProfileScreen({ user, onLogout, onOpenReport }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [msg, setMsg] = useState(null);
@@ -45,6 +46,19 @@ export default function ProfileScreen({ user, onLogout }) {
           </div>
         </div>
       </Card>
+      {user.role === "STUDENT" && onOpenReport && (
+        <Card hover style={{ marginBottom: 18, cursor: "pointer" }}>
+          <div onClick={onOpenReport} style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 38, height: 38, borderRadius: 999, background: C.accentSoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <BarChart3 size={18} color={C.accent} />
+            </div>
+            <div>
+              <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, color: C.text }}>Raporum</div>
+              <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.muted, marginTop: 1 }}>Ders ve dönem bazlı doğru/yanlış/net dökümün</div>
+            </div>
+          </div>
+        </Card>
+      )}
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, marginBottom: 14, color: C.text }}>Şifremi Değiştir</div>
         <form onSubmit={submit}>

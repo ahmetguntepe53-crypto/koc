@@ -71,6 +71,11 @@ model User {
   // Hem ilk şifre belirleme (admin hesap oluşturunca) hem "şifremi unuttum" için ortak kullanılır.
   resetToken        String?   @unique
   resetTokenExpires DateTime?
+  // İlk şifre belirleme sırasında (yalnızca o an, passwordHash henüz null iken) Gizlilik
+  // Politikası/KVKK/Kullanım Şartları onayı zorunlu tutulur — bkz. routes/auth.js reset-password.
+  // "Şifremi unuttum" akışında (passwordHash zaten var) tekrar sorulmaz.
+  termsAcceptedAt DateTime?
+  termsVersion    String?
 
   // --- Yalnızca role=STUDENT için anlamlı ---
   // Yalnızca bilgi/raporlama amaçlı serbest metin (ör. "12/A") — ödev hedefleme bunun üzerinden
@@ -94,6 +99,7 @@ model User {
   studySessions        StudySession[]
   notifications        Notification[]
   pushSubscriptions    PushSubscription[]
+  planEntries          PlanEntry[]
 
   @@index([role])
   @@index([teacherId])
@@ -132,11 +138,68 @@ model Assignment {
   targetMode    AssignmentTarget
   sentAt        DateTime?
   createdAt     DateTime         @default(now())
+  // endDate geçtiğinde, hâlâ tamamlamamış öğrencisi varsa koça BİR KEZ gönderilen özet bildirimin
+  // zamanı — scheduler.js > notifyTeachersOfOverdueAssignments bunu null olan kayıtları arar, işleyip
+  // (öğrenci hâlâ eksikse ya da hepsi tamamlamış olsa bile) hemen doldurur, aynı ödev için asla ikinci
+  // bir bildirim atılmaz.
+  teacherOverdueNotifiedAt DateTime?
 
   recipients AssignmentRecipient[]
+  planEntry  PlanEntry?
 
   @@index([teacherId, status])
   @@index([status, sendMode, scheduledDate])
+}
+
+enum PlanWeekKind {
+  TOPIC          // konu anlatımı — ders/konu bazlı haftalık ödev
+  PRACTICE_TEST  // deneme çözümü haftası
+  HOLIDAY        // tatil ödevi haftası
+}
+
+// Bir hafta elle mi yayınlanacak, yoksa zamanı gelince scheduler.js tarafından mı otomatik
+// yayınlanacak — bkz. Assignment.sendMode'daki AUTO_ON_DATE/AUTO_DAY_BEFORE ile aynı fikir, ama
+// PlanWeek henüz bir Assignment olmadığı (assignmentId null olduğu) için ayrı bir alan.
+enum PlanAutoSend {
+  OFF         // koç "Yayınla"ya kendi basana kadar hiçbir şey olmaz (varsayılan)
+  ON_DATE     // scheduledDate gelince otomatik yayınlanır
+  DAY_BEFORE  // scheduledDate'ten bir gün önce otomatik yayınlanır
+}
+
+// Bir koçun bir sınav türü için hazırladığı yıllık ödev TAKVİMİ — gerçek bir takvim günü (date)
+// başına BİRDEN FAZLA kayıt olabilir (ör. aynı gün Matematik + Türkçe + Fen ayrı ayrı ödevlenebilir,
+// bkz. okul koordinatörünün notu: "bir günde 2-3 dersten soru gönderebilir"). Bu yüzden eski
+// PlanWeek'in aksine (haftaId, sınavTürü) üzerinde bir @@unique YOKTUR — aynı (teacherId, examType,
+// date) için istenildiği kadar satır oluşturulabilir. Bir satır "yayınlan"dığında gerçek bir
+// Assignment'a dönüşür (bkz. routes/planEntries.js > publish) — plan, ödev oluşturmanın YERİNE değil,
+// ÖNÜNE geçen bir şablon/takvim katmanıdır.
+model PlanEntry {
+  id        String       @id @default(cuid())
+  teacherId String
+  teacher   User         @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  examType  ExamType
+  // Yalnızca takvim günü anlamlı — saat/dakika kısmı yok sayılır (00:00 olarak saklanır).
+  date      DateTime
+  kind      PlanWeekKind @default(TOPIC)
+
+  // --- kind=TOPIC için anlamlı ---
+  subject       String?
+  topic         String?
+  sourceBook    String?
+  pageRange     String?
+  // Günlük ödev başına hedeflenen soru sayısı — okul kuralı: en fazla 30 (bkz. validators, routes/planEntries.js).
+  questionCount Int?
+
+  // --- kind=PRACTICE_TEST / HOLIDAY için serbest not (ör. "Her gün 1 deneme çöz") ---
+  note String?
+
+  autoSend     PlanAutoSend @default(OFF)
+  assignmentId String?      @unique
+  assignment   Assignment?  @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@index([teacherId, examType, date])
 }
 
 // Bir ödevin tek bir hedef öğrenciye düşen kopyası — tamamlanma durumu öğrenci başına bağımsız.
@@ -151,11 +214,32 @@ model AssignmentRecipient {
   completed   Boolean   @default(false)
   completedAt DateTime?
   createdAt   DateTime  @default(now())
+  // Ödevin süresi (assignment.endDate) geçtiğinde, öğrenci hâlâ tamamlamamışsa BİR KEZ gönderilen
+  // hatırlatma bildiriminin zamanı — scheduler.js > notifyOverdueRecipients bunu null olan kayıtları
+  // arar, bildirimi atıp hemen doldurur, aynı öğrenciye aynı ödev için asla ikinci kez atılmaz.
+  overdueReminderSentAt DateTime?
 
   submission Submission?
+  // Submission'dan bağımsız — öğrenci sonucu girmeden ÖNCE de kanıt fotoğrafı ekleyebilir.
+  photos RecipientPhoto[]
 
   @@unique([assignmentId, studentId])
   @@index([studentId, completed])
+}
+
+// Öğrencinin bir ödeve kanıt olarak eklediği fotoğraf. Diskte assignmentPhotosRoot()/<recipientId>/
+// altında rastgele (crypto.randomUUID) bir ad ile saklanır — sıralı/tahmin edilebilir olmadığı için
+// dosyalar requireAuth olmadan /uploads altından servis edilir (bkz. app.js).
+model RecipientPhoto {
+  id          String              @id @default(cuid())
+  recipientId String
+  recipient   AssignmentRecipient @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+  filename    String
+  mimeType    String
+  size        Int
+  createdAt   DateTime            @default(now())
+
+  @@index([recipientId])
 }
 
 // Öğrencinin bir AssignmentRecipient için girdiği sonuç — 1'e-1.
@@ -209,6 +293,8 @@ model Notification {
   // Bildirime dokununca nereye gidileceği (ör. {"recipientId":"...","screen":"assignmentSubmit"}).
   data      Json?
   createdAt DateTime @default(now())
+
+  @@index([userId, createdAt])
 }
 
 // Bir kullanıcının bir cihazdaki FCM kayıt token'ı — upsert edilir. Bu proje kendi Firebase
@@ -219,4 +305,16 @@ model PushSubscription {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   token     String   @unique
   createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// Okul çapında TEK satır (id her zaman "singleton") — admin panelinden ayarlanır. Şu an yalnızca
+// YKS/LGS sınav tarihlerini tutuyor; öğrenci ana ekranındaki "sınava kaç gün kaldı" sayacı bunu
+// okur. Tarihler resmi ÖSYM/MEB takvimi açıklanınca admin tarafından güncellenir, koda gömülü değil.
+model SchoolSettings {
+  id          String    @id @default("singleton")
+  yksExamDate DateTime?
+  lgsExamDate DateTime?
+  updatedAt   DateTime  @updatedAt
 }

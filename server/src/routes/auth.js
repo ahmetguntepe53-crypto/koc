@@ -1,5 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
+import path from "node:path";
+import { unlink } from "node:fs/promises";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { prisma } from "../db.js";
@@ -7,11 +9,14 @@ import { requireAuth } from "../middleware/auth.js";
 import { safeUser } from "../serialize.js";
 import { sendPasswordResetEmail } from "../mailer.js";
 import { handleErr } from "../handleErr.js";
-import { authLimiter, strictLimiter } from "../middleware/rateLimiters.js";
+import { authLimiter, forgotPasswordLimiter, resetPasswordLimiter, setPasswordLimiter, deleteAccountLimiter } from "../middleware/rateLimiters.js";
+import { assert } from "../validators.js";
+import { recipientPhotosDir } from "../uploads.js";
 
 export const authRouter = Router();
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
+const TERMS_VERSION = "1.0";
 
 // tokenVersion token'ın içine gömülür — requireAuth bunu User.tokenVersion ile karşılaştırır. Şifre
 // sıfırlanınca/eski şifre geçersiz kılınınca tokenVersion artırılır, bu da o ana kadar üretilmiş
@@ -20,13 +25,21 @@ function signToken(userId, tokenVersion) {
   return jwt.sign({ userId, tokenVersion }, process.env.JWT_SECRET, { expiresIn: "30d" });
 }
 
+// Hesap yokken bcrypt.compare hiç çağrılmazsa, "hesap var" ve "hesap yok" yanıtları arasındaki süre
+// farkı (bcrypt ~100ms, DB lookup ~1ms) bir saldırganın kayıtlı e-postaları (öğrenci/veli listesini)
+// zamanlama ölçerek çıkarmasına izin verir — bu sahte hash'e karşı yapılan bir compare, süreyi eşitler.
+const DUMMY_PASSWORD_HASH = bcrypt.hashSync("timing-safety-dummy", 10);
+
 authRouter.post("/login", authLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: "E-posta ve şifre gerekli" });
     const cleanEmail = String(email).trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
-    if (!user) return res.status(401).json({ error: "E-posta veya şifre hatalı" });
+    if (!user) {
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH); // sonuç kullanılmaz, yalnızca zamanlama eşitlensin diye
+      return res.status(401).json({ error: "E-posta veya şifre hatalı" });
+    }
     if (user.banned) return res.status(403).json({ error: "Hesabın askıya alınmış — okul yöneticinle iletişime geç." });
     if (!user.passwordHash) {
       return res.status(400).json({ error: "Bu hesap için henüz şifre belirlenmemiş — e-postana gelen kurulum bağlantısını kullan." });
@@ -40,7 +53,7 @@ authRouter.post("/login", authLimiter, async (req, res) => {
   }
 });
 
-authRouter.post("/forgot-password", strictLimiter, async (req, res) => {
+authRouter.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
   try {
     const { email } = req.body || {};
     if (!email) return res.status(400).json({ error: "E-posta gerekli" });
@@ -58,19 +71,29 @@ authRouter.post("/forgot-password", strictLimiter, async (req, res) => {
   }
 });
 
-authRouter.post("/reset-password", strictLimiter, async (req, res) => {
+authRouter.post("/reset-password", resetPasswordLimiter, async (req, res) => {
   try {
-    const { token, password } = req.body || {};
+    const { token, password, acceptedTerms } = req.body || {};
     if (!token || !password) return res.status(400).json({ error: "token ve password gerekli" });
     if (password.length < 8) return res.status(400).json({ error: "Şifre en az 8 karakter olmalı" });
     const user = await prisma.user.findUnique({ where: { resetToken: String(token) } });
     if (!user || !user.resetTokenExpires || user.resetTokenExpires < new Date()) {
       return res.status(400).json({ error: "Bağlantının süresi dolmuş — okul yöneticinden yeni bir bağlantı iste." });
     }
+    // "İlk şifre belirleme" (passwordHash henüz null) sırasında Gizlilik Politikası/KVKK/Kullanım
+    // Şartları onayı zorunlu — "şifremi unuttum" akışında (passwordHash zaten var) tekrar sorulmaz,
+    // termsAcceptedAt de bu durumda ellenmez (ilk kabul tarihi korunur).
+    const isFirstSetup = !user.passwordHash;
+    if (isFirstSetup && !acceptedTerms) {
+      return res.status(400).json({ error: "Devam etmek için Gizlilik Politikası, KVKK Aydınlatma Metni ve Kullanım Şartları'nı kabul etmelisin." });
+    }
     const passwordHash = await bcrypt.hash(password, 10);
     await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash, resetToken: null, resetTokenExpires: null, tokenVersion: { increment: 1 } },
+      data: {
+        passwordHash, resetToken: null, resetTokenExpires: null, tokenVersion: { increment: 1 },
+        ...(isFirstSetup ? { termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION } : {}),
+      },
     });
     res.json({ ok: true });
   } catch (e) {
@@ -86,7 +109,11 @@ authRouter.get("/reset-password-page", async (req, res) => {
     <style>body{font-family:Arial,sans-serif;background:#0F1420;color:#EDEFF4;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;text-align:center;padding:24px;box-sizing:border-box}
     div.card{max-width:360px;width:100%}h1{font-size:20px}p{color:#8A93A8;font-size:14px}
     input{width:100%;box-sizing:border-box;background:#181F30;border:1px solid #2A3348;border-radius:10px;padding:12px 14px;color:#EDEFF4;font-size:14px;margin-bottom:10px;outline:none}
+    label.terms{display:flex;align-items:flex-start;gap:8px;text-align:left;font-size:12.5px;color:#8A93A8;margin-bottom:14px;cursor:pointer}
+    label.terms input{width:auto;margin:2px 0 0;flex-shrink:0}
+    label.terms a{color:#8AB4FF}
     button{width:100%;background:#3B5BDB;color:#fff;border:none;border-radius:10px;padding:12px 14px;font-size:14px;font-weight:bold;cursor:pointer}
+    button:disabled{opacity:.5;cursor:not-allowed}
     #msg{font-size:13px;margin-top:12px;min-height:18px}</style></head>
     <body><div class="card">${body}</div></body></html>`);
   const { token } = req.query || {};
@@ -95,12 +122,20 @@ authRouter.get("/reset-password-page", async (req, res) => {
   if (!user || !user.resetTokenExpires || user.resetTokenExpires < new Date()) {
     return page(`<h1>Bağlantının süresi dolmuş</h1><p>Okul yöneticinden yeni bir bağlantı istemeni rica ederiz.</p>`);
   }
+  // İlk şifre belirleme (passwordHash henüz null) sırasında onay kutusu gösterilir — "şifremi
+  // unuttum" akışında (kullanıcı zaten hesabı kurmuş, bir kez onay vermiş) tekrar sorulmaz.
+  const isFirstSetup = !user.passwordHash;
   page(`
     <h1>Şifre Belirle</h1>
     <p>Hesabın için bir şifre gir.</p>
     <input id="p1" type="password" placeholder="Şifre (en az 8 karakter)" autocomplete="new-password" />
     <input id="p2" type="password" placeholder="Şifre (tekrar)" autocomplete="new-password" />
-    <button id="btn" onclick="submitReset()">Şifreyi Kaydet</button>
+    ${isFirstSetup ? `
+    <label class="terms">
+      <input type="checkbox" id="terms" onchange="document.getElementById('btn').disabled = !this.checked">
+      <span><a href="https://kocluk.maiakademi.com/terms.html" target="_blank" rel="noopener">Gizlilik Politikası, KVKK Aydınlatma Metni ve Kullanım Şartları</a>'nı okudum, kabul ediyorum.</span>
+    </label>` : ""}
+    <button id="btn" onclick="submitReset()" ${isFirstSetup ? "disabled" : ""}>Şifreyi Kaydet</button>
     <div id="msg"></div>
     <script>
       async function submitReset() {
@@ -108,11 +143,13 @@ authRouter.get("/reset-password-page", async (req, res) => {
         var p2 = document.getElementById('p2').value;
         var msg = document.getElementById('msg');
         var btn = document.getElementById('btn');
+        var termsEl = document.getElementById('terms');
+        if (termsEl && !termsEl.checked) { msg.textContent = 'Devam etmek için metni kabul etmelisin'; msg.style.color = '#FF6B6B'; return; }
         if (p1.length < 8) { msg.textContent = 'Şifre en az 8 karakter olmalı'; msg.style.color = '#FF6B6B'; return; }
         if (p1 !== p2) { msg.textContent = 'Şifreler eşleşmiyor'; msg.style.color = '#FF6B6B'; return; }
         btn.disabled = true; btn.textContent = '...';
         try {
-          var r = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: ${JSON.stringify(cleanToken)}, password: p1 }) });
+          var r = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: ${JSON.stringify(cleanToken)}, password: p1, acceptedTerms: termsEl ? termsEl.checked : undefined }) });
           var data = await r.json();
           if (!r.ok) { msg.textContent = data.error || 'Bir şeyler ters gitti'; msg.style.color = '#FF6B6B'; btn.disabled = false; btn.textContent = 'Şifreyi Kaydet'; return; }
           document.querySelector('.card').innerHTML = '<h1>Şifren kaydedildi!</h1><p>Artık uygulamaya dönüp yeni şifrenle giriş yapabilirsin.</p>';
@@ -136,7 +173,7 @@ authRouter.get("/me", requireAuth, async (req, res) => {
 
 // Oturum açıkken kendi şifresini değiştirmek için (mevcut şifreyi bilenler dışında admin'in acil
 // "şifreyi doğrudan belirle" uç noktası da var — bkz. routes/admin.js).
-authRouter.post("/set-password", requireAuth, async (req, res) => {
+authRouter.post("/set-password", setPasswordLimiter, requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body || {};
     if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: "Yeni şifre en az 8 karakter olmalı" });
@@ -153,6 +190,59 @@ authRouter.post("/set-password", requireAuth, async (req, res) => {
     });
     const token = signToken(user.id, user.tokenVersion + 1);
     res.json({ ok: true, token });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Kullanıcının kendi hesabını kalıcı olarak silmesi. Öğrenci için: kendi geçmiş verisini (ödevler/
+// gönderimler/serbest çalışmalar) silmeyi kendisi istediği için sorun yok. Öğretmen için: naif bir
+// cascade (Assignment -> AssignmentRecipient -> Submission/RecipientPhoto) ÖĞRENCİLERİN sonuçlarını/
+// kanıt fotoğraflarını da silerdi — bu veri öğretmenin değil, öğrencinin verisidir, öğretmen kendi
+// hesabını silerek başkasının verisini yok etme hakkına/rızasına sahip değildir. Bu yüzden bir
+// öğretmenin gerçek öğrenci çalışması (Submission ya da RecipientPhoto) biriken bir ödevi varsa
+// self-delete reddedilir — admin.js > DELETE /users/:id'deki aynı korumanın öğretmenin KENDİ
+// isteğiyle de aşılamamasını sağlar (bkz. o uç noktadaki 409 gerekçesi).
+authRouter.delete("/me", deleteAccountLimiter, requireAuth, async (req, res) => {
+  try {
+    const { password } = req.body || {};
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    assert(user, "Kullanıcı bulunamadı", 404);
+    assert(user.passwordHash, "Bu hesap için henüz şifre belirlenmemiş, hesap silinemiyor", 400);
+    assert(password, "Şifre gerekli", 400);
+    const ok = await bcrypt.compare(password, user.passwordHash);
+    assert(ok, "Şifre hatalı", 401);
+
+    if (user.role === "TEACHER") {
+      const studentWorkCount = await prisma.assignmentRecipient.count({
+        where: { assignment: { teacherId: user.id }, OR: [{ submission: { isNot: null } }, { photos: { some: {} } }] },
+      });
+      assert(studentWorkCount === 0, "Öğrencilerinin girdiği ödev sonuçları/kanıt fotoğrafları var — hesabını silersen bunlar da kaybolur. Bunun yerine okul yöneticinden hesabını askıya almasını (ban) iste.", 409);
+      // admin.js > DELETE /users/:id ile AYNI kontrol: henüz hiç ödev/sonuç olmasa bile, hâlâ
+      // kendisine atanmış öğrencisi varsa silinemez — aksi halde onDelete:SetNull ile öğrenciler
+      // sessizce koçsuz kalırdı.
+      const coachedStudents = await prisma.user.count({ where: { teacherId: user.id } });
+      assert(coachedStudents === 0, "Sana hâlâ atanmış öğrenciler var — hesabını silersen koçsuz kalırlar. Önce okul yöneticinden onları başka bir koça ata(t)man gerekiyor.", 409);
+    }
+
+    // Cascade (bkz. schema.prisma) DB satırlarını temizler ama diskteki kanıt fotoğrafı dosyalarına
+    // dokunmaz — hangi dosyaların gideceği, kullanıcıyı silen SAME transaction içinde okunup silinir.
+    // Tek transaction, "fotoğraf listesini oku" ile "kullanıcıyı sil" arasına başka bir isteğin
+    // (ör. aynı token'la eşzamanlı bir fotoğraf yükleme) girip listeye girmemiş ama cascade'le DB'den
+    // silinen bir dosyayı diskte öksüz bırakma penceresini pratikte anlamsız hale getirir.
+    const orphanedPhotos = await prisma.$transaction(async (tx) => {
+      const photos = await tx.recipientPhoto.findMany({
+        where: user.role === "TEACHER" ? { recipient: { assignment: { teacherId: user.id } } } : { recipient: { studentId: user.id } },
+        select: { recipientId: true, filename: true },
+      });
+      if (user.role === "TEACHER") {
+        await tx.assignment.deleteMany({ where: { teacherId: user.id } });
+      }
+      await tx.user.delete({ where: { id: user.id } });
+      return photos;
+    });
+    await Promise.all(orphanedPhotos.map((p) => unlink(path.join(recipientPhotosDir(p.recipientId), p.filename)).catch(() => {})));
+    res.json({ ok: true });
   } catch (e) {
     handleErr(res, e);
   }

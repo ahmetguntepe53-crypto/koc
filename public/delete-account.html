@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hesabı Sil — Kocluk</title>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; background: #F5F6FB; color: #1F2430; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 24px; box-sizing: border-box; }
+  .card { max-width: 400px; width: 100%; background: #fff; border-radius: 16px; padding: 32px 28px; box-shadow: 0 1px 2px rgba(15,23,42,0.06), 0 8px 20px rgba(15,23,42,0.07); }
+  h1 { font-size: 19px; margin: 0 0 6px; }
+  p.desc { color: #6B7280; font-size: 13.5px; line-height: 1.6; margin: 0 0 20px; }
+  .warn { background: #FEF2F2; color: #B91C1C; border-radius: 10px; padding: 12px 14px; font-size: 12.5px; line-height: 1.6; margin-bottom: 20px; }
+  label { display: block; font-size: 11px; font-weight: 700; color: #6B7280; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; }
+  input { width: 100%; box-sizing: border-box; background: #F5F6FB; border: 1px solid #E5E7EB; border-radius: 10px; padding: 11px 13px; font-size: 14px; margin-bottom: 16px; outline: none; }
+  input:focus { border-color: #4338CA; }
+  button { width: 100%; background: #B91C1C; color: #fff; border: none; border-radius: 10px; padding: 13px 14px; font-size: 14px; font-weight: 700; cursor: pointer; }
+  button:disabled { opacity: .5; cursor: not-allowed; }
+  #msg { font-size: 13px; margin-top: 14px; min-height: 18px; text-align: center; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>Hesabımı Kalıcı Olarak Sil</h1>
+    <p class="desc">Kocluk hesabını uygulamayı açmadan, buradan da silebilirsin. Devam etmeden önce lütfen okuyun:</p>
+    <div class="warn">Bu işlem <strong>geri alınamaz</strong>. Hesabın, tüm ödevlerin, sonuçların ve serbest çalışma kayıtların kalıcı olarak silinir.</div>
+    <form id="form">
+      <label for="email">E-posta</label>
+      <input id="email" type="email" autocomplete="username" required />
+      <label for="password">Şifre</label>
+      <input id="password" type="password" autocomplete="current-password" required />
+      <button id="btn" type="submit">Hesabımı Kalıcı Olarak Sil</button>
+    </form>
+    <div id="msg"></div>
+  </div>
+  <script>
+    var API_BASE = "https://api.kocluk.maiakademi.com/api";
+    document.getElementById("form").addEventListener("submit", async function (e) {
+      e.preventDefault();
+      var email = document.getElementById("email").value.trim();
+      var password = document.getElementById("password").value;
+      var btn = document.getElementById("btn");
+      var msg = document.getElementById("msg");
+      msg.style.color = "#B91C1C";
+      msg.textContent = "";
+      btn.disabled = true;
+      btn.textContent = "...";
+      try {
+        var loginRes = await fetch(API_BASE + "/auth/login", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, password: password }),
+        });
+        var loginData = await loginRes.json();
+        if (!loginRes.ok) {
+          msg.textContent = loginData.error || "E-posta veya şifre hatalı";
+          btn.disabled = false; btn.textContent = "Hesabımı Kalıcı Olarak Sil";
+          return;
+        }
+        var delRes = await fetch(API_BASE + "/auth/me", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json", Authorization: "Bearer " + loginData.token },
+          body: JSON.stringify({ password: password }),
+        });
+        var delData = await delRes.json();
+        if (!delRes.ok) {
+          msg.textContent = delData.error || "Hesap silinemedi";
+          btn.disabled = false; btn.textContent = "Hesabımı Kalıcı Olarak Sil";
+          return;
+        }
+        document.querySelector(".card").innerHTML = "<h1>Hesabın silindi</h1><p class=\"desc\">Kocluk hesabın ve tüm verilerin kalıcı olarak kaldırıldı.</p>";
+      } catch (err) {
+        msg.textContent = "Bağlantı hatası, tekrar dene";
+        btn.disabled = false; btn.textContent = "Hesabımı Kalıcı Olarak Sil";
+      }
+    });
+  </script>
+</body>
+</html>

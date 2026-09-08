@@ -1,6 +1,10 @@
 // İnce fetch sarmalayıcı: JWT'yi otomatik ekler, JSON gövdeyi parse eder,
 // hata durumunda backend'in { error } mesajını fırlatır.
 const API_BASE = (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_API_URL) || "http://localhost:4100/api";
+// Kanıt fotoğrafları /api altında DEĞİL, ayrı bir /uploads yolunda servis edilir (bkz. server/src/app.js)
+// — API prod'da kendi alt alan adında olduğu için (api.kocluk.maiakademi.com) bu, sitenin kök adresiyle
+// AYNI şey değildir; /api'siz API origin'i buradan türetilir.
+const API_ORIGIN = API_BASE.replace(/\/api\/?$/, "");
 const TOKEN_KEY = "kocluk:token";
 
 export function getToken() {
@@ -39,6 +43,24 @@ async function request(path, { method = "GET", body } = {}) {
   return data;
 }
 
+export function photoUrl(photo) {
+  return `${API_ORIGIN}/uploads/assignment-photos/${photo.recipientId}/${photo.filename}`;
+}
+
+async function uploadFile(path, file) {
+  const headers = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const formData = new FormData();
+  formData.append("photo", file);
+  // Content-Type kasıtlı olarak set edilmiyor — tarayıcı FormData için doğru multipart boundary'yi
+  // kendisi ekler, elle "multipart/form-data" yazılırsa boundary eksik kalıp istek bozulur.
+  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: formData });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || "Sunucuyla iletişim kurulamadı");
+  return data;
+}
+
 export const api = {
   // --- auth ---
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
@@ -63,9 +85,17 @@ export const api = {
   adminBanUser: (id) => request(`/admin/users/${id}/ban`, { method: "POST" }),
   adminUnbanUser: (id) => request(`/admin/users/${id}/unban`, { method: "POST" }),
   adminDeleteUser: (id) => request(`/admin/users/${id}`, { method: "DELETE" }),
+  adminListPhotos: (q) => request(`/admin/photos${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  adminDeletePhoto: (photoId) => request(`/admin/photos/${photoId}`, { method: "DELETE" }),
+  adminGetSettings: () => request("/admin/settings"),
+  adminUpdateSettings: (patch) => request("/admin/settings", { method: "PUT", body: patch }),
+
+  // --- okul ayarları (herkese salt-okunur) ---
+  getExamDates: () => request("/settings"),
 
   // --- öğretmen ---
   teacherListStudents: () => request("/teacher/students"),
+  teacherStudentOverview: (studentId) => request(`/teacher/students/${studentId}/overview`),
 
   // --- ödevler ---
   listAssignments: (params = {}) => {
@@ -79,6 +109,13 @@ export const api = {
   sendAssignmentNow: (id) => request(`/assignments/${id}/send-now`, { method: "POST" }),
   listSourceBooks: (examType) => request(`/assignments/source-books${examType ? `?examType=${encodeURIComponent(examType)}` : ""}`),
 
+  // --- öğretmen: yıllık plan ---
+  listPlanEntries: (examType) => request(`/plan-entries?examType=${encodeURIComponent(examType)}`),
+  createPlanEntry: (payload) => request("/plan-entries", { method: "POST", body: payload }),
+  savePlanEntry: (id, payload) => request(`/plan-entries/${id}`, { method: "PUT", body: payload }),
+  deletePlanEntry: (id) => request(`/plan-entries/${id}`, { method: "DELETE" }),
+  publishPlanEntry: (id) => request(`/plan-entries/${id}/publish`, { method: "POST" }),
+
   // --- bildirimler ---
   listNotifications: () => request("/notifications"),
   markNotificationRead: (id) => request(`/notifications/${id}/read`, { method: "POST" }),
@@ -91,6 +128,8 @@ export const api = {
   },
   getRecipient: (id) => request(`/assignment-recipients/${id}`),
   submitRecipient: (id, payload) => request(`/assignment-recipients/${id}/submit`, { method: "POST", body: payload }),
+  uploadRecipientPhoto: (id, file) => uploadFile(`/assignment-recipients/${id}/photos`, file),
+  deleteRecipientPhoto: (id, photoId) => request(`/assignment-recipients/${id}/photos/${photoId}`, { method: "DELETE" }),
 
   // --- öğrenci: serbest çalışma ---
   createStudySession: (payload) => request("/study-sessions", { method: "POST", body: payload }),
@@ -100,6 +139,10 @@ export const api = {
   // --- özet istatistikler ---
   teacherStats: () => request("/stats/teacher"),
   studentStats: () => request("/stats/student"),
+  getReport: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
+    return request(`/stats/report${qs ? `?${qs}` : ""}`);
+  },
 
   // --- push bildirim aboneliği (yalnızca native kabuk; bkz. src/push.js) ---
   pushSubscribe: (token) => request("/push/subscribe", { method: "POST", body: { token } }),

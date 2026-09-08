@@ -1,6 +1,7 @@
-// server/src/subjects.js ile birebir aynı tutulmalı — sunucu bu listeye karşı doğruluyor,
-// burada yalnızca dropdown'ı doldurmak için kopyası var (iki ayrı npm paketi, paylaşılan bir
-// modül yok).
+// SUBJECTS_BY_EXAM/trackForGrade/GRADE_LEVELS server/src/subjects.js ile İÇERİK olarak aynı
+// tutulmalı — sunucu bu listeye karşı doğruluyor, burada yalnızca dropdown'ı doldurmak için kopyası
+// var (iki ayrı npm paketi, paylaşılan bir modül yok). Dosyanın geri kalanı (label sözlükleri,
+// GRADE_OPTIONS gibi) yalnızca arayüz için, sunucuda karşılığı olması gerekmez.
 export const SUBJECTS_BY_EXAM = {
   LGS: ["Türkçe", "Matematik", "Fen Bilimleri", "T.C. İnkılap Tarihi ve Atatürkçülük", "Din Kültürü ve Ahlak Bilgisi", "İngilizce"],
   TYT: ["Türkçe", "Matematik", "Fizik", "Kimya", "Biyoloji", "Tarih", "Coğrafya", "Felsefe", "Din Kültürü ve Ahlak Bilgisi"],

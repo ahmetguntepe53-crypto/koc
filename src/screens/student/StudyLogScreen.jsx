@@ -40,9 +40,10 @@ export default function StudyLogScreen({ user }) {
   const subjectOptions = useMemo(() => SUBJECTS_BY_EXAM[examType], [examType]);
   useEffect(() => { if (!subjectOptions.includes(subject)) setSubject(subjectOptions[0]); }, [subjectOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [loadError, setLoadError] = useState("");
   const load = () => {
     setLoading(true);
-    api.listStudySessions().then(({ sessions }) => setSessions(sessions)).finally(() => setLoading(false));
+    api.listStudySessions().then(({ sessions }) => setSessions(sessions)).catch((e) => setLoadError(e.message || "Kayıtlar yüklenemedi")).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
@@ -124,6 +125,8 @@ export default function StudyLogScreen({ user }) {
       <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5 }}>Geçmiş Kayıtlarım</div>
       {loading ? (
         <EmptyState text="Yükleniyor..." />
+      ) : loadError ? (
+        <EmptyState text={loadError} />
       ) : sessions.length === 0 ? (
         <EmptyState text="Henüz serbest çalışma kaydın yok." />
       ) : (

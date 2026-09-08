@@ -4,7 +4,7 @@ import { C, bodyFont } from "../../theme.js";
 import { Card, Button, Select, Pill, EmptyState } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { PERIOD_LABELS, STATUS_LABELS, ALL_SUBJECTS } from "../../subjects.js";
-import { formatDateRange } from "../../dates.js";
+import { formatDateRange, daysUntil } from "../../dates.js";
 
 export default function AssignmentListScreen({ onOpen, refreshKey }) {
   const [assignments, setAssignments] = useState([]);
@@ -12,10 +12,16 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
   const [subject, setSubject] = useState("");
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState(null);
+  const [busyId, setBusyId] = useState(null);
 
+  const [loadError, setLoadError] = useState("");
   const load = () => {
     setLoading(true);
-    api.listAssignments({ status, subject }).then(({ assignments }) => setAssignments(assignments)).finally(() => setLoading(false));
+    setLoadError("");
+    api.listAssignments({ status, subject })
+      .then(({ assignments }) => setAssignments(assignments))
+      .catch((e) => setLoadError(e.message || "Ödevler yüklenemedi"))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [status, subject, refreshKey]);
@@ -27,21 +33,28 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
   }, [toast]);
 
   const sendNow = async (id) => {
+    if (!window.confirm("Bu ödev şimdi öğrencilere gönderilsin mi?")) return;
+    setBusyId(id);
     try {
       await api.sendAssignmentNow(id);
       load();
     } catch (e) {
       setToast({ type: "error", text: e.message });
+    } finally {
+      setBusyId(null);
     }
   };
 
   const remove = async (id) => {
     if (!window.confirm("Bu taslak ödev silinsin mi?")) return;
+    setBusyId(id);
     try {
       await api.deleteAssignment(id);
       load();
     } catch (e) {
       setToast({ type: "error", text: e.message });
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -69,12 +82,15 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
 
       {loading ? (
         <EmptyState text="Yükleniyor..." />
+      ) : loadError ? (
+        <EmptyState text={loadError} />
       ) : assignments.length === 0 ? (
         <EmptyState text="Henüz ödev yok — soldaki 'Ödev Oluştur' sekmesinden ekleyebilirsin." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {assignments.map((a) => {
             const completedCount = a.recipients.filter((r) => r.completed).length;
+            const isOverdue = a.status === "SENT" && completedCount < a.recipients.length && daysUntil(a.endDate) < 0;
             return (
               <Card key={a.id} hover style={{ padding: 16, cursor: "pointer" }}>
                 <div onClick={() => onOpen(a.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -82,6 +98,7 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{a.subject} — {a.topic}</span>
                       <Pill tone={a.status === "SENT" ? "green" : "amber"}>{STATUS_LABELS[a.status]}</Pill>
+                      {isOverdue && <Pill tone="red">Gecikti</Pill>}
                       <Pill>{a.examType}</Pill>
                     </div>
                     <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 4 }}>
@@ -91,8 +108,8 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
                     {a.status === "DRAFT" && (
                       <>
-                        <IconButton title="Şimdi gönder" icon={Send} onClick={(e) => { e.stopPropagation(); sendNow(a.id); }} />
-                        <IconButton title="Sil" icon={Trash2} danger onClick={(e) => { e.stopPropagation(); remove(a.id); }} />
+                        <IconButton title="Şimdi gönder" icon={Send} disabled={busyId === a.id} onClick={(e) => { e.stopPropagation(); sendNow(a.id); }} />
+                        <IconButton title="Sil" icon={Trash2} danger disabled={busyId === a.id} onClick={(e) => { e.stopPropagation(); remove(a.id); }} />
                       </>
                     )}
                     <ChevronRight size={18} color={C.muted} />
@@ -107,16 +124,17 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
   );
 }
 
-function IconButton({ icon: Icon, onClick, title, danger }) {
+function IconButton({ icon: Icon, onClick, title, danger, disabled }) {
   return (
     <button
       title={title}
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
+      disabled={disabled}
       className="k-icon-btn"
       style={{
         width: 32, height: 32, borderRadius: C.radiusSm, border: `1px solid ${C.border}`,
-        background: C.surface2, color: danger ? C.red : C.muted, cursor: "pointer",
-        display: "flex", alignItems: "center", justifyContent: "center",
+        background: C.surface2, color: danger ? C.red : C.muted, cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1, display: "flex", alignItems: "center", justifyContent: "center",
       }}
     >
       <Icon size={14} />

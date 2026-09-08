@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.DarkActionBar">
+        <!-- Customize your theme here. -->
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorPrimaryDark">@color/colorPrimaryDark</item>
+        <item name="colorAccent">@color/colorAccent</item>
+    </style>
+
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:background">@null</item>
+    </style>
+
+
+    <!-- Android 12+ (API 31+) sistemin kendi SplashScreen API'si burayı kullanıyor — bu aşamada
+         SADECE küçük bir ikon + zemin rengi gösterilebiliyor (OS kısıtı, tam logo/yazı BU aşamada
+         gösterilemiyor). Hemen ardından @capacitor/splash-screen eklentisi devreye girip
+         @drawable/splash'i (capacitor.config.json > plugins.SplashScreen ile yapılandırılmış)
+         tam ekran gösteriyor — kullanıcının asıl gördüğü açılış ekranı budur. -->
+    <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@android:color/white</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher_foreground</item>
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
+    </style>
+</resources>

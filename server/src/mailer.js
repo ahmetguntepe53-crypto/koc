@@ -2,6 +2,12 @@ import { Resend } from "resend";
 
 const resend = process.env.RESEND_API_KEY ? new Resend(process.env.RESEND_API_KEY) : null;
 const FROM = process.env.MAIL_FROM || "Kocluk <no-reply@kocluk.local>";
+// NODE_ENV bu projede hiçbir yerde "production" olarak set edilmiyor (yalnızca "test" kontrol
+// ediliyor, bkz. middleware/rateLimiters.js) — o yüzden prod/dev ayrımı için daha güvenilir bir
+// sinyal olan API_PUBLIC_URL kullanılır (.env.example: yerelde her zaman localhost, prod'da gerçek
+// alan adı). RESEND_API_KEY yanlışlıkla prod'da tanımsız kalırsa, tek seferlik gizli token'ların
+// (şifre kurulum/sıfırlama linki) düz metin olarak sunucu loglarına düşmesini engellemek için.
+const isLocalDev = (process.env.API_PUBLIC_URL || "").includes("localhost");
 
 // resend.emails.send() API hatalarında promise'i REDDETMEZ — { data: null, error: {...} } döner.
 // Bunu kontrol etmezsek gönderim sessizce başarısız olur, çağıran tarafın .catch()'i hiç tetiklenmez.
@@ -22,7 +28,8 @@ function resetUrlFor(token) {
 export async function sendAccountSetupEmail(to, token, name) {
   const url = resetUrlFor(token);
   if (!resend) {
-    console.log(`[mailer] RESEND_API_KEY tanımlı değil — e-posta gönderilmedi. ${name} için hesap kurulum linki:\n${url}`);
+    if (isLocalDev) console.log(`[mailer] RESEND_API_KEY tanımlı değil — e-posta gönderilmedi. ${name} için hesap kurulum linki:\n${url}`);
+    else console.error(`[mailer] RESEND_API_KEY tanımlı değil — ${name} için hesap kurulum e-postası gönderilemedi.`);
     return;
   }
   await send({
@@ -45,7 +52,8 @@ export async function sendAccountSetupEmail(to, token, name) {
 export async function sendPasswordResetEmail(to, token) {
   const url = resetUrlFor(token);
   if (!resend) {
-    console.log(`[mailer] RESEND_API_KEY tanımlı değil — e-posta gönderilmedi. Şifre sıfırlama linki:\n${url}`);
+    if (isLocalDev) console.log(`[mailer] RESEND_API_KEY tanımlı değil — e-posta gönderilmedi. Şifre sıfırlama linki:\n${url}`);
+    else console.error(`[mailer] RESEND_API_KEY tanımlı değil — şifre sıfırlama e-postası gönderilemedi.`);
     return;
   }
   await send({

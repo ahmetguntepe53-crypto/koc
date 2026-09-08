@@ -1,39 +1,175 @@
 import { useEffect, useState } from "react";
-import { ChevronRight } from "lucide-react";
-import { C, bodyFont } from "../../theme.js";
-import { Card, Select, Pill, EmptyState, StatCard } from "../../components/common.jsx";
+import { ChevronRight, CalendarClock } from "lucide-react";
+import { C, displayFont, bodyFont } from "../../theme.js";
+import { Card, Button, Select, Pill, EmptyState, StatCard } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { ALL_SUBJECTS } from "../../subjects.js";
-import { formatDateRange } from "../../dates.js";
+import { ALL_SUBJECTS, trackForGrade } from "../../subjects.js";
+import { formatDateRange, daysUntil } from "../../dates.js";
 
-export default function StudentHomeScreen({ onOpen, refreshKey }) {
+const COMPLETED_PAGE_SIZE = 10;
+const COMPLETED_INITIAL_COUNT = 2;
+
+function AssignmentRow({ r, onOpen }) {
+  return (
+    <Card hover style={{ padding: 16, cursor: "pointer" }}>
+      <div onClick={() => onOpen(r.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{r.assignment.subject} — {r.assignment.topic}</span>
+            <Pill tone={r.completed ? "green" : "amber"}>{r.completed ? "Tamamlandı" : "Bekliyor"}</Pill>
+            {!r.completed && daysUntil(r.assignment.endDate) < 0 && <Pill tone="red">Gecikti</Pill>}
+            <Pill>{r.assignment.examType}</Pill>
+          </div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 4 }}>
+            {r.assignment.teacher.name} · {formatDateRange(r.assignment.scheduledDate, r.assignment.endDate)}
+            {r.assignment.sourceBook ? ` · ${r.assignment.sourceBook}` : ""}
+            {r.assignment.pageRange ? ` · ${r.assignment.pageRange}` : ""}
+          </div>
+        </div>
+        <ChevronRight size={18} color={C.muted} />
+      </div>
+    </Card>
+  );
+}
+
+function SectionTitle({ children }) {
+  return (
+    <div style={{ fontFamily: displayFont, fontSize: 13, fontWeight: 800, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>
+      {children}
+    </div>
+  );
+}
+
+function CountdownSegment({ value, label }) {
+  return (
+    <div style={{ minWidth: 56, textAlign: "center" }}>
+      <div style={{ fontFamily: displayFont, fontSize: 34, fontWeight: 800, color: C.text, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
+        {String(value).padStart(2, "0")}
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 6 }}>
+        {label}
+      </div>
+    </div>
+  );
+}
+
+function CountdownDivider() {
+  return <div style={{ width: 1, height: 34, background: C.border, flexShrink: 0 }} />;
+}
+
+// Başlığı (ikon + "X'YE KALAN") ortalanmış, kartın kalan içeriği duruma göre değişen ortak kabuk.
+function ExamCountdownShell({ track, children }) {
+  return (
+    <Card style={{ marginBottom: 22, padding: "22px 20px", textAlign: "center" }}>
+      <div style={{
+        display: "inline-flex", alignItems: "center", gap: 7, padding: "6px 14px 6px 10px", borderRadius: 999,
+        background: C.accentSoft, marginBottom: 18,
+      }}>
+        <CalendarClock size={14} color={C.accent} strokeWidth={2.4} />
+        <span style={{ fontFamily: displayFont, fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: 0.6 }}>
+          {track}'ye Kalan
+        </span>
+      </div>
+      {children}
+    </Card>
+  );
+}
+
+// Saniye hassasiyeti göstermiyoruz (gün/saat/dakika yeterli) — bu yüzden dakikada bir yenilense
+// yeterli, saniyede bir yeniden render etmenin bir faydası yok.
+function useNowTicking(intervalMs = 30000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), intervalMs);
+    return () => clearInterval(t);
+  }, [intervalMs]);
+  return now;
+}
+
+// Sınav tarihi admin panelinden yalnızca GÜN olarak girildiği için (bkz. AdminUsersScreen >
+// ExamDatesCard), depolanan değer o günün UTC gece yarısı — geri sayım bu ana kadar hesaplanır.
+function ExamCountdownCard({ track, examDate }) {
+  const now = useNowTicking();
+  if (!track) return null;
+
+  if (!examDate) {
+    return (
+      <ExamCountdownShell track={track}>
+        <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted }}>Sınav tarihi henüz girilmedi.</div>
+      </ExamCountdownShell>
+    );
+  }
+
+  const diffMs = new Date(examDate).getTime() - now;
+  if (diffMs <= 0) {
+    return (
+      <ExamCountdownShell track={track}>
+        <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text }}>Sınav tarihi geldi — bol şans! 🍀</div>
+      </ExamCountdownShell>
+    );
+  }
+
+  const totalMinutes = Math.floor(diffMs / 60000);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  return (
+    <ExamCountdownShell track={track}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18 }}>
+        <CountdownSegment value={days} label="Gün" />
+        <CountdownDivider />
+        <CountdownSegment value={hours} label="Saat" />
+        <CountdownDivider />
+        <CountdownSegment value={minutes} label="Dakika" />
+      </div>
+    </ExamCountdownShell>
+  );
+}
+
+export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
   const [recipients, setRecipients] = useState([]);
-  const [filter, setFilter] = useState("");
   const [subject, setSubject] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [stats, setStats] = useState(null);
+  const [examDates, setExamDates] = useState(null);
+  // Tamamlananlar ilk açılışta yalnızca 2 tanesi gösterilir — "Devamını Gör" her basışta 10 tane
+  // daha açar. Ders filtresi ya da liste değişince (yeni bir ödev tamamlanınca) baştan başlar.
+  const [visibleCompletedCount, setVisibleCompletedCount] = useState(COMPLETED_INITIAL_COUNT);
 
   useEffect(() => {
     setLoading(true);
-    api.listMyAssignments({ completed: filter || undefined, subject: subject || undefined }).then(({ recipients }) => setRecipients(recipients)).finally(() => setLoading(false));
-  }, [filter, subject, refreshKey]);
+    setLoadError("");
+    api.listMyAssignments({ subject: subject || undefined })
+      .then(({ recipients }) => setRecipients(recipients))
+      .catch((e) => setLoadError(e.message || "Ödevler yüklenemedi"))
+      .finally(() => setLoading(false));
+  }, [subject, refreshKey]);
 
   useEffect(() => { api.studentStats().then(setStats).catch(() => {}); }, [refreshKey]);
+  useEffect(() => { api.getExamDates().then(setExamDates).catch(() => {}); }, []);
+  useEffect(() => { setVisibleCompletedCount(COMPLETED_INITIAL_COUNT); }, [subject, refreshKey]);
+
+  const pending = recipients.filter((r) => !r.completed);
+  const completed = recipients.filter((r) => r.completed);
+  const visibleCompleted = completed.slice(0, visibleCompletedCount);
+  const hasMoreCompleted = completed.length > visibleCompletedCount;
+
+  // 7-8. sınıf LGS'ye, 9-12. sınıf YKS'ye hazırlanıyor (bkz. subjects.js > trackForGrade) — sayaç
+  // öğrencinin kendi sınavına göre otomatik seçilir, admin panelinden girilen tarihi okur.
+  const track = trackForGrade(user?.gradeLevel);
+  const examDate = track === "LGS" ? examDates?.lgsExamDate : track === "YKS" ? examDates?.yksExamDate : null;
 
   return (
     <div style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+      <ExamCountdownCard track={track} examDate={examDate} />
+
       <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
         <div style={{ minWidth: 170 }}>
           <Select value={subject} onChange={(e) => setSubject(e.target.value)}>
             <option value="">Tüm dersler</option>
             {ALL_SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
-          </Select>
-        </div>
-        <div style={{ minWidth: 170 }}>
-          <Select value={filter} onChange={(e) => setFilter(e.target.value)}>
-            <option value="">Tümü</option>
-            <option value="false">Bekleyenler</option>
-            <option value="true">Tamamlananlar</option>
           </Select>
         </div>
       </div>
@@ -43,36 +179,48 @@ export default function StudentHomeScreen({ onOpen, refreshKey }) {
           <StatCard label="Bekleyen" value={stats.pendingCount} tone="amber" />
           <StatCard label="Tamamlanan" value={stats.completedCount} tone="green" />
           <StatCard label="Serbest Çalışma" value={stats.studySessionCount} tone="accent" />
-          {stats.totals && <StatCard label="Toplam D/Y/B" value={`${stats.totals.correct}/${stats.totals.wrong}/${stats.totals.blank}`} tone="muted" />}
         </div>
       )}
 
       {loading ? (
         <EmptyState text="Yükleniyor..." />
+      ) : loadError ? (
+        <EmptyState text={loadError} />
       ) : recipients.length === 0 ? (
         <EmptyState text="Henüz sana gönderilmiş bir ödev yok." />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {recipients.map((r) => (
-            <Card key={r.id} hover style={{ padding: 16, cursor: "pointer" }}>
-              <div onClick={() => onOpen(r.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{r.assignment.subject} — {r.assignment.topic}</span>
-                    <Pill tone={r.completed ? "green" : "amber"}>{r.completed ? "Tamamlandı" : "Bekliyor"}</Pill>
-                    <Pill>{r.assignment.examType}</Pill>
-                  </div>
-                  <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 4 }}>
-                    {r.assignment.teacher.name} · {formatDateRange(r.assignment.scheduledDate, r.assignment.endDate)}
-                    {r.assignment.sourceBook ? ` · ${r.assignment.sourceBook}` : ""}
-                    {r.assignment.pageRange ? ` · ${r.assignment.pageRange}` : ""}
-                  </div>
-                </div>
-                <ChevronRight size={18} color={C.muted} />
+        <>
+          <div style={{ marginBottom: 28 }}>
+            <SectionTitle>Bekleyen Ödevler ({pending.length})</SectionTitle>
+            {pending.length === 0 ? (
+              <EmptyState text="Bekleyen ödevin yok, harika gidiyorsun." />
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {pending.map((r) => <AssignmentRow key={r.id} r={r} onOpen={onOpen} />)}
               </div>
-            </Card>
-          ))}
-        </div>
+            )}
+          </div>
+
+          <div>
+            <SectionTitle>Tamamlanan Ödevler ({completed.length})</SectionTitle>
+            {completed.length === 0 ? (
+              <EmptyState text="Henüz tamamladığın bir ödev yok." />
+            ) : (
+              <>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {visibleCompleted.map((r) => <AssignmentRow key={r.id} r={r} onOpen={onOpen} />)}
+                </div>
+                {hasMoreCompleted && (
+                  <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+                    <Button variant="secondary" small onClick={() => setVisibleCompletedCount((n) => n + COMPLETED_PAGE_SIZE)}>
+                      Devamını Gör ({completed.length - visibleCompleted.length} tane daha)
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </>
       )}
     </div>
   );

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "675957288242",
+    "project_id": "kocluk-dd01d",
+    "storage_bucket": "kocluk-dd01d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:675957288242:android:dba7650d4abdc860d43b2b",
+        "android_client_info": {
+          "package_name": "com.kocluk.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDcvCIC7JbrucMwS5tkdeHuL3-DYJtTCn4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

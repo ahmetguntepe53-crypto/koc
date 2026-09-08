@@ -76,6 +76,8 @@ export default function AdminUsersScreen() {
         </div>
       )}
 
+      <ExamDatesCard />
+
       <form onSubmit={runSearch} style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
         <div style={{ minWidth: 160 }}>
           <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
@@ -136,6 +138,62 @@ export default function AdminUsersScreen() {
         />
       )}
     </div>
+  );
+}
+
+// Öğrenci ana ekranındaki "sınava kaç gün kaldı" sayacının kaynağı — resmi ÖSYM/MEB takvimi
+// açıklanınca (ya da değişince) admin burada güncelleyebilsin diye koda gömülü değil.
+function ExamDatesCard() {
+  const [yksExamDate, setYksExamDate] = useState("");
+  const [lgsExamDate, setLgsExamDate] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  useEffect(() => {
+    api.adminGetSettings()
+      .then(({ yksExamDate, lgsExamDate }) => {
+        setYksExamDate(yksExamDate ? yksExamDate.slice(0, 10) : "");
+        setLgsExamDate(lgsExamDate ? lgsExamDate.slice(0, 10) : "");
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      await api.adminUpdateSettings({ yksExamDate: yksExamDate || null, lgsExamDate: lgsExamDate || null });
+      setMsg({ type: "ok", text: "Kaydedildi." });
+    } catch (e) {
+      setMsg({ type: "error", text: e.message || "Kaydedilemedi" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return null;
+
+  return (
+    <Card style={{ padding: 18, marginBottom: 16 }}>
+      <div style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 3 }}>Sınav Tarihleri</div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.muted, marginBottom: 14 }}>
+        Öğrenci ana ekranındaki "sınava kaç gün kaldı" sayacı için — resmi takvim açıklanınca buradan güncelleyin.
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
+        <div style={{ minWidth: 180 }}>
+          <Input label="YKS (TYT/AYT) Tarihi" type="date" value={yksExamDate} onChange={(e) => setYksExamDate(e.target.value)} />
+        </div>
+        <div style={{ minWidth: 180 }}>
+          <Input label="LGS Tarihi" type="date" value={lgsExamDate} onChange={(e) => setLgsExamDate(e.target.value)} />
+        </div>
+        <div style={{ marginBottom: 16 }}>
+          <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
+        </div>
+      </div>
+      {msg && <div style={{ fontSize: 12.5, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</div>}
+    </Card>
   );
 }
 
@@ -307,6 +365,7 @@ function BulkImportModal({ teachers, onClose, onDone }) {
   const [text, setText] = useState("");
   const [results, setResults] = useState(null);
   const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
   const [teachersByEmail, setTeachersByEmail] = useState(null);
 
   useEffect(() => {
@@ -327,10 +386,13 @@ function BulkImportModal({ teachers, onClose, onDone }) {
 
   const runImport = async () => {
     setImporting(true);
+    setImportError("");
     try {
       const payloadRows = resolvedRows.map(({ teacherMatch, teacherEmail, gradeTrack, ...rest }) => rest);
       const res = await api.adminBulkImport(role, payloadRows);
       setResults(res.results);
+    } catch (e) {
+      setImportError(e.message || "İçe aktarma başarısız — hiçbir satır eklenmedi");
     } finally {
       setImporting(false);
     }
@@ -371,6 +433,7 @@ function BulkImportModal({ teachers, onClose, onDone }) {
               ))}
             </div>
           )}
+          {importError && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginBottom: 10 }}>{importError}</div>}
           <Button full disabled={rows.length === 0 || importing} onClick={runImport}>
             {importing ? "İçe aktarılıyor..." : `${rows.length} kayıt içe aktar`}
           </Button>

@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gizlilik Politikası — Kocluk</title>
+<style>
+  body { font-family: -apple-system, 'Segoe UI', Arial, sans-serif; max-width: 720px; margin: 0 auto; padding: 32px 20px 80px; color: #1F2430; line-height: 1.65; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .updated { color: #6B7280; font-size: 13px; margin-bottom: 32px; }
+  h2 { font-size: 17px; margin-top: 32px; }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 6px; }
+  a { color: #4338CA; }
+</style>
+</head>
+<body>
+  <h1>Kocluk — Gizlilik Politikası</h1>
+  <div class="updated">Son güncelleme: 15 Ağustos 2026</div>
+
+  <p>Kocluk, Mehmet Akif İnan Hafız Anadolu İmam Hatip Lisesi tarafından öğrenci-koç (öğretmen) arasındaki ödev takibi ve sınav hazırlık sürecini yönetmek için kullanılan bir eğitim uygulamasıdır. Bu sayfa, uygulamanın hangi verileri topladığını ve nasıl kullandığını açıklar.</p>
+
+  <h2>Hesap Oluşturma</h2>
+  <p>Kocluk'ta hesaplar yalnızca okul yönetimi (admin) tarafından oluşturulur; açık/kendi kendine kayıt yoktur. Bu nedenle uygulamayı kullanan tüm kişiler (öğretmen ve öğrenciler) okulun bilgisi ve onayı dahilindedir.</p>
+
+  <h2>Topladığımız Veriler</h2>
+  <ul>
+    <li><strong>Hesap bilgileri:</strong> ad soyad, e-posta adresi, rol (öğretmen/öğrenci), sınıf düzeyi, sınıf şubesi.</li>
+    <li><strong>Akademik veriler:</strong> atanan ödevler, ders/konu bilgileri, doğru/yanlış/boş sonuçları, serbest çalışma kayıtları.</li>
+    <li><strong>Bildirim jetonu (push token):</strong> mobil uygulama bildirimleri gönderebilmek için cihaza özgü bir Firebase Cloud Messaging jetonu saklanır.</li>
+    <li><strong>Oturum bilgisi:</strong> giriş yapabilmek için şifre (geri döndürülemez şekilde şifrelenmiş — hash) ve oturum jetonu (token).</li>
+  </ul>
+
+  <h2>Verileri Nasıl Kullanıyoruz</h2>
+  <ul>
+    <li>Öğretmenlerin öğrencilerine ödev atayabilmesi ve sonuçları takip edebilmesi için.</li>
+    <li>Öğrencilerin kendi akademik performans raporlarını görebilmesi için.</li>
+    <li>Ödev/hesap bildirimleri göndermek için (uygulama içi ve push bildirimi).</li>
+    <li>Hesap kurulumu ve şifre sıfırlama e-postaları göndermek için.</li>
+  </ul>
+
+  <h2>Veri Paylaşımı</h2>
+  <p>Verileriniz üçüncü taraflarla satılmaz veya pazarlama amacıyla paylaşılmaz. Uygulamanın çalışması için kullanılan alt yükleniciler:</p>
+  <ul>
+    <li><strong>Resend</strong> — hesap kurulumu/şifre sıfırlama e-postalarının gönderimi için.</li>
+    <li><strong>Firebase Cloud Messaging (Google)</strong> — mobil push bildirimlerinin iletilmesi için.</li>
+  </ul>
+
+  <h2>Veri Saklama ve Silme</h2>
+  <p>Veriler, okulun sunucusunda (Almanya, AB) barındırılan bir veritabanında saklanır. Kullanıcılar kendi hesaplarını, tüm ilişkili verileriyle birlikte kalıcı olarak silme hakkına sahiptir — uygulama içinde Profil ekranındaki "Hesabımı Sil" seçeneğinden, ya da uygulamayı açmadan doğrudan <a href="/delete-account.html">bu sayfadan</a> (ikisi de şifre doğrulaması gerektirir). Bir hesap silindiğinde, o hesaba ait tüm ödev/sonuç/serbest çalışma kayıtları veritabanından kalıcı olarak kaldırılır.</p>
+
+  <h2>Çocukların Gizliliği</h2>
+  <p>Kocluk, ortaokul ve lise öğrencileri (yaklaşık 12-18 yaş) tarafından kullanılmaktadır. Hesaplar yalnızca okul yönetimi tarafından oluşturulur ve veriler yalnızca eğitim amacıyla, okulun gözetiminde kullanılır.</p>
+
+  <h2>İletişim</h2>
+  <p>Gizlilikle ilgili sorularınız için: <a href="mailto:ahmetguntepe53@gmail.com">ahmetguntepe53@gmail.com</a></p>
+</body>
+</html>

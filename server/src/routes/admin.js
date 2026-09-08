@@ -1,5 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
+import path from "node:path";
+import { unlink } from "node:fs/promises";
 import bcrypt from "bcryptjs";
 import { prisma } from "../db.js";
 import { safeUser } from "../serialize.js";
@@ -7,6 +9,7 @@ import { sendAccountSetupEmail } from "../mailer.js";
 import { handleErr } from "../handleErr.js";
 import { isValidEmail, assert } from "../validators.js";
 import { GRADE_LEVELS } from "../subjects.js";
+import { recipientPhotosDir } from "../uploads.js";
 
 // Bu router server/src/app.js'de zaten requireAuth + requireRole("ADMIN") ile mount edilir —
 // buradaki her uç nokta yalnızca kimlik doğrulanmış bir ADMIN tarafından çağrılabilir.
@@ -253,16 +256,98 @@ adminRouter.post("/users/:id/unban", async (req, res) => {
 // "ban" ile hesabı devre dışı bırakmalı.
 adminRouter.delete("/users/:id", async (req, res) => {
   try {
-    const [assignmentsCreated, assignmentRecipients, studySessions] = await Promise.all([
+    const [assignmentsCreated, assignmentRecipients, studySessions, coachedStudents] = await Promise.all([
       prisma.assignment.count({ where: { teacherId: req.params.id } }),
       prisma.assignmentRecipient.count({ where: { studentId: req.params.id } }),
       prisma.studySession.count({ where: { studentId: req.params.id } }),
+      // Hedef bir ÖĞRETMEN'se ve hâlâ kendisine atanmış öğrencileri varsa: henüz hiç ödev
+      // oluşturmamış olsa bile (assignmentsCreated=0) silme, öğrencileri koçsuz (teacherId=null,
+      // bkz. schema.prisma onDelete: SetNull) bırakmasın — önce öğrenciler başka bir koça atanmalı.
+      prisma.user.count({ where: { teacherId: req.params.id } }),
     ]);
-    if (assignmentsCreated + assignmentRecipients + studySessions > 0) {
-      return res.status(409).json({ error: "Bu kullanıcının geçmiş ödev/çalışma kayıtları var — silmek yerine hesabı askıya al." });
+    if (assignmentsCreated + assignmentRecipients + studySessions + coachedStudents > 0) {
+      return res.status(409).json({ error: "Bu kullanıcının geçmiş ödev/çalışma kayıtları ya da kendisine atanmış öğrencileri var — silmek yerine hesabı askıya al." });
     }
     await prisma.user.delete({ where: { id: req.params.id } });
     res.json({ ok: true });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Admin, okuldaki TÜM öğrencilerin kanıt fotoğraflarını tek ekrandan görüp temizleyebilir — koç/
+// öğrenci ekranlarındaki (bkz. assignmentRecipients.js) kapsamı ödev/öğrenci başınayken burası
+// sistem geneli bir moderasyon görünümü. q ile öğrenci adında arama yapılabilir.
+adminRouter.get("/photos", async (req, res) => {
+  try {
+    const { q } = req.query || {};
+    const where = q ? { recipient: { student: { name: { contains: String(q), mode: "insensitive" } } } } : {};
+    const photos = await prisma.recipientPhoto.findMany({
+      where,
+      include: {
+        recipient: {
+          include: {
+            student: { select: { id: true, name: true, className: true } },
+            assignment: { select: { id: true, subject: true, topic: true, examType: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+    });
+    res.json({ photos });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+adminRouter.delete("/photos/:photoId", async (req, res) => {
+  try {
+    const photo = await prisma.recipientPhoto.findUnique({ where: { id: req.params.photoId } });
+    assert(photo, "Bulunamadı", 404);
+    await prisma.recipientPhoto.delete({ where: { id: photo.id } });
+    await unlink(path.join(recipientPhotosDir(photo.recipientId), photo.filename)).catch(() => {});
+    res.json({ ok: true });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Okul çapında tek satır (bkz. schema.prisma > SchoolSettings) — yazma yalnızca admin'e açık.
+// Öğrenci/öğretmen ekranlarındaki salt-okunur karşılığı: GET /api/settings (routes/settings.js).
+adminRouter.get("/settings", async (req, res) => {
+  try {
+    const settings = await prisma.schoolSettings.findUnique({ where: { id: "singleton" } });
+    res.json({ yksExamDate: settings?.yksExamDate ?? null, lgsExamDate: settings?.lgsExamDate ?? null });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+adminRouter.put("/settings", async (req, res) => {
+  try {
+    const { yksExamDate, lgsExamDate } = req.body || {};
+    const data = {};
+    if (yksExamDate !== undefined) {
+      if (yksExamDate === null || yksExamDate === "") data.yksExamDate = null;
+      else {
+        assert(!Number.isNaN(new Date(yksExamDate).getTime()), "Geçerli bir YKS tarihi gir");
+        data.yksExamDate = new Date(yksExamDate);
+      }
+    }
+    if (lgsExamDate !== undefined) {
+      if (lgsExamDate === null || lgsExamDate === "") data.lgsExamDate = null;
+      else {
+        assert(!Number.isNaN(new Date(lgsExamDate).getTime()), "Geçerli bir LGS tarihi gir");
+        data.lgsExamDate = new Date(lgsExamDate);
+      }
+    }
+    const settings = await prisma.schoolSettings.upsert({
+      where: { id: "singleton" },
+      create: { id: "singleton", ...data },
+      update: data,
+    });
+    res.json({ yksExamDate: settings.yksExamDate, lgsExamDate: settings.lgsExamDate });
   } catch (e) {
     handleErr(res, e);
   }

@@ -66,11 +66,23 @@
           padding-left: 6px !important; padding-right: 6px !important;
         }
       }
-      @media (max-width: 900px) {
+      /* Eşik 900'den 680'e indirildi: iPad (portrede en dar ~744px, iPad mini dahil) artık
+         masaüstüyle aynı split-panel tanıtım düzenini görüyor — yalnızca telefon genişliğinde
+         (iPhone dikey kilit, ~430px'e kadar) kompakt tek sütuna düşülüyor. */
+      @media (max-width: 680px) {
         .k-login-brand { display: none !important; }
         /* Marka paneli gizlenince giriş ekranında hiç logo kalmıyordu — dar ekranda formun
            üstünde kompakt bir amblem gösterilir. */
         .k-login-mobile-brand { display: flex !important; }
+      }
+
+      /* Telefon genişliğinde (asıl kullanım — Android/iOS uygulaması bu genişlikte açılıyor) kenar
+         çubuğu tamamen kaldırılıp yerine alt yatay menü konur; simge-yalnız dikey çubuk telefonda
+         hem yer kaplıyor hem de dokunması dikey menülerden daha zahmetli. */
+      @media (max-width: 640px) {
+        .k-sidebar { display: none !important; }
+        .k-bottom-nav { display: flex !important; position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; }
+        .k-content-col { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px) !important; }
       }
 
       /* ==========================================================================

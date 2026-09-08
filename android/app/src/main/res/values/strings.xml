@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Kocluk</string>
+    <string name="title_activity_main">Kocluk</string>
+    <string name="package_name">com.kocluk.app</string>
+    <string name="custom_url_scheme">com.kocluk.app</string>
+</resources>

@@ -66,6 +66,30 @@ export async function initNative() {
   });
 }
 
+// Android donanım geri tuşu: web'de karşılığı yok, iOS'ta sistem zaten kendi jestiyle hallediyor.
+// handler her basışta çağrılır — ekran içi geri gitme mantığı App.jsx'te, burada yalnızca olay
+// köprüleniyor. Dönen fonksiyon dinleyiciyi kaldırır (effect cleanup için).
+export function onBackButton(handler) {
+  if (!isNative) return () => {};
+  const subPromise = CapApp.addListener("backButton", () => handler());
+  return () => { subPromise.then((sub) => sub.remove()).catch(() => {}); };
+}
+
+// Geri tuşu, ekran yığınının en köküne (bir sekme sayfasında) basıldığında uygulamadan çıkmak için.
+export function exitApp() {
+  if (isNative) CapApp.exitApp();
+}
+
+// Üretilmiş bir PDF'i cihaza kaydedip paylaşım sayfasını açar — WebView'da jsPDF'in doc.save()
+// kullandığı blob+<a download> tekniği sessizce hiçbir şey yapmaz (tarayıcı indirme yöneticisi yok).
+// Filesystem/Share yalnızca burada, ihtiyaç anında dinamik import edilir (bkz. reportPdf.js).
+export async function savePdfAndShare(base64, fileName) {
+  const { Filesystem, Directory } = await import("@capacitor/filesystem");
+  const { Share } = await import("@capacitor/share");
+  const written = await Filesystem.writeFile({ path: fileName, data: base64, directory: Directory.Cache });
+  await Share.share({ title: fileName, url: written.uri });
+}
+
 // Splash, capacitor.config.json'da launchAutoHide:false ile açık bırakılır — React ilk kareyi
 // çizdikten SONRA burada kapatılır, aksi halde aradaki boş webview beyaz bir kare olarak görünür.
 export function hideSplash() {
