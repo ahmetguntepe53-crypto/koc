@@ -97,7 +97,11 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
               </div>
             ) : (
               <form onSubmit={submit}>
-                <Input label="E-posta" type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
+                {/* Giriş modunda type="text": admin girişi artık gerçek bir e-posta değil (bkz. "admin"
+                    kullanıcı adı) — tarayıcının yerleşik e-posta biçimi doğrulaması ("@" gerekli)
+                    bu girişi engellerdi. Şifremi unuttum modu gerçek bir e-postaya sıfırlama
+                    bağlantısı gönderdiği için orada biçim doğrulaması anlamlı, o yüzden korunuyor. */}
+                <Input label="E-posta" type={forgotMode ? "email" : "text"} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
                 {!forgotMode && (
                   <Input label="Şifre" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
                 )}

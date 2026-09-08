@@ -345,13 +345,24 @@ export function PageHeader({ title, subtitle, right }) {
 }
 
 // Küçük özet sayı kartı (ör. "Bekleyen Ödevler: 3") — ilgili listenin üstünde bağlamıyla gösterilir.
-export function StatCard({ label, value, tone = "muted" }) {
+// onClick verilirse bir <button> olarak render edilir (ör. StudentOverviewScreen'de altındaki
+// listeyi filtrelemek için) — verilmezse eskisi gibi salt bilgi amaçlı bir <div>.
+export function StatCard({ label, value, tone = "muted", onClick, active }) {
   const tones = { muted: C.text, accent: C.accent, green: C.green, amber: C.amber, red: C.red };
+  const Comp = onClick ? "button" : "div";
   return (
-    <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusMd, padding: "14px 16px", minWidth: 120, flex: 1, boxShadow: C.shadowSm }}>
+    <Comp
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      style={{
+        background: active ? C.accentSoft : C.surface, border: `1.5px solid ${active ? C.accent : C.border}`,
+        borderRadius: C.radiusMd, padding: "14px 16px", minWidth: 120, flex: 1, boxShadow: C.shadowSm,
+        textAlign: "left", cursor: onClick ? "pointer" : "default", fontFamily: "inherit",
+      }}
+    >
       <div style={{ fontFamily: displayFont, fontSize: 24, fontWeight: 800, color: tones[tone] }}>{value}</div>
       <div style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 700, color: C.mutedLight, marginTop: 3, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div>
-    </div>
+    </Comp>
   );
 }
 
