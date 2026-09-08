@@ -230,6 +230,21 @@ adminRouter.post("/users/:id/set-password", async (req, res) => {
   }
 });
 
+// Bir öğretmeni "ders öğretmeni" (branş öğretmeni) olarak işaretler/kaldırır — bu bayrağa sahip
+// öğretmenler Takvim'den okuldaki TÜM ilgili sınav türü öğrencilerine (kendi koçluk ettikleriyle
+// sınırlı olmadan) ortak ödev gönderebilir (bkz. routes/planEntries.js > publishPlanEntry).
+adminRouter.post("/users/:id/subject-teacher", async (req, res) => {
+  try {
+    const { isSubjectTeacher } = req.body || {};
+    const user = await prisma.user.findUnique({ where: { id: req.params.id } });
+    assert(user && user.role === "TEACHER", "Bu işlem yalnızca öğretmenler için geçerli");
+    const updated = await prisma.user.update({ where: { id: user.id }, data: { isSubjectTeacher: !!isSubjectTeacher } });
+    res.json({ user: safeUser(updated) });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
 adminRouter.post("/users/:id/ban", async (req, res) => {
   try {
     const user = await prisma.user.update({

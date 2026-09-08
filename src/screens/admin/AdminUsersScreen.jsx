@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { UserPlus, Upload, RotateCcw, KeyRound, Ban, ShieldCheck, Trash2 } from "lucide-react";
+import { UserPlus, Upload, RotateCcw, KeyRound, Ban, ShieldCheck, Trash2, GraduationCap } from "lucide-react";
 import { C, bodyFont } from "../../theme.js";
 import { Card, Button, Input, Select, Pill, Modal, EmptyState, roleLabel } from "../../components/common.jsx";
 import { api } from "../../api.js";
@@ -55,6 +55,7 @@ export default function AdminUsersScreen() {
   const changeGradeLevel = withAction((studentId, gradeLevel) => api.adminUpdateUser(studentId, { gradeLevel }));
   const resendActivation = withAction(async (id) => { await api.adminResendActivation(id); setToast({ type: "ok", text: "Aktivasyon bağlantısı tekrar gönderildi." }); });
   const toggleBan = withAction(async (u) => { u.banned ? await api.adminUnbanUser(u.id) : await api.adminBanUser(u.id); });
+  const toggleSubjectTeacher = withAction(async (u) => { await api.adminSetSubjectTeacher(u.id, !u.isSubjectTeacher); });
   const remove = withAction(async (u) => {
     if (!window.confirm(`${u.name} silinsin mi? Bu işlem geri alınamaz.`)) return;
     await api.adminDeleteUser(u.id);
@@ -108,6 +109,7 @@ export default function AdminUsersScreen() {
               onChangeGradeLevel={(gradeLevel) => changeGradeLevel(u.id, gradeLevel)}
               onResendActivation={() => resendActivation(u.id)}
               onToggleBan={() => toggleBan(u)}
+              onToggleSubjectTeacher={() => toggleSubjectTeacher(u)}
               onSetPassword={() => setSetPasswordFor(u)}
               onDelete={() => remove(u)}
             />
@@ -197,7 +199,7 @@ function ExamDatesCard() {
   );
 }
 
-function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onResendActivation, onToggleBan, onSetPassword, onDelete }) {
+function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onResendActivation, onToggleBan, onToggleSubjectTeacher, onSetPassword, onDelete }) {
   return (
     <Card hover style={{ padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
@@ -207,6 +209,7 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onRese
             <Pill tone={user.role === "STUDENT" ? "accent" : "muted"}>{roleLabel(user.role)}</Pill>
             {user.banned && <Pill tone="red">Askıda</Pill>}
             {!user.hasPassword && <Pill tone="amber">Aktivasyon bekleniyor</Pill>}
+            {user.role === "TEACHER" && user.isSubjectTeacher && <Pill tone="accent">Ders Öğretmeni — Okul Çapında Ödev Yetkisi</Pill>}
           </div>
           <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 3 }}>{user.email}</div>
           {user.role === "STUDENT" && (
@@ -230,6 +233,14 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onRese
           {!user.hasPassword && (
             <IconButton title="Aktivasyon bağlantısını tekrar gönder" icon={RotateCcw} onClick={onResendActivation} />
           )}
+          {user.role === "TEACHER" && (
+            <IconButton
+              title={user.isSubjectTeacher ? "Ders öğretmeni yetkisini kaldır" : "Ders öğretmeni yap (okul çapında ortak ödev gönderebilsin)"}
+              icon={GraduationCap}
+              onClick={onToggleSubjectTeacher}
+              active={user.isSubjectTeacher}
+            />
+          )}
           <IconButton title="Şifreyi doğrudan belirle" icon={KeyRound} onClick={onSetPassword} />
           <IconButton title={user.banned ? "Askıyı kaldır" : "Askıya al"} icon={user.banned ? ShieldCheck : Ban} onClick={onToggleBan} />
           <IconButton title="Sil" icon={Trash2} onClick={onDelete} danger />
@@ -239,15 +250,15 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onRese
   );
 }
 
-function IconButton({ icon: Icon, onClick, title, danger }) {
+function IconButton({ icon: Icon, onClick, title, danger, active }) {
   return (
     <button
       title={title}
       onClick={onClick}
       className="k-icon-btn"
       style={{
-        width: 34, height: 34, borderRadius: C.radiusSm, border: `1px solid ${C.border}`,
-        background: C.surface2, color: danger ? C.red : C.muted, cursor: "pointer",
+        width: 34, height: 34, borderRadius: C.radiusSm, border: `1px solid ${active ? C.accent : C.border}`,
+        background: active ? C.accentSoft : C.surface2, color: danger ? C.red : active ? C.accent : C.muted, cursor: "pointer",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
     >

@@ -323,7 +323,7 @@ function renderScreen({
     if (screen === "assignmentCreate") return <AssignmentCreateScreen onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} />;
     if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} />;
-    if (screen === "plan") return <PlanScreen />;
+    if (screen === "plan") return <PlanScreen user={authUser} />;
   }
   if (authUser.role === "STUDENT") {
     if (screen === "myAssignments") return <StudentHomeScreen user={authUser} onOpen={openRecipient} refreshKey={myAssignmentsRefreshKey} />;

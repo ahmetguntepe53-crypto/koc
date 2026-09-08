@@ -47,8 +47,9 @@ function buildMonthGrid(viewDate) {
   });
 }
 
-export default function PlanScreen() {
+export default function PlanScreen({ user }) {
   const isMobile = useIsMobile();
+  const isSubjectTeacher = !!user?.isSubjectTeacher;
   const [students, setStudents] = useState([]);
   const [examType, setExamType] = useState("TYT");
   const [entries, setEntries] = useState([]);
@@ -222,6 +223,7 @@ export default function PlanScreen() {
           examType={examType}
           dateKey={modalState.date}
           existing={modalState.entry}
+          isSubjectTeacher={isSubjectTeacher}
           onClose={() => setModalState(null)}
           onSaved={afterSave}
         />
@@ -265,6 +267,7 @@ function DayAgendaModal({ dateKey, entries, onClose, onOpenEntry, onAddNew }) {
               <span style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {entry.subject ? `${entry.subject} — ${entry.topic}` : entry.topic || KIND_LABELS[entry.kind]}
               </span>
+              {entry.schoolWide && <Pill tone="accent">Okul Çapında</Pill>}
               {entry.assignmentId && <Pill tone="green">Gönderildi</Pill>}
             </button>
           ))}
@@ -284,7 +287,7 @@ function Legend({ color, label }) {
   );
 }
 
-function PlanEntryModal({ examType, dateKey, existing, onClose, onSaved }) {
+function PlanEntryModal({ examType, dateKey, existing, isSubjectTeacher, onClose, onSaved }) {
   const published = !!existing?.assignmentId;
   const [kind, setKind] = useState(existing?.kind || "TOPIC");
   const [subject, setSubject] = useState(existing?.subject || SUBJECTS_BY_EXAM[examType][0]);
@@ -295,6 +298,7 @@ function PlanEntryModal({ examType, dateKey, existing, onClose, onSaved }) {
   const [note, setNote] = useState(existing?.note || "");
   const [date, setDate] = useState(existing?.date ? existing.date.slice(0, 10) : dateKey);
   const [autoSend, setAutoSend] = useState(existing?.autoSend || "OFF");
+  const [schoolWide, setSchoolWide] = useState(existing?.schoolWide || false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -303,7 +307,7 @@ function PlanEntryModal({ examType, dateKey, existing, onClose, onSaved }) {
     examType, date, kind, subject: kind === "TOPIC" ? subject : undefined, topic: topic.trim(),
     sourceBook: sourceBook.trim() || undefined, pageRange: pageRange.trim() || undefined,
     questionCount: questionCount ? Number(questionCount) : undefined,
-    note: note.trim() || undefined, autoSend,
+    note: note.trim() || undefined, autoSend, schoolWide: isSubjectTeacher ? schoolWide : false,
   });
 
   const submit = async (e) => {
@@ -323,7 +327,15 @@ function PlanEntryModal({ examType, dateKey, existing, onClose, onSaved }) {
   };
 
   const publishNow = async () => {
-    if (!window.confirm("Bu kayıt tüm öğrencilere şimdi gönderilsin mi? Bu işlem geri alınamaz.")) return;
+    let confirmText = "Bu kayıt tüm öğrencilerinize şimdi gönderilsin mi? Bu işlem geri alınamaz.";
+    if (existing.schoolWide) {
+      confirmText = "Bu kayıt OKULDAKİ TÜM ilgili öğrencilere gönderilecek. Bu işlem geri alınamaz.";
+      try {
+        const { count } = await api.planSchoolWideCount(existing.examType);
+        confirmText = `Bu kayıt okuldaki TÜM ${count} ${existing.examType} öğrencisine gönderilecek (yalnızca sizin öğrencileriniz değil). Bu işlem geri alınamaz. Devam edilsin mi?`;
+      } catch { /* sayım alınamazsa genel uyarı ile devam */ }
+    }
+    if (!window.confirm(confirmText)) return;
     setBusy(true);
     setError("");
     try {
@@ -356,6 +368,7 @@ function PlanEntryModal({ examType, dateKey, existing, onClose, onSaved }) {
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
           <Pill tone="green">Gönderildi</Pill>
           <Pill tone={KIND_TONES[existing.kind]}>{KIND_LABELS[existing.kind]}</Pill>
+          {existing.schoolWide && <Pill tone="accent">Okul Çapında</Pill>}
         </div>
         <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, color: C.text, marginBottom: 4 }}>
           {existing.subject ? `${existing.subject} — ` : ""}{existing.topic}
@@ -408,6 +421,15 @@ function PlanEntryModal({ examType, dateKey, existing, onClose, onSaved }) {
           <div style={{ fontSize: 11.5, color: C.muted, marginTop: -10, marginBottom: 16 }}>
             <Clock size={11} style={{ verticalAlign: -1, marginRight: 3 }} />{AUTO_SEND_LABELS[autoSend]} — istersen aşağıdan yine elle "Yayınla" diyebilirsin.
           </div>
+        )}
+
+        {isSubjectTeacher && (
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, padding: 10, borderRadius: C.radiusSm, background: schoolWide ? C.accentSoft : C.surface2, border: `1px solid ${schoolWide ? C.accent : C.border}`, cursor: "pointer" }}>
+            <input type="checkbox" checked={schoolWide} onChange={(e) => setSchoolWide(e.target.checked)} style={{ marginTop: 2 }} />
+            <span style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.text }}>
+              <strong>Okul çapında ortak ödev</strong> — yayınlandığında yalnızca sizin öğrencilerinize değil, okuldaki bu sınav türüne ({examType}) hazırlanan TÜM öğrencilere gönderilir.
+            </span>
+          </label>
         )}
 
         {error && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{error}</div>}

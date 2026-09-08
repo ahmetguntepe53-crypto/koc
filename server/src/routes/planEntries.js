@@ -29,7 +29,7 @@ function parseDateOnly(value) {
 }
 
 function validateBody(body, { requireDate }) {
-  const { examType, date, kind, subject, topic, sourceBook, pageRange, questionCount, note, autoSend } = body || {};
+  const { examType, date, kind, subject, topic, sourceBook, pageRange, questionCount, note, autoSend, schoolWide } = body || {};
   assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü");
   assert(KINDS.includes(kind), "Geçersiz tür");
   assert(topic && String(topic).trim(), "Konu/başlık gerekli");
@@ -58,7 +58,16 @@ function validateBody(body, { requireDate }) {
     questionCount: cleanQuestionCount,
     note: note ? String(note).trim() : null,
     autoSend: cleanAutoSend,
+    schoolWide: !!schoolWide,
   };
+}
+
+// schoolWide=true yalnızca admin tarafından "ders öğretmeni" işaretlenmiş hesaplara açık — bu
+// kontrol client'ta gizlense bile burada tekrar doğrulanır (bkz. schema.prisma > isSubjectTeacher).
+async function assertCanUseSchoolWide(req, data) {
+  if (!data.schoolWide) return;
+  const me = await prisma.user.findUnique({ where: { id: req.userId }, select: { isSubjectTeacher: true } });
+  assert(me?.isSubjectTeacher, "Okul çapında ortak ödev gönderme yetkin yok", 403);
 }
 
 planEntriesRouter.get("/", async (req, res) => {
@@ -87,6 +96,7 @@ async function loadOwnedUnpublishedEntry(req) {
 planEntriesRouter.post("/", async (req, res) => {
   try {
     const data = validateBody(req.body, { requireDate: true });
+    await assertCanUseSchoolWide(req, data);
     const entry = await prisma.planEntry.create({ data: { teacherId: req.userId, ...data } });
     res.status(201).json({ entry });
   } catch (e) {
@@ -98,10 +108,28 @@ planEntriesRouter.put("/:id", async (req, res) => {
   try {
     const existing = await loadOwnedUnpublishedEntry(req);
     const data = validateBody(req.body, { requireDate: true });
+    await assertCanUseSchoolWide(req, data);
     const updated = await prisma.planEntry.updateMany({ where: { id: existing.id, assignmentId: null }, data });
     assert(updated.count === 1, ALREADY_PUBLISHED_MESSAGE, 409);
     const entry = await prisma.planEntry.findUnique({ where: { id: existing.id } });
     res.json({ entry });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// "Okul çapında" hedefi seçildiğinde onay diyaloğunda gerçek alıcı sayısını göstermek için —
+// yalnızca isSubjectTeacher=true hesaplar çağırabilir (bkz. assertCanUseSchoolWide).
+planEntriesRouter.get("/school-wide-count", async (req, res) => {
+  try {
+    const { examType } = req.query || {};
+    assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü");
+    const me = await prisma.user.findUnique({ where: { id: req.userId }, select: { isSubjectTeacher: true } });
+    assert(me?.isSubjectTeacher, "Bu işlem için yetkin yok", 403);
+    const targetTrack = trackForExamType(examType);
+    const candidates = await prisma.user.findMany({ where: { role: "STUDENT", banned: false }, select: { gradeLevel: true } });
+    const count = candidates.filter((s) => trackForGrade(s.gradeLevel) === targetTrack).length;
+    res.json({ count });
   } catch (e) {
     handleErr(res, e);
   }
@@ -130,13 +158,17 @@ export async function publishPlanEntry(entry) {
   // POST /'ta bu durum sorun değil çünkü koç zaten yalnızca arayüzde tikletilebilen (aynı track'teki)
   // öğrencileri seçebiliyor, ama publish burada TÜM track'e otomatik gönderim yaptığı için gradeLevel'ı
   // eksik bir öğrenciyi (yanlışlıkla) hem LGS hem YKS yayınına dahil etmemek için eşleşme TAM olmalı.
+  // schoolWide=true ise (yalnızca isSubjectTeacher hesaplardan gelebilir, bkz. assertCanUseSchoolWide)
+  // teacherId filtresi TAMAMEN kaldırılır — okuldaki TÜM track'teki öğrenciler hedeflenir.
   const targetTrack = trackForExamType(entry.examType);
   const candidates = await prisma.user.findMany({
-    where: { role: "STUDENT", teacherId: entry.teacherId, banned: false },
+    where: entry.schoolWide
+      ? { role: "STUDENT", banned: false }
+      : { role: "STUDENT", teacherId: entry.teacherId, banned: false },
     select: { id: true, gradeLevel: true },
   });
   const matching = candidates.filter((s) => trackForGrade(s.gradeLevel) === targetTrack);
-  assert(matching.length > 0, "Bu sınav türünde henüz öğrencin yok (sınıf düzeyi girilmiş olmalı)");
+  assert(matching.length > 0, entry.schoolWide ? "Bu sınav türünde okulda henüz öğrenci yok" : "Bu sınav türünde henüz öğrencin yok (sınıf düzeyi girilmiş olmalı)");
 
   // Assignment oluşturma + PlanEntry'yi "yayınlandı" olarak işaretleme TEK bir transaction içinde —
   // (çift tetikleyici -> çift ödev/bildirim riski — bkz. yayınla uç noktasının/scheduler'ın kullanımı)
@@ -153,8 +185,9 @@ export async function publishPlanEntry(entry) {
         scheduledDate: entry.date,
         endDate: entry.date,
         sendMode: "MANUAL_NOW",
-        // Takvim kaydı her zaman TÜM track'i hedefler, öğrenci bazlı kısmi seçim yok.
-        targetMode: "WHOLE_GROUP",
+        // Takvim kaydı her zaman TÜM track'i hedefler, öğrenci bazlı kısmi seçim yok — schoolWide
+        // ise bu, kendi öğrencilerinin ötesinde okuldaki TÜM track'i kapsar (bkz. targetTrack yukarıda).
+        targetMode: entry.schoolWide ? "SCHOOL_WIDE" : "WHOLE_GROUP",
         status: "SENT",
         sentAt: new Date(),
         recipients: { create: matching.map((s) => ({ studentId: s.id })) },

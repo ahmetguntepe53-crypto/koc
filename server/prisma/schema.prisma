@@ -52,6 +52,7 @@ enum AssignmentTarget {
   WHOLE_GROUP
   SINGLE_STUDENT
   SELECTED_STUDENTS // koç, roster'daki (aynı sınav türündeki) öğrencilerden tik ile bir alt küme seçti
+  SCHOOL_WIDE // bkz. User.isSubjectTeacher — kendi koçluk ettiği öğrencilerle sınırlı değil, okuldaki TÜM ilgili track'e gönderildi
 }
 
 model User {
@@ -91,6 +92,15 @@ model User {
   teacher   User?   @relation("CoachAssignment", fields: [teacherId], references: [id], onDelete: SetNull)
   // --- Yalnızca role=TEACHER için anlamlı ters ilişki ---
   students User[] @relation("CoachAssignment")
+  // --- Yalnızca role=TEACHER için anlamlı ---
+  // Admin tarafından işaretlenir — okulun bir dersini (ör. Matematik, Türkçe) okuyan branş
+  // öğretmeni olduğunu belirtir. Bu bayrak true olan öğretmenler PlanEntry/Assignment
+  // oluştururken hedefi yalnızca kendi koçluk ettiği öğrencilerle SINIRLI TUTMAYIP, okuldaki
+  // ilgili sınav türüne (LGS/YKS) hazırlanan TÜM öğrencilere ortak bir ödev gönderebilir (bkz.
+  // routes/planEntries.js > publishPlanEntry, entry.schoolWide). Sıradan bir koç (kişisel mentor)
+  // bu yetkiyi asla görmez/kullanamaz — okul çapında yanlışlıkla toplu gönderim riskini admin'in
+  // bilinçli onayına bağlar.
+  isSubjectTeacher Boolean @default(false)
 
   createdAt DateTime @default(now())
 
@@ -192,6 +202,11 @@ model PlanEntry {
 
   // --- kind=PRACTICE_TEST / HOLIDAY için serbest not (ör. "Her gün 1 deneme çöz") ---
   note String?
+
+  // Yayınlandığında (publish) yalnızca bu kaydı oluşturan öğretmenin kendi öğrencilerine değil,
+  // okuldaki (examType'a karşılık gelen track'teki) TÜM öğrencilere gönderilsin mi — yalnızca
+  // User.isSubjectTeacher=true olan öğretmenler true olarak ayarlayabilir (bkz. routes/planEntries.js).
+  schoolWide Boolean @default(false)
 
   autoSend     PlanAutoSend @default(OFF)
   assignmentId String?      @unique

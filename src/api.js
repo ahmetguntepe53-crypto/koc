@@ -89,6 +89,7 @@ export const api = {
   adminDeletePhoto: (photoId) => request(`/admin/photos/${photoId}`, { method: "DELETE" }),
   adminGetSettings: () => request("/admin/settings"),
   adminUpdateSettings: (patch) => request("/admin/settings", { method: "PUT", body: patch }),
+  adminSetSubjectTeacher: (id, isSubjectTeacher) => request(`/admin/users/${id}/subject-teacher`, { method: "POST", body: { isSubjectTeacher } }),
 
   // --- okul ayarları (herkese salt-okunur) ---
   getExamDates: () => request("/settings"),
@@ -115,6 +116,7 @@ export const api = {
   savePlanEntry: (id, payload) => request(`/plan-entries/${id}`, { method: "PUT", body: payload }),
   deletePlanEntry: (id) => request(`/plan-entries/${id}`, { method: "DELETE" }),
   publishPlanEntry: (id) => request(`/plan-entries/${id}/publish`, { method: "POST" }),
+  planSchoolWideCount: (examType) => request(`/plan-entries/school-wide-count?examType=${encodeURIComponent(examType)}`),
 
   // --- bildirimler ---
   listNotifications: () => request("/notifications"),
