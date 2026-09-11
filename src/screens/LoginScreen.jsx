@@ -1,13 +1,32 @@
 import { useState } from "react";
 import { ClipboardCheck, BellRing, LineChart } from "lucide-react";
 import { C, displayFont, bodyFont } from "../theme.js";
-import { Card, Button, Input, LogoMark } from "../components/common.jsx";
+import { Card, Button, Input } from "../components/common.jsx";
 
 const HIGHLIGHTS = [
   { icon: ClipboardCheck, text: "Koçlar öğrencilerine ders/konu/kaynak bazlı ödev planlar" },
   { icon: BellRing, text: "Ödevler zamanı gelince otomatik gönderilir, bildirim gider" },
   { icon: LineChart, text: "Doğru/yanlış/boş sonuçları ve geri dönütler tek yerde toplanır" },
 ];
+
+// Amblemin sol ve sağ yarısı ayrı katmanlar halinde (clip-path ile kırpılmış, aynı görselin iki
+// kopyası) kendi kanadı yönünden içeri uçarak girer — bkz. index.html > .k-wing-left/.k-wing-right.
+// Yalnızca giriş ekranına özel (sayfa ilk yüklendiğinde bir kez oynar), bu yüzden paylaşılan
+// LogoMark'a değil buraya konuldu.
+function AnimatedLogo({ width }) {
+  const height = Math.round(width * (1460 / 994));
+  const imgStyle = { width, height, objectFit: "contain", display: "block" };
+  return (
+    <div style={{ position: "relative", width, height }}>
+      <div className="k-wing-left" style={{ position: "absolute", inset: 0, overflow: "hidden", clipPath: "inset(0 50% 0 0)" }}>
+        <img src="/logo.png" alt="" style={imgStyle} />
+      </div>
+      <div className="k-wing-right" style={{ position: "absolute", inset: 0, overflow: "hidden", clipPath: "inset(0 0 0 50%)" }}>
+        <img src="/logo.png" alt="Okul logosu" style={imgStyle} />
+      </div>
+    </div>
+  );
+}
 
 export default function LoginScreen({ onLogin, onForgotPassword }) {
   const [email, setEmail] = useState("");
@@ -41,7 +60,7 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
         flex: 1, background: `radial-gradient(120% 100% at 0% 0%, ${C.sidebarBgAlt}, ${C.sidebarBg} 55%)`,
         color: "#fff", padding: "56px 60px", display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
-        <LogoMark width={128} radius={16} />
+        <AnimatedLogo width={192} />
 
         <div>
           <div style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 800, color: C.sidebarAccent, letterSpacing: 1.2, marginBottom: 12 }}>
@@ -74,7 +93,7 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
         <div style={{ width: "100%", maxWidth: 380 }}>
           {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand */}
           <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26 }}>
-            <LogoMark width={76} radius={14} />
+            <AnimatedLogo width={114} />
           </div>
           <div style={{ marginBottom: 28 }}>
             <div style={{ fontFamily: displayFont, fontSize: 22, fontWeight: 800, color: C.text }}>

@@ -142,6 +142,20 @@
       /* Sayfanın tamamının lastik gibi esnemesi (rubber-band) native hissi bozuyor; iç kaydırma
          alanları etkilenmez. */
       html, body { overscroll-behavior-y: none; }
+
+      /* Giriş ekranı amblemi: aynı görselin sol/sağ yarısı ayrı ayrı klonlanıp (bkz. LoginScreen.jsx
+         > AnimatedLogo) kendi kanadı yönünden (sol yarı soldan, sağ yarı sağdan) uçarak içeri girer —
+         gerçek iki katmanlı bir "kanat açılışı" hissi versin diye, tek bir görseli kaydırmak yerine. */
+      @keyframes k-wing-in-left {
+        from { transform: translateX(-46px) rotate(-8deg); opacity: 0; }
+        to { transform: translateX(0) rotate(0deg); opacity: 1; }
+      }
+      @keyframes k-wing-in-right {
+        from { transform: translateX(46px) rotate(8deg); opacity: 0; }
+        to { transform: translateX(0) rotate(0deg); opacity: 1; }
+      }
+      .k-wing-left { animation: k-wing-in-left 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
+      .k-wing-right { animation: k-wing-in-right 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
     </style>
   </head>
   <body>

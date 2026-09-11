@@ -40,21 +40,18 @@ export class ErrorBoundary extends Component {
 }
 
 // Okulun gerçek amblemi (public/logo.png — amblem+"MAİ"+okul adı yazılarıyla birlikte tek bir görsel,
-// arka planı opak beyaz, dikey/portre oranlı 985x1400). HİÇBİR yerde kırpılmaz (object-fit: contain) —
-// görsel her zaman TAMAMEN görünür; kompakt alanlarda (kenar çubuğu) küçük ama eksiksiz, LoginScreen'de
-// büyük ve okunaklı gösterilir. Kutunun kendisi her zaman beyaz zemin (logonun kendi beyaz arka planıyla
-// kaynaşsın, koyu panellerde kenarlık/gölgeyle ayrışsın diye).
-const LOGO_ASPECT = 1400 / 985; // yükseklik/genişlik — kutu oranı buna göre ayarlanır, metin de dahil hep tam görünsün
+// arka planı SAYDAM, dikey/portre oranlı 994x1460) — hem açık hem koyu temada arkasına bir kutu
+// gerekmeden doğal görünür. HİÇBİR yerde kırpılmaz (object-fit: contain) — görsel her zaman TAMAMEN
+// görünür; kompakt alanlarda (kenar çubuğu) küçük ama eksiksiz, LoginScreen'de büyük ve okunaklı.
+const LOGO_ASPECT = 1460 / 994; // yükseklik/genişlik
 
-export function LogoMark({ width = 34, radius = 10 }) {
+export function LogoMark({ width = 34, radius, style }) {
   const height = Math.round(width * LOGO_ASPECT);
   return (
-    <div style={{
-      width, height, borderRadius: radius, flexShrink: 0, padding: Math.max(2, Math.round(width * 0.06)),
-      background: "#fff", overflow: "hidden", boxShadow: "0 1px 2px rgba(0,0,0,0.18)", boxSizing: "border-box",
-    }}>
-      <img src="/logo.png" alt="Okul logosu" style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }} />
-    </div>
+    <img
+      src="/logo.png" alt="Okul logosu"
+      style={{ width, height, objectFit: "contain", display: "block", flexShrink: 0, ...style }}
+    />
   );
 }
 
