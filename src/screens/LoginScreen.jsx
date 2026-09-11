@@ -97,7 +97,7 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
           </div>
           <div style={{ marginBottom: 28 }}>
             <div style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text }}>
-              {forgotSent ? "" : forgotMode ? "Şifreni sıfırla" : "Mehmet Akif İnan Koçluk Sistemine Hoş Geldiniz"}
+              {forgotSent ? "" : forgotMode ? "Şifreni sıfırla" : "MAI Koçluk Sistemine Hoşgeldiniz"}
             </div>
             {!forgotSent && (
               <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted, marginTop: 4 }}>
