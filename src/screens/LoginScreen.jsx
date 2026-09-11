@@ -60,7 +60,7 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
         flex: 1, background: `radial-gradient(120% 100% at 0% 0%, ${C.sidebarBgAlt}, ${C.sidebarBg} 55%)`,
         color: "#fff", padding: "56px 60px", display: "flex", flexDirection: "column", justifyContent: "space-between",
       }}>
-        <AnimatedLogo width={192} />
+        <AnimatedLogo width={240} />
 
         <div>
           <div style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 800, color: C.sidebarAccent, letterSpacing: 1.2, marginBottom: 12 }}>
@@ -93,7 +93,7 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
         <div style={{ width: "100%", maxWidth: 380 }}>
           {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand */}
           <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26 }}>
-            <AnimatedLogo width={114} />
+            <AnimatedLogo width={144} />
           </div>
           <div style={{ marginBottom: 28 }}>
             <div style={{ fontFamily: displayFont, fontSize: 22, fontWeight: 800, color: C.text }}>
