@@ -3,7 +3,7 @@ import { ChevronRight, CalendarClock, AlertTriangle, BookOpen, ListOrdered } fro
 import { C, displayFont, bodyFont } from "../../theme.js";
 import { Card, Button, Select, Pill, EmptyState, StatCard } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { ALL_SUBJECTS, trackForGrade } from "../../subjects.js";
+import { ALL_SUBJECTS, trackForGrade, subjectIcon } from "../../subjects.js";
 import { daysUntil } from "../../dates.js";
 
 const COMPLETED_PAGE_SIZE = 10;
@@ -12,10 +12,17 @@ const COMPLETED_INITIAL_COUNT = 2;
 function AssignmentRow({ r, onOpen }) {
   const daysLeft = !r.completed ? daysUntil(r.assignment.endDate) : 0;
   const isOverdue = daysLeft < 0;
+  const SubjectIcon = subjectIcon(r.assignment.subject);
   return (
     <Card hover style={{ padding: 16, cursor: "pointer" }}>
       <div onClick={() => onOpen(r.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
+        <div style={{
+          width: 38, height: 38, borderRadius: 999, background: C.accentSoft, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <SubjectIcon size={18} color={C.accent} strokeWidth={2} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{r.assignment.subject} — {r.assignment.topic}</span>
             {r.completed ? (

@@ -1,3 +1,8 @@
+import {
+  BookOpenText, Sigma, Microscope, Landmark, Moon, Languages,
+  Atom, FlaskConical, Dna, ScrollText, Globe, Brain, BookText,
+} from "lucide-react";
+
 // SUBJECTS_BY_EXAM/trackForGrade/GRADE_LEVELS server/src/subjects.js ile İÇERİK olarak aynı
 // tutulmalı — sunucu bu listeye karşı doğruluyor, burada yalnızca dropdown'ı doldurmak için kopyası
 // var (iki ayrı npm paketi, paylaşılan bir modül yok). Dosyanın geri kalanı (label sözlükleri,
@@ -34,3 +39,32 @@ export const GRADE_OPTIONS = GRADE_LEVELS.map((g) => ({ value: g, label: `${g}. 
 // tekrarsız bir listede. Filtre dropdown'ı basit kalsın diye tüm listede seçilebilir; o dersten hiç
 // ödev yoksa sonuç boş gelir, bu bir hata değildir.
 export const ALL_SUBJECTS = [...new Set([...SUBJECTS_BY_EXAM.LGS, ...SUBJECTS_BY_EXAM.TYT, ...SUBJECTS_BY_EXAM.AYT])].sort((a, b) => a.localeCompare(b, "tr"));
+
+// Ödev satırlarında ders adının yanında küçük bir ikon göstermek için (bkz. StudentHomeScreen >
+// AssignmentRow) — salt görsel, hiçbir iş kuralı buna dayanmaz. Din Kültürü bilerek "Moon" (hilal) —
+// okul amblemindeki hilal motifiyle örtüşsün diye.
+const SUBJECT_ICONS = {
+  "Türkçe": BookOpenText,
+  "Edebiyat": BookText,
+  "Matematik": Sigma,
+  "Fen Bilimleri": Microscope,
+  "Fizik": Atom,
+  "Kimya": FlaskConical,
+  "Biyoloji": Dna,
+  "Tarih": ScrollText,
+  "Tarih-1": ScrollText,
+  "Tarih-2": ScrollText,
+  "T.C. İnkılap Tarihi ve Atatürkçülük": Landmark,
+  "Coğrafya": Globe,
+  "Coğrafya-1": Globe,
+  "Coğrafya-2": Globe,
+  "Felsefe": Brain,
+  "Felsefe Grubu": Brain,
+  "Din Kültürü ve Ahlak Bilgisi": Moon,
+  "İngilizce": Languages,
+  "Yabancı Dil": Languages,
+};
+
+export function subjectIcon(subject) {
+  return SUBJECT_ICONS[subject] || BookOpenText;
+}
