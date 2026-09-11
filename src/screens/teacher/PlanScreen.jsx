@@ -23,7 +23,12 @@ function useIsMobile() {
 const MAX_QUESTION_COUNT = 30;
 const KIND_LABELS = { TOPIC: "Konu Anlatımı", PRACTICE_TEST: "Deneme", HOLIDAY: "Tatil Ödevi" };
 const KIND_TONES = { TOPIC: "accent", PRACTICE_TEST: "amber", HOLIDAY: "muted" };
-const KIND_DOT = { TOPIC: C.accent, PRACTICE_TEST: C.amber, HOLIDAY: C.mutedLight };
+// Fonksiyon olarak tanımlanır (sabit bir nesne DEĞİL) — C.* değerleri tema değişince YERİNDE
+// güncellendiği için (bkz. theme.js), modül yüklenirken BİR KEZ hesaplanan bir nesne o anki temayı
+// donmuş halde tutar; koyu temaya geçilince noktalar hâlâ eski (açık tema) renklerinde kalırdı.
+function kindDot(kind) {
+  return { TOPIC: C.accent, PRACTICE_TEST: C.amber, HOLIDAY: C.mutedLight }[kind];
+}
 const AUTO_SEND_LABELS = { ON_DATE: "Tarihi gelince otomatik", DAY_BEFORE: "Bir gün önceden otomatik" };
 const WEEKDAY_LABELS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
 
@@ -180,7 +185,7 @@ export default function PlanScreen({ user }) {
                     dayEntries.length > 0 && (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}>
                         {dayEntries.slice(0, 4).map((entry) => (
-                          <span key={entry.id} style={{ width: 6, height: 6, borderRadius: 999, background: entry.assignmentId ? C.green : KIND_DOT[entry.kind], flexShrink: 0 }} />
+                          <span key={entry.id} style={{ width: 6, height: 6, borderRadius: 999, background: entry.assignmentId ? C.green : kindDot(entry.kind), flexShrink: 0 }} />
                         ))}
                       </div>
                     )
@@ -197,7 +202,7 @@ export default function PlanScreen({ user }) {
                           padding: "3px 5px", cursor: "pointer", overflow: "hidden",
                         }}
                       >
-                        <span style={{ width: 6, height: 6, borderRadius: 999, background: entry.assignmentId ? C.green : KIND_DOT[entry.kind], flexShrink: 0 }} />
+                        <span style={{ width: 6, height: 6, borderRadius: 999, background: entry.assignmentId ? C.green : kindDot(entry.kind), flexShrink: 0 }} />
                         <span style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, color: entry.assignmentId ? C.green : C.accent, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {entry.subject || KIND_LABELS[entry.kind]}
                         </span>
@@ -212,9 +217,9 @@ export default function PlanScreen({ user }) {
       )}
 
       <div style={{ display: "flex", gap: 14, marginTop: 14, flexWrap: "wrap" }}>
-        <Legend color={KIND_DOT.TOPIC} label="Konu Anlatımı" />
-        <Legend color={KIND_DOT.PRACTICE_TEST} label="Deneme" />
-        <Legend color={KIND_DOT.HOLIDAY} label="Tatil Ödevi" />
+        <Legend color={kindDot("TOPIC")} label="Konu Anlatımı" />
+        <Legend color={kindDot("PRACTICE_TEST")} label="Deneme" />
+        <Legend color={kindDot("HOLIDAY")} label="Tatil Ödevi" />
         <Legend color={C.green} label="Gönderildi" />
       </div>
 
@@ -263,7 +268,7 @@ function DayAgendaModal({ dateKey, entries, onClose, onOpenEntry, onAddNew }) {
                 padding: "10px 12px", cursor: "pointer",
               }}
             >
-              <span style={{ width: 8, height: 8, borderRadius: 999, background: entry.assignmentId ? C.green : KIND_DOT[entry.kind], flexShrink: 0 }} />
+              <span style={{ width: 8, height: 8, borderRadius: 999, background: entry.assignmentId ? C.green : kindDot(entry.kind), flexShrink: 0 }} />
               <span style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {entry.subject ? `${entry.subject} — ${entry.topic}` : entry.topic || KIND_LABELS[entry.kind]}
               </span>

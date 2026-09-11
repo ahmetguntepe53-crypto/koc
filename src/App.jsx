@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
 import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange } from "lucide-react";
-import { C } from "./theme.js";
+import { C, THEMES } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav } from "./components/common.jsx";
 import { api } from "./api.js";
 import { registerPush, unregisterPush } from "./native/push.js";
-import { onBackButton, exitApp } from "./native/index.js";
+import { onBackButton, exitApp, setStatusBarTheme } from "./native/index.js";
 import LoginScreen from "./screens/LoginScreen.jsx";
 import ProfileScreen from "./screens/ProfileScreen.jsx";
 import NotificationsScreen from "./screens/NotificationsScreen.jsx";
@@ -27,9 +27,35 @@ const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "
 // Kompozisyon kökü: router yok, `screen` string state'i hangi ekranın render edileceğini belirler
 // (PP'deki HalisahaApp.jsx ile aynı desen). Düzen: sol kenar çubuğu (rol'e göre sekmeler) + sağda
 // sayfa başlığı + içerik.
+// localStorage tek başına güvenilir değil (bkz. api.js), ama bir tema tercihi kaybolursa yalnızca
+// varsayılana (light) döner — auth token'ın aksine veri kaybı riski yok, bu yüzden Preferences köprüsü
+// gerektirmeden doğrudan burada okunur/yazılır.
+function readStoredTheme() {
+  try { return localStorage.getItem("kocluk-theme") || "light"; } catch (_) { return "light"; }
+}
+
 export default function App() {
   const [authUser, setAuthUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  // "light" | "dark" — profilden değiştirilir. HalisahaApp.jsx ile AYNI desen: Object.assign(C, ...)
+  // doğrudan render gövdesinde (bir effect İÇİNDE DEĞİL) çağrılır, böylece theme state'i her
+  // değiştiğinde App zaten yeniden render olur ve TÜM alt bileşenler bir sonraki render'da C'nin
+  // güncel değerlerini görür — ayrı bir Context/"temayı yaydır" mekanizması gerekmez.
+  const [theme, setThemeState] = useState(readStoredTheme);
+  Object.assign(C, THEMES[theme] || THEMES.light);
+  const setTheme = (t) => {
+    setThemeState(t);
+    try { localStorage.setItem("kocluk-theme", t); } catch (_) { /* tercih kalıcı olmasa da uygulama çalışmaya devam eder */ }
+  };
+  // Durum çubuğu şeridi ve (native'de) sistem durum çubuğu simgeleri, ayrıca index.html'deki inline
+  // style'larla ifade edilemeyen birkaç CSS kuralı (:focus/:hover/::selection — bkz. index.html üstteki
+  // not) C.* içinde DEĞİL, imperatif bir DOM/native yan etki olduğu için render gövdesi yerine
+  // effect'te, yalnızca theme değişince güncellenir.
+  useEffect(() => {
+    setStatusBarTheme(theme === "dark");
+    document.documentElement.style.setProperty("--accent-color", C.accent);
+    document.documentElement.style.setProperty("--accent-glow", C.accentSoft);
+  }, [theme]);
   // null = henüz role uygun bir varsayılan atanmadı (mount'ta oturum geri yüklenirken YA DA
   // logout()'un bıraktığı "login" değerinden sonra) — aşağıdaki effect authUser hazır olur olmaz
   // buna role uygun bir başlangıç ekranı atar.
@@ -240,7 +266,7 @@ export default function App() {
         />
         <div style={{ flex: 1 }}>
           {renderScreen({
-            screen, authUser, logout,
+            screen, authUser, logout, theme, setTheme,
             selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated,
             selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
             selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
@@ -296,13 +322,13 @@ const TABS_BY_ROLE = {
 };
 
 function renderScreen({
-  screen, authUser, logout,
+  screen, authUser, logout, theme, setTheme,
   selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated,
   selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
   selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
   selectedStudentName, reportReturnTo, openReport, backFromReport,
 }) {
-  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} />;
+  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} />;
   if (screen === "notifications") return <NotificationsScreen />;
   if (screen === "reports" && (authUser.role !== "TEACHER" || selectedStudentId)) {
     return (

@@ -110,15 +110,20 @@ function FieldLabel({ children }) {
   );
 }
 
-const fieldBaseStyle = {
-  // width:100 + boxSizing tek başına yetmiyor: iOS'ta <input type="date"> kendi iç metin/takvim
-  // simgesi için bir asgari genişlik dayatıyor ve bunu CSS width'i yok sayarak taşırabiliyor —
-  // özellikle bir modal ya da flex sütun gibi dar bir kapta (bkz. Yıllık Plan > Tarih alanı).
-  // minWidth:0 + maxWidth:100% bu asgari genişliği geçersiz kılıp kabına sıkıştırıyor.
-  width: "100%", minWidth: 0, maxWidth: "100%", boxSizing: "border-box", background: C.surface2,
-  border: `1px solid ${C.border}`, borderRadius: C.radiusSm,
-  padding: "10px 13px", fontSize: 14, fontFamily: bodyFont, color: C.text, outline: "none",
-};
+// Fonksiyon olarak tanımlanır (sabit bir nesne DEĞİL) — C.* tema değişince YERİNDE güncellendiği
+// için (bkz. theme.js), modül yüklenirken BİR KEZ hesaplanan bir nesne o anki temayı donmuş halde
+// tutardı; koyu temaya geçilince giriş alanları hâlâ açık temanın renklerinde kalırdı.
+function fieldBaseStyle() {
+  return {
+    // width:100 + boxSizing tek başına yetmiyor: iOS'ta <input type="date"> kendi iç metin/takvim
+    // simgesi için bir asgari genişlik dayatıyor ve bunu CSS width'i yok sayarak taşırabiliyor —
+    // özellikle bir modal ya da flex sütun gibi dar bir kapta (bkz. Yıllık Plan > Tarih alanı).
+    // minWidth:0 + maxWidth:100% bu asgari genişliği geçersiz kılıp kabına sıkıştırıyor.
+    width: "100%", minWidth: 0, maxWidth: "100%", boxSizing: "border-box", background: C.surface2,
+    border: `1px solid ${C.border}`, borderRadius: C.radiusSm,
+    padding: "10px 13px", fontSize: 14, fontFamily: bodyFont, color: C.text, outline: "none",
+  };
+}
 
 export function Input({ label, error, style, ...props }) {
   return (
@@ -127,7 +132,7 @@ export function Input({ label, error, style, ...props }) {
       <input
         {...props}
         className="k-field"
-        style={{ ...fieldBaseStyle, borderColor: error ? C.red : C.border, ...style }}
+        style={{ ...fieldBaseStyle(), borderColor: error ? C.red : C.border, ...style }}
       />
       {error && <div style={{ fontSize: 12, color: C.red, marginTop: 5, fontWeight: 600 }}>{error}</div>}
     </label>
@@ -138,7 +143,7 @@ export function Select({ label, children, style, ...props }) {
   return (
     <label style={{ display: "block", marginBottom: 16 }}>
       <FieldLabel>{label}</FieldLabel>
-      <select {...props} className="k-field" style={{ ...fieldBaseStyle, cursor: "pointer", ...style }}>
+      <select {...props} className="k-field" style={{ ...fieldBaseStyle(), cursor: "pointer", ...style }}>
         {children}
       </select>
     </label>
@@ -149,7 +154,7 @@ export function Textarea({ label, style, ...props }) {
   return (
     <label style={{ display: "block", marginBottom: 16 }}>
       <FieldLabel>{label}</FieldLabel>
-      <textarea {...props} className="k-field" style={{ ...fieldBaseStyle, resize: "vertical", ...style }} />
+      <textarea {...props} className="k-field" style={{ ...fieldBaseStyle(), resize: "vertical", ...style }} />
     </label>
   );
 }

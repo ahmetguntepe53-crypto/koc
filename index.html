@@ -5,6 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="color-scheme" content="light" />
     <title>Kocluk</title>
+    <script>
+      // React'in kendi tema mantığı (App.jsx) devreye girmeden ÖNCE, ilk boya (paint) sırasında
+      // koyu tema kullanıcısına açık zemin göstermemek için — stil sayfası okunur okunmaz senkron
+      // çalışır. Değer theme.js > THEMES.dark.bg ile elle senkron tutulmalı (paylaşılan bir kaynak yok).
+      try {
+        if (localStorage.getItem("kocluk-theme") === "dark") {
+          document.write('<style>body{background:#0A1A1E !important}</style>');
+        }
+      } catch (_) {}
+    </script>
     <link rel="icon" href="/logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -18,7 +28,7 @@
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
       }
-      ::selection { background: #4338CA; color: #fff; }
+      ::selection { background: var(--accent-color, #4338CA); color: #fff; }
 
       /* Kaydırma çubuğu — varsayılan kalın/gri tarayıcı çubuğu yerine daha ince, sayfayla uyumlu. */
       ::-webkit-scrollbar { width: 10px; height: 10px; }
@@ -37,7 +47,7 @@
       .k-card-hover:hover { box-shadow: 0 4px 10px rgba(15,23,42,0.06), 0 16px 40px rgba(15,23,42,0.12); border-color: rgba(15,23,42,0.16); transform: translateY(-1px); }
 
       .k-field { transition: border-color .12s ease, box-shadow .12s ease; }
-      .k-field:focus { outline: none; border-color: #4338CA !important; box-shadow: 0 0 0 3px rgba(67,56,202,0.13); }
+      .k-field:focus { outline: none; border-color: var(--accent-color, #4338CA) !important; box-shadow: 0 0 0 3px var(--accent-glow, rgba(67,56,202,0.13)); }
 
       .k-sidebar-item { transition: background-color .12s ease, color .12s ease; }
       .k-sidebar-item:hover { background: rgba(255,255,255,0.07); }
@@ -45,7 +55,7 @@
       .k-icon-btn { transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
       .k-icon-btn:hover { background: #E9EBF4 !important; }
 
-      .k-link-btn:hover { color: #4338CA !important; }
+      .k-link-btn:hover { color: var(--accent-color, #4338CA) !important; }
 
       /* Kenar çubuğu dar ekranlarda simge-yalnız moda geçer — telefon/dar pencere yerine masaüstünde
          de pencere küçültüldüğünde metin taşmasın diye. */
@@ -97,7 +107,7 @@
       .k-app-root { padding-top: env(safe-area-inset-top); }
       .k-app-root::before {
         content: ""; position: fixed; top: 0; left: 0; right: 0;
-        height: env(safe-area-inset-top); background: #FFFFFF; z-index: 60; pointer-events: none;
+        height: env(safe-area-inset-top); background: var(--status-strip-bg, #FFFFFF); z-index: 60; pointer-events: none;
       }
 
       /* Kenar çubuğu sticky/100vh — kök artık üstten dolgulu olduğu için ikisi de kaydırılmalı,

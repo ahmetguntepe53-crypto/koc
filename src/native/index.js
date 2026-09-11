@@ -34,16 +34,9 @@ export async function initNative() {
   if (!isNative) return;
   await restoreToken();
 
-  // Durum çubuğunun altındaki şerit index.html'deki .k-app-root kuralıyla BEYAZ boyanıyor
-  // (env(safe-area-inset-top) dolgusu) — dolayısıyla saat/pil simgeleri KOYU olmalı.
-  // Style.Light = "açık zeminler için koyu metin" (isim yanıltıcı, eklentinin tanımı böyle).
-  try {
-    await StatusBar.setStyle({ style: Style.Light });
-    if (platform === "android") {
-      await StatusBar.setOverlaysWebView({ overlay: false });
-      await StatusBar.setBackgroundColor({ color: "#FFFFFF" });
-    }
-  } catch (_) { /* durum çubuğu ayarlanamazsa uygulama yine de çalışır */ }
+  // Başlangıç durumu — App.jsx mount olur olmaz kendi tema tercihiyle setStatusBarTheme()'i
+  // tekrar çağırır (bkz. altta), burası yalnızca o çağrıdan önceki kısa an için varsayılan.
+  await setStatusBarTheme(false);
 
   // Klavye yüksekliği CSS değişkenine yazılır: modal/uzun formlarda alt boşluk gerektiğinde
   // var(--kb-height) ile kullanılabilir, ayrıca .kb-open sınıfı klavye açıkken alt güvenli alan
@@ -64,6 +57,24 @@ export async function initNative() {
   CapApp.addListener("appStateChange", ({ isActive }) => {
     if (isActive) window.dispatchEvent(new CustomEvent("kocluk:resume"));
   });
+}
+
+// Durum çubuğunun altındaki şerit (index.html > .k-app-root::before, env(safe-area-inset-top)
+// dolgusu) tema değişince bu fonksiyonla güncellenir — App.jsx tema state'i her değiştiğinde çağırır.
+// Style.Light = "açık zeminler için koyu metin", Style.Dark = "koyu zeminler için açık metin"
+// (isimler yanıltıcı, eklentinin kendi tanımı böyle).
+const STATUS_STRIP_LIGHT = "#FFFFFF";
+const STATUS_STRIP_DARK = "#0A1A1E"; // theme.js > THEMES.dark.bg ile senkron tutulmalı
+export async function setStatusBarTheme(isDark) {
+  document.documentElement.style.setProperty("--status-strip-bg", isDark ? STATUS_STRIP_DARK : STATUS_STRIP_LIGHT);
+  if (!isNative) return;
+  try {
+    await StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light });
+    if (platform === "android") {
+      await StatusBar.setOverlaysWebView({ overlay: false });
+      await StatusBar.setBackgroundColor({ color: isDark ? STATUS_STRIP_DARK : STATUS_STRIP_LIGHT });
+    }
+  } catch (_) { /* durum çubuğu ayarlanamazsa uygulama yine de çalışır */ }
 }
 
 // Android donanım geri tuşu: web'de karşılığı yok, iOS'ta sistem zaten kendi jestiyle hallediyor.
