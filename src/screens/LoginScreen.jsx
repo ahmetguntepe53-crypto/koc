@@ -95,7 +95,7 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
       }}>
         <div style={{ width: "100%", maxWidth: 380 }}>
           {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand */}
-          <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26 }}>
+          <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 56 }}>
             <AnimatedLogo width={220} />
           </div>
           <div style={{ marginBottom: 28 }}>
