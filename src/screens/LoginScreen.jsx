@@ -89,17 +89,17 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: C.bg }}>
-        <div style={{ width: "100%", maxWidth: 380 }}>
-          {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand.
-              Logonun arkasında yumuşak, yukarı doğru açılan beyaz bir parıltı (glow) — koyu temada
-              amblem düz zemine gömülü durmasın, canlı bir ışık huzmesinin içinden çıkıyormuş gibi görünsün. */}
-          <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26, position: "relative" }}>
-            <div style={{
-              position: "absolute", top: -60, left: "50%", transform: "translateX(-50%)",
-              width: 380, height: 340, pointerEvents: "none",
-              background: "radial-gradient(ellipse 60% 55% at 50% 30%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.08) 45%, rgba(255,255,255,0) 75%)",
-            }} />
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: C.bg, position: "relative", overflow: "hidden" }}>
+        {/* Ekranın en üstünden aşağı doğru beyaza-koyuya geçiş — logo bu geçişin içinden çıkıyormuş
+            gibi görünsün diye, yerelleşmiş küçük bir parıltı değil TAM GENİŞLİKTE bir geçiş. Koyu
+            temada belirgin, açık temada zaten beyaza yakın zemine karışıp fark edilmez. */}
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, height: 440, pointerEvents: "none",
+          background: "linear-gradient(180deg, #fff 0%, rgba(255,255,255,0.55) 40%, rgba(255,255,255,0) 100%)",
+        }} />
+        <div style={{ width: "100%", maxWidth: 380, position: "relative" }}>
+          {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand */}
+          <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26 }}>
             <AnimatedLogo width={144} />
           </div>
           <div style={{ marginBottom: 28 }}>
