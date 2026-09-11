@@ -69,6 +69,7 @@ export default function App() {
   const [selectedRecipientId, setSelectedRecipientId] = useState(null);
   const [selectedStudentId, setSelectedStudentId] = useState(null);
   const [selectedStudentName, setSelectedStudentName] = useState(null);
+  const [coachNoteOpen, setCoachNoteOpen] = useState(false);
   // Öğrenci Özeti'ndeki "Yeni Ödev Ata" kısayolu Ödev Oluştur'u bu öğrenci önceden tikli açar,
   // oluşturulunca da tüm listeye değil doğrudan bu öğrencinin özetine geri döner.
   const [assignmentCreateInitialStudentId, setAssignmentCreateInitialStudentId] = useState(null);
@@ -208,7 +209,7 @@ export default function App() {
   const openRecipient = (id) => { setSelectedRecipientId(id); setScreen("assignmentSubmit"); };
   const backToMyAssignments = () => { setSelectedRecipientId(null); setMyAssignmentsRefreshKey((k) => k + 1); setScreen("myAssignments"); };
 
-  const openStudent = (id) => { setSelectedStudentId(id); setScreen("studentOverview"); };
+  const openStudent = (id) => { setSelectedStudentId(id); setCoachNoteOpen(false); setScreen("studentOverview"); };
   const backToStudents = () => { setSelectedStudentId(null); setScreen("students"); };
   const createAssignmentForStudent = (studentId) => {
     setAssignmentCreateInitialStudentId(studentId);
@@ -246,14 +247,11 @@ export default function App() {
           subtitle={screenSubtitle(screen, authUser)}
           right={
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {/* Yalnızca bir öğrencinin profilindeyken görünür — CoachNoteCard'a (bkz.
-                  StudentOverviewScreen.jsx > #coach-note-section) kaydırıp not alanına odaklanır. */}
+              {/* Yalnızca bir öğrencinin profilindeyken görünür — notlar artık sayfada sürekli yer
+                  kaplamıyor, bu ikon StudentOverviewScreen.jsx > CoachNoteModal'ı açıyor. */}
               {screen === "studentOverview" && (
                 <button
-                  onClick={() => {
-                    document.getElementById("coach-note-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
-                    document.getElementById("coach-note-textarea")?.focus();
-                  }}
+                  onClick={() => setCoachNoteOpen(true)}
                   aria-label="Notlarım"
                   style={{
                     background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 999,
@@ -293,6 +291,7 @@ export default function App() {
             selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
             selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
             selectedStudentName, reportReturnTo, openReport, backFromReport,
+            coachNoteOpen, onCloseNote: () => setCoachNoteOpen(false),
           })}
         </div>
       </div>
@@ -349,6 +348,7 @@ function renderScreen({
   selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
   selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
   selectedStudentName, reportReturnTo, openReport, backFromReport,
+  coachNoteOpen, onCloseNote,
 }) {
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} />;
   if (screen === "notifications") return <NotificationsScreen />;
@@ -367,7 +367,7 @@ function renderScreen({
   if (authUser.role === "ADMIN" && screen === "photos") return <AdminPhotosScreen />;
   if (authUser.role === "TEACHER") {
     if (screen === "students") return <TeacherStudentsScreen onOpen={openStudent} />;
-    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={createAssignmentForStudent} onOpenReport={(id, name) => openReport("studentOverview", id, name)} />;
+    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={createAssignmentForStudent} onOpenReport={(id, name) => openReport("studentOverview", id, name)} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} />;
     if (screen === "assignmentCreate") return <AssignmentCreateScreen onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} />;
     if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} />;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, BarChart3, ChevronRight, Plus, AlertTriangle } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, Avatar } from "../../components/common.jsx";
+import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, Avatar, Modal } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { trackForGrade, subjectIconUrl } from "../../subjects.js";
 import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
@@ -89,10 +89,10 @@ function RecipientRow({ r, onOpen }) {
 }
 
 // Koçun bu öğrenci için tuttuğu özel not — yalnızca koç görür, öğrenciye hiç gösterilmez (bkz.
-// server/src/serialize.js > safeUser, coachNote orada bilerek süzülüyor). key={studentId} ile
-// üst bileşende her öğrenci değişiminde sıfırdan mount edilir, bir önceki öğrencinin taslak metni
-// kalmasın diye.
-function CoachNoteCard({ studentId, initialNote }) {
+// server/src/serialize.js > safeUser, coachNote orada bilerek süzülüyor). Artık sayfada sürekli yer
+// kaplamıyor — App.jsx'teki başlık çubuğundaki not defteri ikonu bunu bir modal olarak açıyor
+// (bkz. App.jsx > coachNoteOpen). key={studentId} ile öğrenci değişince sıfırdan mount edilir.
+function CoachNoteModal({ studentId, initialNote, onClose }) {
   const [note, setNote] = useState(initialNote || "");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -117,21 +117,16 @@ function CoachNoteCard({ studentId, initialNote }) {
   };
 
   return (
-    <div id="coach-note-section">
-      <Card style={{ marginBottom: 20, padding: 18 }}>
-        <div style={{ fontFamily: displayFont, fontSize: 13, fontWeight: 800, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>
-          Notlarım
-        </div>
-        <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
-          Bu öğrenci hakkında yalnızca sen görürsün — öğrenciye hiçbir zaman gösterilmez.
-        </div>
-        <Textarea id="coach-note-textarea" value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="ör. Matematik konularında tekrar gerekiyor, sınav kaygısı yüksek..." />
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: -6 }}>
-          <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
-          {msg && <span style={{ fontSize: 12, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</span>}
-        </div>
-      </Card>
-    </div>
+    <Modal title="Notlarım" onClose={onClose}>
+      <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+        Bu öğrenci hakkında yalnızca sen görürsün — öğrenciye hiçbir zaman gösterilmez.
+      </div>
+      <Textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} rows={5} placeholder="ör. Matematik konularında tekrar gerekiyor, sınav kaygısı yüksek..." />
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
+        {msg && <span style={{ fontSize: 12, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</span>}
+      </div>
+    </Modal>
   );
 }
 
@@ -145,7 +140,7 @@ function UrgencyPill({ endDate }) {
   return null;
 }
 
-export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignment, onCreateAssignment, onOpenReport }) {
+export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignment, onCreateAssignment, onOpenReport, noteOpen, onCloseNote }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -226,7 +221,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
         </div>
       </Card>
 
-      <CoachNoteCard key={studentId} studentId={studentId} initialNote={student.coachNote} />
+      {noteOpen && <CoachNoteModal key={studentId} studentId={studentId} initialNote={student.coachNote} onClose={onCloseNote} />}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
         {DATE_FILTERS.map((f) => (
