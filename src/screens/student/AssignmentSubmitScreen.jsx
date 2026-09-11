@@ -134,7 +134,7 @@ export default function AssignmentSubmitScreen({ recipientId, onBack }) {
 
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-          <span style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800 }}>{a.subject} — {a.topic}</span>
+          <span style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text }}>{a.subject} — {a.topic}</span>
           <Pill>{a.examType}</Pill>
           {recipient.completed && <Pill tone="green">Tamamlandı</Pill>}
           {!recipient.completed && daysUntil(a.endDate) < 0 && <Pill tone="red">Gecikti</Pill>}
@@ -148,7 +148,7 @@ export default function AssignmentSubmitScreen({ recipientId, onBack }) {
 
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <span style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 700 }}>Kanıt Fotoğrafları</span>
+          <span style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 700, color: C.text }}>Kanıt Fotoğrafları</span>
           <span style={{ fontFamily: bodyFont, fontSize: 12, color: C.mutedLight, fontWeight: 600 }}>{photos.length}/{MAX_PHOTOS}</span>
         </div>
         {photos.length > 0 && (
@@ -180,7 +180,7 @@ export default function AssignmentSubmitScreen({ recipientId, onBack }) {
       </Card>
 
       <Card>
-        <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 700, marginBottom: 12 }}>
+        <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 700, marginBottom: 12, color: C.text }}>
           {recipient.completed ? "Sonucunu Güncelle" : "Sonucunu Gir"}
         </div>
         <form onSubmit={submit}>

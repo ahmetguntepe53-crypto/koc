@@ -117,19 +117,21 @@ function CoachNoteCard({ studentId, initialNote }) {
   };
 
   return (
-    <Card style={{ marginBottom: 20, padding: 18 }}>
-      <div style={{ fontFamily: displayFont, fontSize: 13, fontWeight: 800, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>
-        Notlarım
-      </div>
-      <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
-        Bu öğrenci hakkında yalnızca sen görürsün — öğrenciye hiçbir zaman gösterilmez.
-      </div>
-      <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="ör. Matematik konularında tekrar gerekiyor, sınav kaygısı yüksek..." />
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: -6 }}>
-        <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
-        {msg && <span style={{ fontSize: 12, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</span>}
-      </div>
-    </Card>
+    <div id="coach-note-section">
+      <Card style={{ marginBottom: 20, padding: 18 }}>
+        <div style={{ fontFamily: displayFont, fontSize: 13, fontWeight: 800, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 3 }}>
+          Notlarım
+        </div>
+        <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+          Bu öğrenci hakkında yalnızca sen görürsün — öğrenciye hiçbir zaman gösterilmez.
+        </div>
+        <Textarea id="coach-note-textarea" value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="ör. Matematik konularında tekrar gerekiyor, sınav kaygısı yüksek..." />
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: -6 }}>
+          <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
+          {msg && <span style={{ fontSize: 12, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</span>}
+        </div>
+      </Card>
+    </div>
   );
 }
 

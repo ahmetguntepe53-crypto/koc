@@ -339,14 +339,17 @@ export function BottomNav({ tabs, activeId, onSelect }) {
 }
 
 // İçerik sütununun üst şeridi — sayfa başlığı burada, kenar çubuğundaki marka satırından ayrı.
+// Sol taraf (başlık/alt yazı) flex:1+minWidth:0 ile satır içinde küçülüp kendi içinde satır atlar —
+// uzun bir alt yazı (ör. Takvim ekranı) artık sağdaki bildirim zilini alt satıra İTMİYOR, zil her
+// zaman sağ üstte sabit kalıyor.
 export function PageHeader({ title, subtitle, right }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "18px 28px", background: C.surface, borderBottom: `1px solid ${C.border}`, flexWrap: "wrap" }}>
-      <div>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "18px 28px", background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: displayFont, fontSize: 19, fontWeight: 800, color: C.text }}>{title}</div>
         {subtitle && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
       </div>
-      {right}
+      {right && <div style={{ flexShrink: 0 }}>{right}</div>}
     </div>
   );
 }

@@ -49,7 +49,7 @@ export default function AssignmentDetailScreen({ assignmentId, onBack }) {
 
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-          <span style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800 }}>{assignment.subject} — {assignment.topic}</span>
+          <span style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text }}>{assignment.subject} — {assignment.topic}</span>
           <Pill tone={assignment.status === "SENT" ? "green" : "amber"}>{STATUS_LABELS[assignment.status]}</Pill>
           <Pill>{assignment.examType}</Pill>
         </div>

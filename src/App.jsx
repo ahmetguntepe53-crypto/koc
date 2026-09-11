@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange } from "lucide-react";
+import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange, NotebookPen } from "lucide-react";
 import { C, THEMES } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav } from "./components/common.jsx";
@@ -244,25 +244,47 @@ export default function App() {
         <PageHeader
           title={screenTitle(screen, authUser.role)}
           subtitle={screenSubtitle(screen, authUser)}
-          right={screen !== "notifications" && (
-            <button
-              onClick={() => setScreen("notifications")}
-              aria-label="Bildirimler"
-              style={{
-                position: "relative", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 999,
-                width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
-                cursor: "pointer", flexShrink: 0,
-              }}
-            >
-              <Bell size={17} color={C.muted} />
-              {unreadCount > 0 && (
-                <span style={{
-                  position: "absolute", top: -3, right: -3, background: C.red, color: "#fff", fontSize: 9.5, fontWeight: 800,
-                  borderRadius: 999, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px",
-                }}>{unreadCount}</span>
+          right={
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Yalnızca bir öğrencinin profilindeyken görünür — CoachNoteCard'a (bkz.
+                  StudentOverviewScreen.jsx > #coach-note-section) kaydırıp not alanına odaklanır. */}
+              {screen === "studentOverview" && (
+                <button
+                  onClick={() => {
+                    document.getElementById("coach-note-section")?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    document.getElementById("coach-note-textarea")?.focus();
+                  }}
+                  aria-label="Notlarım"
+                  style={{
+                    background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 999,
+                    width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", flexShrink: 0,
+                  }}
+                >
+                  <NotebookPen size={18} color={C.muted} />
+                </button>
               )}
-            </button>
-          )}
+              {screen !== "notifications" && (
+                <button
+                  onClick={() => setScreen("notifications")}
+                  aria-label="Bildirimler"
+                  style={{
+                    position: "relative", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 999,
+                    width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "pointer", flexShrink: 0,
+                  }}
+                >
+                  <Bell size={17} color={C.muted} />
+                  {unreadCount > 0 && (
+                    <span style={{
+                      position: "absolute", top: -3, right: -3, background: C.red, color: "#fff", fontSize: 9.5, fontWeight: 800,
+                      borderRadius: 999, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px",
+                    }}>{unreadCount}</span>
+                  )}
+                </button>
+              )}
+            </div>
+          }
         />
         <div style={{ flex: 1 }}>
           {renderScreen({
