@@ -38,7 +38,9 @@ export const C = {
   shadowLg: "0 4px 10px rgba(15,23,42,0.06), 0 16px 40px rgba(15,23,42,0.12)",
 
   radiusSm: 8,
-  radiusMd: 12,
+  // 12 -> 16: Tailwind "rounded-xl" yerine "rounded-2xl" — kart/buton/giriş alanlarında istenen
+  // daha belirgin oval köşe hissi (bkz. tasarım kılavuzu: "rounded-2xl veya rounded-xl").
+  radiusMd: 16,
   radiusLg: 18,
 };
 
