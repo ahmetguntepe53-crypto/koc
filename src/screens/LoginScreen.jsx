@@ -14,7 +14,7 @@ const HIGHLIGHTS = [
 // Yalnızca giriş ekranına özel (sayfa ilk yüklendiğinde bir kez oynar), bu yüzden paylaşılan
 // LogoMark'a değil buraya konuldu.
 function AnimatedLogo({ width }) {
-  const height = Math.round(width * (1460 / 994));
+  const height = width; // logo.png artık kare (512x512)
   const imgStyle = { width, height, objectFit: "contain", display: "block" };
   return (
     <div style={{ position: "relative", width, height }}>

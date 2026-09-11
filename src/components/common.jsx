@@ -39,11 +39,10 @@ export class ErrorBoundary extends Component {
   }
 }
 
-// Okulun gerçek amblemi (public/logo.png — amblem+"MAİ"+okul adı yazılarıyla birlikte tek bir görsel,
-// arka planı SAYDAM, dikey/portre oranlı 994x1460) — hem açık hem koyu temada arkasına bir kutu
-// gerekmeden doğal görünür. HİÇBİR yerde kırpılmaz (object-fit: contain) — görsel her zaman TAMAMEN
-// görünür; kompakt alanlarda (kenar çubuğu) küçük ama eksiksiz, LoginScreen'de büyük ve okunaklı.
-const LOGO_ASPECT = 1460 / 994; // yükseklik/genişlik
+// Okulun gerçek amblemi (public/logo.png — yalnızca kanatlı/hilalli işaret, kare 512x512, arka
+// planı SAYDAM) — hem açık hem koyu temada arkasına bir kutu gerekmeden doğal görünür. HİÇBİR
+// yerde kırpılmaz (object-fit: contain) — görsel her zaman TAMAMEN görünür.
+const LOGO_ASPECT = 1; // yükseklik/genişlik — kare görsel
 
 export function LogoMark({ width = 34, radius, style }) {
   const height = Math.round(width * LOGO_ASPECT);
