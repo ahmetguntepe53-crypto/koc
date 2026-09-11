@@ -3,7 +3,7 @@ import { Send, Trash2, ChevronRight } from "lucide-react";
 import { C, bodyFont } from "../../theme.js";
 import { Card, Button, Select, Pill, EmptyState } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { PERIOD_LABELS, STATUS_LABELS, ALL_SUBJECTS, subjectIcon } from "../../subjects.js";
+import { PERIOD_LABELS, STATUS_LABELS, ALL_SUBJECTS, subjectIconUrl } from "../../subjects.js";
 import { formatDateRange, daysUntil } from "../../dates.js";
 
 export default function AssignmentListScreen({ onOpen, refreshKey }) {
@@ -91,16 +91,10 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
           {assignments.map((a) => {
             const completedCount = a.recipients.filter((r) => r.completed).length;
             const isOverdue = a.status === "SENT" && completedCount < a.recipients.length && daysUntil(a.endDate) < 0;
-            const SubjectIcon = subjectIcon(a.subject);
             return (
               <Card key={a.id} hover style={{ padding: 16, cursor: "pointer" }}>
                 <div onClick={() => onOpen(a.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-                  <div style={{
-                    width: 38, height: 38, borderRadius: 999, background: C.accentSoft, flexShrink: 0,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}>
-                    <SubjectIcon size={18} color={C.accent} strokeWidth={2} />
-                  </div>
+                  <img src={subjectIconUrl(a.subject)} alt="" width={38} height={38} style={{ borderRadius: 10, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{a.subject} — {a.topic}</span>

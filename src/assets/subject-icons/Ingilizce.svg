@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="80" height="80">
+  <rect width="100" height="100" rx="22" fill="#F97316"/>
+  <path d="M20 30C20 20 28 15 45 15C62 15 70 20 70 30C70 40 62 45 45 45H35L20 55V43C15 40 20 35 20 30Z" fill="#FFFFFF"/>
+  <path d="M35 50C35 40 43 35 60 35C77 35 85 40 85 50C85 60 77 65 60 65H50L35 75V63C30 60 35 55 35 50Z" fill="#FDE047"/>
+  <text x="45" y="36" font-size="18" font-family="sans-serif" font-weight="bold" fill="#F97316" text-anchor="middle">A</text>
+  <text x="60" y="56" font-size="18" font-family="sans-serif" font-weight="bold" fill="#EA580C" text-anchor="middle">a</text>
+</svg>

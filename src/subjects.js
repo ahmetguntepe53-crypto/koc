@@ -1,7 +1,16 @@
-import {
-  BookOpenText, Sigma, Microscope, Landmark, Moon, Languages,
-  Atom, FlaskConical, Dna, ScrollText, Globe, Brain, BookText,
-} from "lucide-react";
+import turkceIcon from "./assets/subject-icons/Turkce.svg";
+import edebiyatIcon from "./assets/subject-icons/Edebiyat.svg";
+import matematikIcon from "./assets/subject-icons/Matematik.svg";
+import fenBilimleriIcon from "./assets/subject-icons/Fen_Bilimleri.svg";
+import fizikIcon from "./assets/subject-icons/Fizik.svg";
+import kimyaIcon from "./assets/subject-icons/Kimya.svg";
+import biyolojiIcon from "./assets/subject-icons/Biyoloji.svg";
+import tarihIcon from "./assets/subject-icons/Tarih.svg";
+import inkilapTarihiIcon from "./assets/subject-icons/Inkilap_Tarihi.svg";
+import cografyaIcon from "./assets/subject-icons/Cografya.svg";
+import felsefeIcon from "./assets/subject-icons/Felsefe.svg";
+import dinKulturuIcon from "./assets/subject-icons/Din_Kulturu.svg";
+import ingilizceIcon from "./assets/subject-icons/Ingilizce.svg";
 
 // SUBJECTS_BY_EXAM/trackForGrade/GRADE_LEVELS server/src/subjects.js ile İÇERİK olarak aynı
 // tutulmalı — sunucu bu listeye karşı doğruluyor, burada yalnızca dropdown'ı doldurmak için kopyası
@@ -40,31 +49,31 @@ export const GRADE_OPTIONS = GRADE_LEVELS.map((g) => ({ value: g, label: `${g}. 
 // ödev yoksa sonuç boş gelir, bu bir hata değildir.
 export const ALL_SUBJECTS = [...new Set([...SUBJECTS_BY_EXAM.LGS, ...SUBJECTS_BY_EXAM.TYT, ...SUBJECTS_BY_EXAM.AYT])].sort((a, b) => a.localeCompare(b, "tr"));
 
-// Ödev satırlarında ders adının yanında küçük bir ikon göstermek için (bkz. StudentHomeScreen >
-// AssignmentRow) — salt görsel, hiçbir iş kuralı buna dayanmaz. Din Kültürü bilerek "Moon" (hilal) —
-// okul amblemindeki hilal motifiyle örtüşsün diye.
-const SUBJECT_ICONS = {
-  "Türkçe": BookOpenText,
-  "Edebiyat": BookText,
-  "Matematik": Sigma,
-  "Fen Bilimleri": Microscope,
-  "Fizik": Atom,
-  "Kimya": FlaskConical,
-  "Biyoloji": Dna,
-  "Tarih": ScrollText,
-  "Tarih-1": ScrollText,
-  "Tarih-2": ScrollText,
-  "T.C. İnkılap Tarihi ve Atatürkçülük": Landmark,
-  "Coğrafya": Globe,
-  "Coğrafya-1": Globe,
-  "Coğrafya-2": Globe,
-  "Felsefe": Brain,
-  "Felsefe Grubu": Brain,
-  "Din Kültürü ve Ahlak Bilgisi": Moon,
-  "İngilizce": Languages,
-  "Yabancı Dil": Languages,
+// Ödev satırlarında ders adının yanında gösterilen renkli rozet ikonu (bkz. StudentHomeScreen >
+// AssignmentRow) — salt görsel, hiçbir iş kuralı buna dayanmaz. Kendi köşeleri yuvarlatılmış,
+// zemin rengi ders başına sabit (assets/subject-icons/*.svg) — ayrıca bir arka plan kutusuna gerek yok.
+const SUBJECT_ICON_URLS = {
+  "Türkçe": turkceIcon,
+  "Edebiyat": edebiyatIcon,
+  "Matematik": matematikIcon,
+  "Fen Bilimleri": fenBilimleriIcon,
+  "Fizik": fizikIcon,
+  "Kimya": kimyaIcon,
+  "Biyoloji": biyolojiIcon,
+  "Tarih": tarihIcon,
+  "Tarih-1": tarihIcon,
+  "Tarih-2": tarihIcon,
+  "T.C. İnkılap Tarihi ve Atatürkçülük": inkilapTarihiIcon,
+  "Coğrafya": cografyaIcon,
+  "Coğrafya-1": cografyaIcon,
+  "Coğrafya-2": cografyaIcon,
+  "Felsefe": felsefeIcon,
+  "Felsefe Grubu": felsefeIcon,
+  "Din Kültürü ve Ahlak Bilgisi": dinKulturuIcon,
+  "İngilizce": ingilizceIcon,
+  "Yabancı Dil": ingilizceIcon,
 };
 
-export function subjectIcon(subject) {
-  return SUBJECT_ICONS[subject] || BookOpenText;
+export function subjectIconUrl(subject) {
+  return SUBJECT_ICON_URLS[subject] || turkceIcon;
 }
