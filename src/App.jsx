@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange, NotebookPen } from "lucide-react";
-import { C, THEMES } from "./theme.js";
+import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange, NotebookPen, BarChart3 } from "lucide-react";
+import { C, THEMES, bodyFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav } from "./components/common.jsx";
 import { api } from "./api.js";
@@ -23,6 +23,25 @@ import StudyLogScreen from "./screens/student/StudyLogScreen.jsx";
 import ReportScreen from "./screens/ReportScreen.jsx";
 
 const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments" };
+
+// Başlık çubuğundaki ikon+etiket düğmeleri (ör. "Notlar", "Rapor") — BottomNav'daki ikon+etiket
+// deseniyle tutarlı, ama küçük ve yatay sırada durabilecek şekilde.
+function HeaderActionButton({ icon: Icon, label, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      style={{
+        background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 12,
+        padding: "5px 10px 6px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
+        cursor: "pointer", flexShrink: 0, minWidth: 46,
+      }}
+    >
+      <Icon size={17} color={C.muted} />
+      <span style={{ fontFamily: bodyFont, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: 0.2 }}>{label}</span>
+    </button>
+  );
+}
 
 // Kompozisyon kökü: router yok, `screen` string state'i hangi ekranın render edileceğini belirler
 // (PP'deki HalisahaApp.jsx ile aynı desen). Düzen: sol kenar çubuğu (rol'e göre sekmeler) + sağda
@@ -209,8 +228,8 @@ export default function App() {
   const openRecipient = (id) => { setSelectedRecipientId(id); setScreen("assignmentSubmit"); };
   const backToMyAssignments = () => { setSelectedRecipientId(null); setMyAssignmentsRefreshKey((k) => k + 1); setScreen("myAssignments"); };
 
-  const openStudent = (id) => { setSelectedStudentId(id); setCoachNoteOpen(false); setScreen("studentOverview"); };
-  const backToStudents = () => { setSelectedStudentId(null); setScreen("students"); };
+  const openStudent = (id, name) => { setSelectedStudentId(id); setSelectedStudentName(name); setCoachNoteOpen(false); setScreen("studentOverview"); };
+  const backToStudents = () => { setSelectedStudentId(null); setSelectedStudentName(null); setScreen("students"); };
   const createAssignmentForStudent = (studentId) => {
     setAssignmentCreateInitialStudentId(studentId);
     setAssignmentCreateReturnTo("studentOverview");
@@ -247,20 +266,14 @@ export default function App() {
           subtitle={screenSubtitle(screen, authUser)}
           right={
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {/* Yalnızca bir öğrencinin profilindeyken görünür — notlar artık sayfada sürekli yer
-                  kaplamıyor, bu ikon StudentOverviewScreen.jsx > CoachNoteModal'ı açıyor. */}
+              {/* Yalnızca bir öğrencinin profilindeyken görünür — Rapor doğrudan o öğrencinin raporunu
+                  açar, Notlar StudentOverviewScreen.jsx > CoachNoteModal'ı açar (sayfada artık sürekli
+                  yer kaplamıyor). */}
+              {screen === "studentOverview" && selectedStudentId && (
+                <HeaderActionButton icon={BarChart3} label="Rapor" onClick={() => openReport("studentOverview", selectedStudentId, selectedStudentName)} />
+              )}
               {screen === "studentOverview" && (
-                <button
-                  onClick={() => setCoachNoteOpen(true)}
-                  aria-label="Notlarım"
-                  style={{
-                    background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 999,
-                    width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
-                    cursor: "pointer", flexShrink: 0,
-                  }}
-                >
-                  <NotebookPen size={18} color={C.muted} />
-                </button>
+                <HeaderActionButton icon={NotebookPen} label="Notlar" onClick={() => setCoachNoteOpen(true)} />
               )}
               {screen !== "notifications" && (
                 <button
@@ -367,7 +380,7 @@ function renderScreen({
   if (authUser.role === "ADMIN" && screen === "photos") return <AdminPhotosScreen />;
   if (authUser.role === "TEACHER") {
     if (screen === "students") return <TeacherStudentsScreen onOpen={openStudent} />;
-    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={createAssignmentForStudent} onOpenReport={(id, name) => openReport("studentOverview", id, name)} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} />;
+    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={createAssignmentForStudent} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} />;
     if (screen === "assignmentCreate") return <AssignmentCreateScreen onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} />;
     if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} />;

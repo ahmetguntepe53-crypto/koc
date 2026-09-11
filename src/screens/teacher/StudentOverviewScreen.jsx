@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, BarChart3, ChevronRight, Plus, AlertTriangle } from "lucide-react";
+import { ArrowLeft, ChevronRight, Plus, AlertTriangle } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
 import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, Avatar, Modal } from "../../components/common.jsx";
 import { api } from "../../api.js";
@@ -140,7 +140,7 @@ function UrgencyPill({ endDate }) {
   return null;
 }
 
-export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignment, onCreateAssignment, onOpenReport, noteOpen, onCloseNote }) {
+export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignment, onCreateAssignment, noteOpen, onCloseNote }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -202,22 +202,16 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
       </button>
 
       <Card style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-            <Avatar name={student.name} size={44} />
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontFamily: displayFont, fontSize: 17, fontWeight: 800, color: C.text }}>{student.name}</span>
-                {student.className && <Pill>{student.className}</Pill>}
-                {student.gradeLevel && <Pill tone="amber">{student.gradeLevel}. Sınıf ({trackForGrade(student.gradeLevel)})</Pill>}
-                {student.banned && <Pill tone="red">Askıda</Pill>}
-              </div>
-              <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 3 }}>{student.email}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <Avatar name={student.name} size={44} />
+          <div style={{ minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontFamily: displayFont, fontSize: 17, fontWeight: 800, color: C.text }}>{student.name}</span>
+              {student.className && <Pill>{student.className}</Pill>}
+              {student.gradeLevel && <Pill tone="amber">{student.gradeLevel}. Sınıf ({trackForGrade(student.gradeLevel)})</Pill>}
+              {student.banned && <Pill tone="red">Askıda</Pill>}
             </div>
           </div>
-          {onOpenReport && (
-            <Button small variant="secondary" icon={BarChart3} onClick={() => onOpenReport(studentId, student.name)}>Raporunu Gör</Button>
-          )}
         </div>
       </Card>
 

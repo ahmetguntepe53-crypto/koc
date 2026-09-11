@@ -39,7 +39,7 @@ export default function TeacherStudentsScreen({ onOpen }) {
             const track = trackForGrade(s.gradeLevel);
             return (
               <Card key={s.id} hover={!!onOpen} style={{ padding: 16, cursor: onOpen ? "pointer" : "default" }}>
-                <div onClick={onOpen ? () => onOpen(s.id) : undefined} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                <div onClick={onOpen ? () => onOpen(s.id, s.name) : undefined} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <Avatar name={s.name} size={38} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
