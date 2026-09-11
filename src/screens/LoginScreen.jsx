@@ -93,11 +93,11 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
         <div style={{ width: "100%", maxWidth: 380 }}>
           {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand */}
           <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26 }}>
-            <AnimatedLogo width={120} />
+            <AnimatedLogo width={180} />
           </div>
           <div style={{ marginBottom: 28 }}>
-            <div style={{ fontFamily: displayFont, fontSize: 22, fontWeight: 800, color: C.text }}>
-              {forgotSent ? "" : forgotMode ? "Şifreni sıfırla" : "Tekrar hoş geldin"}
+            <div style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text }}>
+              {forgotSent ? "" : forgotMode ? "Şifreni sıfırla" : "Mehmet Akif İnan Koçluk Sistemine Hoş Geldiniz"}
             </div>
             {!forgotSent && (
               <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted, marginTop: 4 }}>
