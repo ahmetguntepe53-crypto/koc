@@ -12,12 +12,14 @@ function net(correctCount, wrongCount) {
   return Math.round((correctCount - wrongCount / 4) * 100) / 100;
 }
 
+// KULLANICI İSTEĞİ: "Tümü" en başta aktif haldeydi — öğretmen ekranı açar açmaz önce BUGÜNÜ görmeli,
+// "Tümü" daha az kullanılan bir seçenek olduğu için listenin sonuna alındı.
 const DATE_FILTERS = [
-  { value: "all", label: "Tümü" },
   { value: "today", label: "Bugün" },
   { value: "week", label: "Bu Hafta" },
   { value: "month", label: "Bu Ay" },
   { value: "range", label: "Aralık" },
+  { value: "all", label: "Tümü" },
 ];
 
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
@@ -146,7 +148,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
   const [error, setError] = useState("");
   // Üstteki "Toplam/Bekleyen/Tamamlanan" kartlarına tıklayınca aşağıdaki listeyi filtreler.
   const [filter, setFilter] = useState("all"); // "all" | "pending" | "completed"
-  const [dateFilter, setDateFilter] = useState("all"); // bkz. DATE_FILTERS
+  const [dateFilter, setDateFilter] = useState("today"); // bkz. DATE_FILTERS — varsayılan artık "Bugün"
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
   // Geciken/Bekleyen/Tamamlanan — üçü de başta yalnızca 1 tanesi gösterilir, "Devamını Gör" her
