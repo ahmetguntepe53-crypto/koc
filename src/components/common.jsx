@@ -59,12 +59,17 @@ export function LogoMark({ width = 34, radius = 10 }) {
 }
 
 export function Card({ children, style, hover, onClick }) {
+  // İnce, iki renkli (accent→accent2) bir üst şerit — kartın kendi border-radius'u tarafından otomatik
+  // kırpılır (ayrı bir çocuk eleman/overflow:hidden gerekmez). Gölge bilerek NÖTR bırakıldı: rengin
+  // şeritle sınırlı kalması, Card'ın kullanıldığı HER yerin (satır listeleri dahil) aynı rengin tonuna
+  // bürünmesini önler.
   return (
     <div
       onClick={onClick}
       className={hover ? "k-card-hover" : undefined}
       style={{
-        background: C.surface, border: `1px solid ${C.border}`,
+        background: `linear-gradient(90deg, ${C.accent}, ${C.accent2}) top left / 100% 3px no-repeat, ${C.surface}`,
+        border: `1px solid ${C.border}`,
         borderRadius: C.radiusMd, padding: 20,
         boxShadow: C.shadowMd,
         ...style,
@@ -348,19 +353,25 @@ export function PageHeader({ title, subtitle, right }) {
 // onClick verilirse bir <button> olarak render edilir (ör. StudentOverviewScreen'de altındaki
 // listeyi filtrelemek için) — verilmezse eskisi gibi salt bilgi amaçlı bir <div>.
 export function StatCard({ label, value, tone = "muted", onClick, active }) {
-  const tones = { muted: C.text, accent: C.accent, green: C.green, amber: C.amber, red: C.red };
+  // Her kart kendi tonunun yumuşak zeminini (soft) taşır — eskiden hepsi düz beyazdı, yalnızca
+  // rakamın rengi değişiyordu; artık kart bütünüyle o rengin kimliğini taşıyor. "active" (seçili
+  // filtre) durumunda zemin AYNI kalır, yalnızca kenarlık o tonun güçlü rengine döner — böylece
+  // seçili bir "Geciken" kartı kırmızı, seçili bir "Bekleyen" kartı kehribar çerçeveli kalır,
+  // hepsi tek bir "seçili = mor" rengine boyanmaz.
+  const strong = { muted: C.text, accent: C.accent, green: C.green, amber: C.amber, red: C.red };
+  const soft = { muted: C.surface2, accent: C.accentSoft, green: C.greenSoft, amber: C.amberSoft, red: C.redSoft };
   const Comp = onClick ? "button" : "div";
   return (
     <Comp
       type={onClick ? "button" : undefined}
       onClick={onClick}
       style={{
-        background: active ? C.accentSoft : C.surface, border: `1.5px solid ${active ? C.accent : C.border}`,
+        background: soft[tone], border: `1.5px solid ${active ? strong[tone] : "transparent"}`,
         borderRadius: C.radiusMd, padding: "14px 16px", minWidth: 120, flex: 1, boxShadow: C.shadowSm,
         textAlign: "left", cursor: onClick ? "pointer" : "default", fontFamily: "inherit",
       }}
     >
-      <div style={{ fontFamily: displayFont, fontSize: 24, fontWeight: 800, color: tones[tone] }}>{value}</div>
+      <div style={{ fontFamily: displayFont, fontSize: 24, fontWeight: 800, color: strong[tone] }}>{value}</div>
       <div style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 700, color: C.mutedLight, marginTop: 3, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div>
     </Comp>
   );
