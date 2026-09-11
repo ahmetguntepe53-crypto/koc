@@ -3,7 +3,7 @@ import { ArrowLeft, BarChart3, ChevronRight, Plus, AlertTriangle } from "lucide-
 import { C, displayFont, bodyFont } from "../../theme.js";
 import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, Avatar } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { trackForGrade } from "../../subjects.js";
+import { trackForGrade, subjectIcon } from "../../subjects.js";
 import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
 
 // TYT/AYT/LGS'nin standart net hesaplama formülü — server/src/routes/stats.js'deki net()'in
@@ -46,10 +46,17 @@ function SectionTitle({ children }) {
 }
 
 function RecipientRow({ r, onOpen }) {
+  const SubjectIcon = subjectIcon(r.assignment.subject);
   return (
     <Card hover style={{ padding: 14, cursor: "pointer" }}>
       <div onClick={() => onOpen(r.assignmentId, "studentOverview")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
+        <div style={{
+          width: 34, height: 34, borderRadius: 999, background: C.accentSoft, flexShrink: 0,
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}>
+          <SubjectIcon size={16} color={C.accent} strokeWidth={2} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text }}>{r.assignment.subject} — {r.assignment.topic}</span>
             <Pill>{r.assignment.examType}</Pill>
