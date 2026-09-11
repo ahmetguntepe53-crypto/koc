@@ -91,8 +91,15 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
 
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: C.bg }}>
         <div style={{ width: "100%", maxWidth: 380 }}>
-          {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand */}
-          <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26 }}>
+          {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand.
+              Logonun arkasında yumuşak, yukarı doğru açılan beyaz bir parıltı (glow) — koyu temada
+              amblem düz zemine gömülü durmasın, canlı bir ışık huzmesinin içinden çıkıyormuş gibi görünsün. */}
+          <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26, position: "relative" }}>
+            <div style={{
+              position: "absolute", top: -60, left: "50%", transform: "translateX(-50%)",
+              width: 380, height: 340, pointerEvents: "none",
+              background: "radial-gradient(ellipse 60% 55% at 50% 30%, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0.08) 45%, rgba(255,255,255,0) 75%)",
+            }} />
             <AnimatedLogo width={144} />
           </div>
           <div style={{ marginBottom: 28 }}>
