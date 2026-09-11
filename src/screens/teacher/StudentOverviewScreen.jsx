@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronRight, Plus, AlertTriangle } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, Avatar, Modal } from "../../components/common.jsx";
+import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, Avatar, Modal, ShowMoreButton } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { trackForGrade, subjectIconUrl } from "../../subjects.js";
 import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
@@ -149,6 +149,16 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
   const [dateFilter, setDateFilter] = useState("all"); // bkz. DATE_FILTERS
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
+  // Geciken/Bekleyen/Tamamlanan — üçü de başta yalnızca 1 tanesi gösterilir, "Devamını Gör" her
+  // basışta 5 tane daha açar. Öğrenci ya da tarih aralığı değişince baştan başlar.
+  const [visibleOverdueCount, setVisibleOverdueCount] = useState(1);
+  const [visiblePendingCount, setVisiblePendingCount] = useState(1);
+  const [visibleCompletedCount, setVisibleCompletedCount] = useState(1);
+  useEffect(() => {
+    setVisibleOverdueCount(1);
+    setVisiblePendingCount(1);
+    setVisibleCompletedCount(1);
+  }, [studentId, dateFilter, rangeStart, rangeEnd]);
 
   useEffect(() => {
     setLoading(true);
@@ -194,6 +204,9 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
   const overdue = pending.filter((r) => r.assignment.status === "SENT" && daysUntil(r.assignment.endDate) < 0);
   const notOverdue = pending.filter((r) => !(r.assignment.status === "SENT" && daysUntil(r.assignment.endDate) < 0));
   const completed = dateFilteredRecipients.filter((r) => r.completed);
+  const visibleOverdue = overdue.slice(0, visibleOverdueCount);
+  const visiblePending = notOverdue.slice(0, visiblePendingCount);
+  const visibleCompleted = completed.slice(0, visibleCompletedCount);
 
   return (
     <div style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
@@ -257,9 +270,12 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
               {overdue.length === 0 ? (
                 <EmptyState text="Geciken ödevi yok." />
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {overdue.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} />)}
-                </div>
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {visibleOverdue.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} />)}
+                  </div>
+                  <ShowMoreButton remaining={overdue.length - visibleOverdue.length} onClick={() => setVisibleOverdueCount((n) => n + 5)} />
+                </>
               )}
             </div>
           )}
@@ -269,9 +285,12 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
               {notOverdue.length === 0 ? (
                 <EmptyState text="Bekleyen ödevi yok." />
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {notOverdue.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} />)}
-                </div>
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {visiblePending.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} />)}
+                  </div>
+                  <ShowMoreButton remaining={notOverdue.length - visiblePending.length} onClick={() => setVisiblePendingCount((n) => n + 5)} />
+                </>
               )}
             </div>
           )}
@@ -281,9 +300,12 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
               {completed.length === 0 ? (
                 <EmptyState text="Henüz tamamlanmış ödev yok." />
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {completed.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} />)}
-                </div>
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {visibleCompleted.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} />)}
+                  </div>
+                  <ShowMoreButton remaining={completed.length - visibleCompleted.length} onClick={() => setVisibleCompletedCount((n) => n + 5)} />
+                </>
               )}
             </div>
           )}

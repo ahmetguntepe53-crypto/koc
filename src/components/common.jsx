@@ -390,3 +390,13 @@ export function EmptyState({ text, icon: Icon }) {
     </div>
   );
 }
+
+// Sayfalanmış listelerin altındaki "Devamını Gör" düğmesi — kalan öğe yoksa hiç render edilmez.
+export function ShowMoreButton({ remaining, onClick }) {
+  if (remaining <= 0) return null;
+  return (
+    <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
+      <Button variant="secondary" small onClick={onClick}>Devamını Gör ({remaining} tane daha)</Button>
+    </div>
+  );
+}

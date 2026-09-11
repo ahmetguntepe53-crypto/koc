@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { ChevronRight, CalendarClock, AlertTriangle, BookOpen, ListOrdered } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Select, Pill, EmptyState, StatCard } from "../../components/common.jsx";
+import { Card, Select, Pill, EmptyState, StatCard, ShowMoreButton } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { ALL_SUBJECTS, trackForGrade, subjectIconUrl } from "../../subjects.js";
 import { daysUntil } from "../../dates.js";
 
-const COMPLETED_PAGE_SIZE = 10;
-const COMPLETED_INITIAL_COUNT = 2;
+// Geciken/Bekleyen/Tamamlanan — üçü de aynı sayfalama kuralına uyar: başta yalnızca 1 tanesi
+// gösterilir, "Devamını Gör" her basışta 5 tane daha açar.
+const PAGE_SIZE = 5;
+const INITIAL_COUNT = 1;
 
 function AssignmentRow({ r, onOpen }) {
   const daysLeft = !r.completed ? daysUntil(r.assignment.endDate) : 0;
@@ -157,9 +159,11 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
   const [loadError, setLoadError] = useState("");
   const [stats, setStats] = useState(null);
   const [examDates, setExamDates] = useState(null);
-  // Tamamlananlar ilk açılışta yalnızca 2 tanesi gösterilir — "Devamını Gör" her basışta 10 tane
-  // daha açar. Ders filtresi ya da liste değişince (yeni bir ödev tamamlanınca) baştan başlar.
-  const [visibleCompletedCount, setVisibleCompletedCount] = useState(COMPLETED_INITIAL_COUNT);
+  // Her üç bölüm (Geciken/Bekleyen/Tamamlanan) ilk açılışta yalnızca 1 tanesi gösterilir —
+  // "Devamını Gör" her basışta 5 tane daha açar. Ders filtresi ya da liste değişince baştan başlar.
+  const [visibleOverdueCount, setVisibleOverdueCount] = useState(INITIAL_COUNT);
+  const [visiblePendingCount, setVisiblePendingCount] = useState(INITIAL_COUNT);
+  const [visibleCompletedCount, setVisibleCompletedCount] = useState(INITIAL_COUNT);
   // Üstteki "Bekleyen/Geciken/Tamamlanan" kartlarına tıklayınca aşağıdaki listeyi filtreler —
   // aynı karta tekrar basmak "Tümü"ne (varsayılan, iki bölüm birden) geri döner.
   const [assignmentFilter, setAssignmentFilter] = useState("all"); // "all" | "pending" | "overdue" | "completed"
@@ -176,7 +180,12 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
 
   useEffect(() => { api.studentStats().then(setStats).catch(() => {}); }, [refreshKey]);
   useEffect(() => { api.getExamDates().then(setExamDates).catch(() => {}); }, []);
-  useEffect(() => { setVisibleCompletedCount(COMPLETED_INITIAL_COUNT); setAssignmentFilter("all"); }, [subject, refreshKey]);
+  useEffect(() => {
+    setVisibleOverdueCount(INITIAL_COUNT);
+    setVisiblePendingCount(INITIAL_COUNT);
+    setVisibleCompletedCount(INITIAL_COUNT);
+    setAssignmentFilter("all");
+  }, [subject, refreshKey]);
 
   const pending = recipients.filter((r) => !r.completed);
   // Geciken ödevler artık kendi ayrı başlığında (en üstte) gösteriliyor — "Bekleyen Ödevler"
@@ -187,8 +196,9 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
     .filter((r) => daysUntil(r.assignment.endDate) >= 0)
     .sort((a, b) => daysUntil(a.assignment.endDate) - daysUntil(b.assignment.endDate));
   const completed = recipients.filter((r) => r.completed);
+  const visibleOverdue = overdue.slice(0, visibleOverdueCount);
+  const visiblePending = notOverdue.slice(0, visiblePendingCount);
   const visibleCompleted = completed.slice(0, visibleCompletedCount);
-  const hasMoreCompleted = completed.length > visibleCompletedCount;
 
   // 7-8. sınıf LGS'ye, 9-12. sınıf YKS'ye hazırlanıyor (bkz. subjects.js > trackForGrade) — sayaç
   // öğrencinin kendi sınavına göre otomatik seçilir, admin panelinden girilen tarihi okur.
@@ -231,9 +241,12 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
               {overdue.length === 0 ? (
                 <EmptyState text="Geciken ödevin yok." />
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {overdue.map((r) => <AssignmentRow key={r.id} r={r} onOpen={onOpen} />)}
-                </div>
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {visibleOverdue.map((r) => <AssignmentRow key={r.id} r={r} onOpen={onOpen} />)}
+                  </div>
+                  <ShowMoreButton remaining={overdue.length - visibleOverdue.length} onClick={() => setVisibleOverdueCount((n) => n + PAGE_SIZE)} />
+                </>
               )}
             </div>
           )}
@@ -243,9 +256,12 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
               {notOverdue.length === 0 ? (
                 <EmptyState text="Bekleyen ödevin yok, harika gidiyorsun." />
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                  {notOverdue.map((r) => <AssignmentRow key={r.id} r={r} onOpen={onOpen} />)}
-                </div>
+                <>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {visiblePending.map((r) => <AssignmentRow key={r.id} r={r} onOpen={onOpen} />)}
+                  </div>
+                  <ShowMoreButton remaining={notOverdue.length - visiblePending.length} onClick={() => setVisiblePendingCount((n) => n + PAGE_SIZE)} />
+                </>
               )}
             </div>
           )}
@@ -260,13 +276,7 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                     {visibleCompleted.map((r) => <AssignmentRow key={r.id} r={r} onOpen={onOpen} />)}
                   </div>
-                  {hasMoreCompleted && (
-                    <div style={{ display: "flex", justifyContent: "center", marginTop: 14 }}>
-                      <Button variant="secondary" small onClick={() => setVisibleCompletedCount((n) => n + COMPLETED_PAGE_SIZE)}>
-                        Devamını Gör ({completed.length - visibleCompleted.length} tane daha)
-                      </Button>
-                    </div>
-                  )}
+                  <ShowMoreButton remaining={completed.length - visibleCompleted.length} onClick={() => setVisibleCompletedCount((n) => n + PAGE_SIZE)} />
                 </>
               )}
             </div>
