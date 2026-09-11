@@ -1,32 +1,52 @@
 import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
-import { C, bodyFont } from "../../theme.js";
-import { Card, Pill, EmptyState, StatCard, Avatar } from "../../components/common.jsx";
+import { C, displayFont, bodyFont } from "../../theme.js";
+import { Card, Pill, EmptyState, Avatar } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { trackForGrade } from "../../subjects.js";
 
+// Öğrencinin kendi tamamlama oranı kutusu için renk — ReportScreen'deki başarı oranı eşikleriyle aynı.
+function rateTone(rate) {
+  if (rate == null) return "muted";
+  if (rate >= 70) return "green";
+  if (rate >= 40) return "amber";
+  return "red";
+}
+
+function CompletionBox({ rate }) {
+  const tone = rateTone(rate);
+  const colors = {
+    muted: { bg: C.surface2, color: C.mutedLight },
+    green: { bg: C.greenSoft, color: C.green },
+    amber: { bg: C.amberSoft, color: C.amber },
+    red: { bg: C.redSoft, color: C.red },
+  }[tone];
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      minWidth: 56, padding: "6px 10px", borderRadius: 10, background: colors.bg, flexShrink: 0,
+    }}>
+      <span style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, color: colors.color, lineHeight: 1.1 }}>
+        {rate != null ? `%${rate}` : "—"}
+      </span>
+      <span style={{ fontFamily: bodyFont, fontSize: 8.5, fontWeight: 700, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.3, marginTop: 2 }}>
+        Tamamlama
+      </span>
+    </div>
+  );
+}
+
 export default function TeacherStudentsScreen({ onOpen }) {
   const [students, setStudents] = useState([]);
-  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     api.teacherListStudents().then(({ students }) => setStudents(students)).catch((e) => setLoadError(e.message || "Öğrenci listesi yüklenemedi")).finally(() => setLoading(false));
-    api.teacherStats().then(setStats).catch(() => {});
   }, []);
 
   return (
     <div style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-      {stats && (
-        <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
-          <StatCard label="Öğrenci" value={stats.studentCount} tone="accent" />
-          <StatCard label="Bekleyen Taslak" value={stats.draftCount} tone="amber" />
-          <StatCard label="Gönderilen Ödev" value={stats.sentCount} tone="muted" />
-          <StatCard label="Tamamlanma Oranı" value={stats.completionRate != null ? `%${stats.completionRate}` : "—"} tone="green" />
-        </div>
-      )}
-
       {loading ? (
         <EmptyState text="Yükleniyor..." />
       ) : loadError ? (
@@ -51,6 +71,7 @@ export default function TeacherStudentsScreen({ onOpen }) {
                       {s.banned && <Pill tone="red">Askıda</Pill>}
                     </div>
                   </div>
+                  <CompletionBox rate={s.completionRate} />
                   {onOpen && <ChevronRight size={18} color={C.muted} />}
                 </div>
               </Card>
