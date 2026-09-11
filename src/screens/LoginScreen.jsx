@@ -89,11 +89,14 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
         </div>
       </div>
 
-      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24, background: C.bg }}>
+      <div className="k-login-form-panel" style={{
+        flex: 1, display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+        background: `radial-gradient(65% 40% at 50% 0%, ${C.accentSoft}, ${C.bg} 70%)`,
+      }}>
         <div style={{ width: "100%", maxWidth: 380 }}>
           {/* Yalnızca dar ekranda (marka paneli gizliyken) görünür — bkz. index.html > .k-login-mobile-brand */}
           <div className="k-login-mobile-brand" style={{ display: "none", justifyContent: "center", marginBottom: 26 }}>
-            <AnimatedLogo width={180} />
+            <AnimatedLogo width={220} />
           </div>
           <div style={{ marginBottom: 28 }}>
             <div style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text }}>

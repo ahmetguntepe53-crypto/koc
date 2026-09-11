@@ -84,6 +84,9 @@
         /* Marka paneli gizlenince giriş ekranında hiç logo kalmıyordu — dar ekranda formun
            üstünde kompakt bir amblem gösterilir. */
         .k-login-mobile-brand { display: flex !important; }
+        /* Dar ekranda içerik (logo + form) dikey ortalanmak yerine yukarı alınır — logo ekranın
+           üst kısmında, parıltının (radial-gradient) tam merkezinde dursun diye. */
+        .k-login-form-panel { align-items: flex-start !important; padding-top: 56px !important; }
       }
 
       /* Telefon genişliğinde (asıl kullanım — Android/iOS uygulaması bu genişlikte açılıyor) kenar
