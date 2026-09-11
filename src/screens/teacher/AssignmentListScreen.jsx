@@ -60,14 +60,14 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
 
   return (
     <div style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
-        <div style={{ minWidth: 170 }}>
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 20, gap: 10 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <Select value={subject} onChange={(e) => setSubject(e.target.value)}>
             <option value="">Tüm dersler</option>
             {ALL_SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
         </div>
-        <div style={{ minWidth: 170 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <Select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Tümü</option>
             <option value="DRAFT">Bekliyor</option>
