@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Plus, Send, Trash2, Clock } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Send, Trash2, Clock, CalendarClock } from "lucide-react";
 import { C, displayFont, bodyFont, monoFont } from "../../theme.js";
 import { Card, Button, Input, Select, Textarea, Pill, Chip, SectionHeader, EmptyState, Modal, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
@@ -88,6 +88,7 @@ export default function PlanScreen({ user }) {
   const [rosterError, setRosterError] = useState("");
   const [modalState, setModalState] = useState(null); // { date: 'YYYY-MM-DD', entry: {...} | null }
   const [dayAgendaDate, setDayAgendaDate] = useState(null); // 'YYYY-MM-DD' | null — yalnızca mobilde kullanılır
+  const [shiftFrom, setShiftFrom] = useState(null); // "Ertele" penceresinin başlangıç kaydı
 
   useEffect(() => {
     api.teacherListStudents().then(({ students }) => setStudents(students)).catch((e) => setRosterError(e.message || "Öğrenci listesi yüklenemedi"));
@@ -109,9 +110,32 @@ export default function PlanScreen({ user }) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3500);
+    // "Geri al" düğmeli bildirim daha uzun kalır — öğretmen fark edip dokunabilsin.
+    const t = setTimeout(() => setToast(null), toast.action ? 12000 : 3500);
     return () => clearTimeout(t);
   }, [toast]);
+
+  const afterShift = (result, weeks) => {
+    setShiftFrom(null);
+    load();
+    setToast({
+      type: "ok",
+      text: `${result.total} konu ${weeks} hafta ertelendi.`,
+      action: {
+        label: "Geri al",
+        run: async () => {
+          setToast(null);
+          try {
+            await api.restorePlanDates(result.undo);
+            setToast({ type: "ok", text: "Erteleme geri alındı." });
+          } catch (e) {
+            setToast({ type: "error", text: e.message || "Geri alınamadı" });
+          }
+          load();
+        },
+      },
+    });
+  };
 
   // Bir kaydın tarihi UTC gece yarısı olarak saklanır (bkz. server > parseDateOnly) — ISO string'in
   // ilk 10 karakteri, saat dilimi dönüşümüne hiç girmeden doğrudan takvim gününü verir.
@@ -156,8 +180,13 @@ export default function PlanScreen({ user }) {
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
       {toast && (
-        <div role={toast.type === "error" ? "alert" : "status"} style={{ marginBottom: 14, padding: "11px 14px", borderRadius: 12, background: toast.type === "error" ? C.redSoft : C.greenSoft, color: toast.type === "error" ? C.red : C.green, fontSize: 12.5, fontWeight: 600, fontFamily: bodyFont }}>
-          {toast.text}
+        <div role={toast.type === "error" ? "alert" : "status"} style={{ marginBottom: 14, padding: "11px 14px", borderRadius: 12, background: toast.type === "error" ? C.redSoft : C.greenSoft, color: toast.type === "error" ? C.red : C.green, fontSize: 12.5, fontWeight: 600, fontFamily: bodyFont, display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ flex: 1, minWidth: 0 }}>{toast.text}</span>
+          {toast.action && (
+            <button type="button" onClick={toast.action.run} style={{ background: "none", border: "none", padding: "2px 4px", cursor: "pointer", fontFamily: bodyFont, fontSize: 12.5, fontWeight: 800, color: "inherit", textDecoration: "underline" }}>
+              {toast.action.label}
+            </button>
+          )}
         </div>
       )}
 
@@ -259,8 +288,11 @@ export default function PlanScreen({ user }) {
           teachingSubjects={user?.teachingSubjects || []}
           onClose={() => setModalState(null)}
           onSaved={afterSave}
+          onShift={(entry) => { setModalState(null); setShiftFrom(entry); }}
         />
       )}
+
+      {shiftFrom && <ShiftModal entry={shiftFrom} onClose={() => setShiftFrom(null)} onDone={afterShift} />}
 
       {dayAgendaDate && (
         <DayAgendaModal
@@ -397,7 +429,7 @@ function defaultSubject(examType, teachingSubjects) {
   return list.find((s) => teachingSubjects.includes(branchOfSubject(s))) || list[0];
 }
 
-function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTeacher, teachingSubjects, onClose, onSaved }) {
+function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTeacher, teachingSubjects, onClose, onSaved, onShift }) {
   const published = !!existing?.assignmentId;
   // Var olan bir kayıt düzenlenirken KENDİ sınav türü kullanılır — açık sekmeninki değil; aksi halde
   // kayıt sessizce başka sınav türüne taşınıyor ya da "Geçersiz ders" hatası veriyordu.
@@ -595,6 +627,11 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
             <Button icon={Send} disabled={saving || busy} onClick={publishNow} style={{ height: 50 }}>Yayınla</Button>
           )}
         </div>
+        {existing?.kind === "TOPIC" && (
+          <Button full variant="secondary" icon={CalendarClock} disabled={saving || busy} onClick={() => onShift(existing)} style={{ marginTop: 10 }}>
+            Ertele — bu haftadan itibaren kaydır
+          </Button>
+        )}
         {existing && (
           <button
             type="button" onClick={remove} disabled={saving || busy}
@@ -604,6 +641,94 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
           </button>
         )}
       </form>
+    </Modal>
+  );
+}
+
+// "Ertele": öğretmen geride kaldığında (hastalık, izin) bu kayıttan itibaren konular kendi planındaki
+// sıradaki haftaya kayar — tatil/sınav haftaları planda boş olduğu için kendiliğinden atlanır (bkz.
+// server > routes/planEntries.js > buildShiftPlan). Önce sunucudan önizleme alınır, hiçbir şey yazılmaz.
+function shortDate(iso) {
+  return new Date(`${iso.slice(0, 10)}T00:00:00`).toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
+}
+
+function ShiftModal({ entry, onClose, onDone }) {
+  const [weeks, setWeeks] = useState(1);
+  const [onlyThis, setOnlyThis] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [multiSubject, setMultiSubject] = useState(false);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const from = entry.date.slice(0, 10);
+  const payload = { from, weeks, ...(onlyThis ? { examType: entry.examType, subject: entry.subject } : {}) };
+  const payloadKey = JSON.stringify(payload);
+
+  useEffect(() => {
+    let alive = true;
+    setPreview(null);
+    setError("");
+    api.previewPlanShift(payload)
+      .then((res) => {
+        if (!alive) return;
+        setPreview(res);
+        if (!onlyThis) setMultiSubject(res.groups.length > 1);
+      })
+      .catch((e) => { if (alive) setError(e.message || "Önizleme alınamadı"); });
+    return () => { alive = false; };
+  }, [payloadKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const apply = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      onDone(await api.shiftPlan(payload), weeks);
+    } catch (e) {
+      setError(e.message || "Ertelenemedi");
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal title="Konuları ertele" onClose={onClose}>
+      <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, lineHeight: 1.5, marginBottom: 14 }}>
+        <strong style={{ color: C.text }}>{shortDate(from)}</strong> tarihinden itibaren her konu, planındaki sıradaki haftanın yerine geçer.
+        Tatil ve sınav haftaları (planda boş olanlar) atlanır; yayınlanmış ödevler ve denemeler yerinde kalır.
+      </div>
+
+      <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 700, color: C.text2, marginBottom: 8 }}>Kaç hafta?</div>
+      <div className="k-chip-row" role="group" aria-label="Kaç hafta" style={{ marginBottom: 14 }}>
+        {[1, 2, 3].map((n) => <Chip key={n} active={weeks === n} onClick={() => setWeeks(n)}>{n} hafta</Chip>)}
+      </div>
+
+      {multiSubject && (
+        <>
+          <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 700, color: C.text2, marginBottom: 8 }}>Hangi dersler?</div>
+          <div className="k-chip-row" role="group" aria-label="Hangi dersler" style={{ marginBottom: 14 }}>
+            <Chip active={!onlyThis} onClick={() => setOnlyThis(false)}>Tüm derslerim</Chip>
+            <Chip active={onlyThis} onClick={() => setOnlyThis(true)}>Yalnızca {entry.examType} {entry.subject}</Chip>
+          </div>
+        </>
+      )}
+
+      <div style={{ background: C.fieldBg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px", marginBottom: 16, minHeight: 44 }}>
+        {!preview && !error && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted }}>Hesaplanıyor…</div>}
+        {preview && preview.total === 0 && (
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted }}>Bu tarihten sonra ertelenecek yayınlanmamış konu yok.</div>
+        )}
+        {preview && preview.groups.map((g) => (
+          <div key={`${g.examType}-${g.subject}`} style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "4px 0", fontFamily: bodyFont, fontSize: 12.5 }}>
+            <span style={{ fontWeight: 700, color: C.text }}>{g.examType} {g.subject}</span>
+            <span style={{ color: C.muted, textAlign: "right" }}>
+              <span style={{ fontFamily: monoFont }}>{g.count}</span> konu · son konu {shortDate(g.lastNewDate)}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {error && <div role="alert" style={{ color: C.red, fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>{error}</div>}
+      <Button full icon={CalendarClock} disabled={busy || !preview || preview.total === 0} onClick={apply}>
+        {busy ? "Erteleniyor..." : preview?.total ? `${preview.total} konuyu ${weeks} hafta ertele` : "Ertele"}
+      </Button>
     </Modal>
   );
 }

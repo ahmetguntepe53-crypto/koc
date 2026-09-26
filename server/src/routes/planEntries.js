@@ -147,6 +147,105 @@ planEntriesRouter.get("/school-wide-count", async (req, res) => {
   }
 });
 
+// "Ertele": öğretmen bir hafta (hastalık, izin...) geride kaldığında, seçilen günden itibaren yayınlanmamış
+// konu kayıtları KENDİ planındaki sıradaki haftaya kayar — her ders (sınav türü + ders) kendi sırasında:
+// n. konu n+hafta. kaydın tarihine geçer, son konular plan bitiminden sonra haftada bir ileri eklenir.
+// Tatil / ortak sınav haftaları planda zaten boş olduğu için ayrı bir okul takvimine gerek kalmadan
+// atlanır. Deneme/tatil ödevi kayıtları tarihe bağlıdır, kaymaz; yayınlanmış ödevlere dokunulmaz.
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MAX_SHIFT_WEEKS = 8;
+
+async function buildShiftPlan(teacherId, body) {
+  const { from, weeks, examType, subject } = body || {};
+  const fromDate = from ? parseDateOnly(from) : null;
+  assert(fromDate, "Geçerli bir başlangıç tarihi gir");
+  const n = Number(weeks);
+  assert(Number.isInteger(n) && n >= 1 && n <= MAX_SHIFT_WEEKS, `En fazla ${MAX_SHIFT_WEEKS} hafta ertelenebilir`);
+  const only = examType !== undefined && examType !== null;
+  if (only) assert(EXAM_TYPES.includes(examType) && isValidSubject(examType, subject), "Geçersiz ders");
+
+  const entries = await prisma.planEntry.findMany({
+    where: { teacherId, kind: "TOPIC", assignmentId: null, date: { gte: fromDate }, ...(only ? { examType, subject } : {}) },
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+  });
+  const groups = new Map();
+  for (const e of entries) {
+    const key = `${e.examType}|${e.subject}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(e);
+  }
+
+  const moves = [];
+  const summary = [];
+  for (const list of groups.values()) {
+    const last = list[list.length - 1];
+    let lastNewDate = null;
+    list.forEach((e, i) => {
+      const j = i + n;
+      const date = j < list.length ? list[j].date : new Date(last.date.getTime() + (j - list.length + 1) * 7 * DAY_MS);
+      // Kayıt kendi süresini korur (haftalık konu haftalık kalır, soru sınırı da geçerli kalır).
+      const endDate = e.endDate ? new Date(date.getTime() + (e.endDate.getTime() - e.date.getTime())) : null;
+      moves.push({ id: e.id, date, endDate, before: { date: e.date, endDate: e.endDate } });
+      lastNewDate = date;
+    });
+    summary.push({ examType: list[0].examType, subject: list[0].subject, count: list.length, firstDate: list[0].date, lastNewDate });
+  }
+  summary.sort((a, b) => a.examType.localeCompare(b.examType) || a.subject.localeCompare(b.subject, "tr"));
+  return { moves, summary };
+}
+
+// Önizleme — hiçbir şey yazmaz; arayüz "hangi dersler, kaç konu, son konu nereye düşüyor" gösterir.
+planEntriesRouter.post("/shift/preview", async (req, res) => {
+  try {
+    const { summary } = await buildShiftPlan(req.userId, req.body);
+    res.json({ groups: summary, total: summary.reduce((s, g) => s + g.count, 0) });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+planEntriesRouter.post("/shift", async (req, res) => {
+  try {
+    const { moves, summary } = await buildShiftPlan(req.userId, req.body);
+    assert(moves.length > 0, "Bu tarihten sonra ertelenecek (yayınlanmamış) konu kaydı yok");
+    await prisma.$transaction(async (tx) => {
+      for (const m of moves) {
+        const r = await tx.planEntry.updateMany({ where: { id: m.id, teacherId: req.userId, assignmentId: null }, data: { date: m.date, endDate: m.endDate } });
+        assert(r.count === 1, "Bir kayıt bu sırada yayınlandı — takvimi yenileyip tekrar dene", 409);
+      }
+    }, { timeout: 30000 });
+    // "Geri al" için eski tarihler — istemci /restore-dates'e aynen geri gönderir.
+    res.json({ groups: summary, total: moves.length, undo: moves.map((m) => ({ id: m.id, date: m.before.date, endDate: m.before.endDate })) });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Ertelemeyi geri alma: kayıtları verilen tarihlere döndürür. Yalnızca öğretmenin kendi, hâlâ
+// yayınlanmamış kayıtları değişir (arada yayınlanan olduysa o kayıt atlanır).
+planEntriesRouter.post("/restore-dates", async (req, res) => {
+  try {
+    const { items } = req.body || {};
+    assert(Array.isArray(items) && items.length > 0 && items.length <= 1000, "Geçersiz istek");
+    const clean = items.map((it) => {
+      const date = parseDateOnly(it?.date);
+      const endDate = it?.endDate ? parseDateOnly(it.endDate) : null;
+      assert(typeof it?.id === "string" && date && (!it.endDate || (endDate && endDate >= date)), "Geçersiz istek");
+      return { id: it.id, date, endDate };
+    });
+    let restored = 0;
+    await prisma.$transaction(async (tx) => {
+      for (const it of clean) {
+        const r = await tx.planEntry.updateMany({ where: { id: it.id, teacherId: req.userId, assignmentId: null }, data: { date: it.date, endDate: it.endDate } });
+        restored += r.count;
+      }
+    }, { timeout: 30000 });
+    res.json({ restored });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
 planEntriesRouter.delete("/:id", async (req, res) => {
   try {
     const existing = await loadOwnedUnpublishedEntry(req);

@@ -152,6 +152,10 @@ export const api = {
   savePlanEntry: (id, payload) => request(`/plan-entries/${id}`, { method: "PUT", body: payload }),
   deletePlanEntry: (id) => request(`/plan-entries/${id}`, { method: "DELETE" }),
   publishPlanEntry: (id) => request(`/plan-entries/${id}/publish`, { method: "POST" }),
+  // "Ertele": { from: "YYYY-MM-DD", weeks, examType?, subject? } — önizleme hiçbir şey yazmaz.
+  previewPlanShift: (payload) => request("/plan-entries/shift/preview", { method: "POST", body: payload }),
+  shiftPlan: (payload) => request("/plan-entries/shift", { method: "POST", body: payload }),
+  restorePlanDates: (items) => request("/plan-entries/restore-dates", { method: "POST", body: { items } }),
   planSchoolWideCount: (examType) => request(`/plan-entries/school-wide-count?examType=${encodeURIComponent(examType)}`),
 
   // --- bildirimler ---
