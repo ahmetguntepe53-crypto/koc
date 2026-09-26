@@ -4,21 +4,20 @@
 // Kullanım (server/ klasöründen, .env'deki DATABASE_URL'e yazar):
 //   node scripts/import-roster.js data/roster-2026.json            → KURU ÇALIŞMA: yalnızca rapor, hiçbir şey yazılmaz
 //   node scripts/import-roster.js data/roster-2026.json --apply    → uygular
-//   ... --apply --reset-passwords   → önceden kendi şifresini belirlemiş öğrencilerin şifresini de okul no'ya çeker
+//   ... --apply --reset-passwords   → önceden kendi şifresini belirlemiş hesapların şifresini de başlangıç
+//                                       şifresine çeker (öğrenci: okul no, öğretmen: kullanıcı adı)
 //
 // Kurallar (okul yönetiminin isteği):
 // - Öğrenci: kullanıcı adı = okul numarası, ilk şifre = okul numarası (ilk girişte değiştirmek zorunlu).
-// - Öğretmen: kullanıcı adı = ad.soyad (Türkçe karaktersiz, ör. "ali.cihangir"); ilk şifre rastgele
-//   üretilir ve data/ altına bir CSV olarak yazılır (dağıtmak için; ilk girişte değiştirilir) — öğretmen hesabı tüm öğrencilerinin
-//   verisini gördüğü için tahmin edilebilir bir şifre verilmez.
+// - Öğretmen: kullanıcı adı = ad.soyad (Türkçe karaktersiz, ör. "ali.cihangir"), ilk şifre = kullanıcı adı
+//   (okul yönetiminin isteği; tahmin edilebilir olduğu için ilk girişte değiştirmek zorunlu — mustChangePassword).
 // - Tekrar çalıştırmak güvenlidir: var olan hesaplar kullanıcı adına, yoksa ada göre bulunur, ikinci kez
-//   oluşturulmaz. Var olan bir öğretmenin/öğrencinin şifresi (ve e-postası) değiştirilmez
-//   (öğrencide --reset-passwords hariç).
+//   oluşturulmaz. Var olan bir hesabın kendi belirlediği şifresi (ve e-postası) değiştirilmez
+//   (--reset-passwords hariç); kullanıcı adı yoksa eklenir.
 // - Liste dosyası reşit olmayanların kişisel verisidir: server/data/ git dışıdır (bkz. .gitignore).
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
-import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/db.js";
 
@@ -52,13 +51,6 @@ function teacherUsername(name) {
   return foldName(name).split(" ").join(".");
 }
 
-// Karıştırılabilecek karakterler (0/O, 1/l/I) olmadan, okuması ve yazdırması kolay 10 karakter.
-function randomPassword() {
-  const alphabet = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const bytes = crypto.randomBytes(10);
-  return Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
-}
-
 function fail(msg) {
   console.error(`HATA: ${msg}`);
   process.exit(1);
@@ -89,11 +81,10 @@ console.log(`Liste: ${counts.teachers} öğretmen, ${counts.students} öğrenci 
 console.log(APPLY ? "Mod: UYGULA\n" : "Mod: KURU ÇALIŞMA (hiçbir şey yazılmayacak — uygulamak için --apply)\n");
 
 const report = { teachersCreated: [], teachersMatched: [], studentsCreated: 0, studentsUpdated: 0, studentsUnchanged: 0, passwordsReset: 0, conflicts: [] };
-const credentials = [];
 
 async function main() {
   // --- Öğretmenler ---
-  const existingTeachers = await prisma.user.findMany({ where: { role: "TEACHER" }, select: { id: true, name: true, username: true, email: true } });
+  const existingTeachers = await prisma.user.findMany({ where: { role: "TEACHER" }, select: { id: true, name: true, username: true, email: true, passwordHash: true } });
   const teacherIdByName = new Map();
   for (const t of roster.teachers) {
     const displayName = titleCaseTr(t.name);
@@ -103,18 +94,31 @@ async function main() {
     if (byName.length > 1) report.conflicts.push(`Öğretmen "${displayName}" adıyla birden fazla hesap var — elle kontrol et`);
     if (match) {
       teacherIdByName.set(t.name, match.id);
-      report.teachersMatched.push(`${displayName} (${match.username || match.email})`);
+      // Var olan öğretmen: kullanıcı adı yoksa eklenir (çakışmıyorsa); şifresi yalnızca hiç yoksa ya da
+      // --reset-passwords ile başlangıç şifresine (= kullanıcı adı) çekilir.
+      const data = {};
+      const loginName = match.username || username;
+      if (!match.username) {
+        const clash = await prisma.user.findFirst({ where: { OR: [{ username }, { email: username }], NOT: { id: match.id } }, select: { id: true } });
+        if (clash) report.conflicts.push(`"${username}" kullanıcı adı başka bir hesapta — ${displayName} e-postasıyla girmeye devam eder`);
+        else data.username = username;
+      }
+      if ((!match.passwordHash || RESET_PASSWORDS) && (match.username || data.username)) {
+        data.passwordHash = await bcrypt.hash(loginName, 10);
+        data.mustChangePassword = true;
+        if (match.passwordHash) { data.tokenVersion = { increment: 1 }; report.passwordsReset++; }
+      }
+      if (APPLY && Object.keys(data).length) await prisma.user.update({ where: { id: match.id }, data });
+      report.teachersMatched.push(`${displayName} (${data.username ? `kullanıcı adı eklendi: ${data.username}` : match.username || match.email}${data.passwordHash ? ", ilk şifre = kullanıcı adı" : ""})`);
       continue;
     }
     // Kullanıcı adı başka bir hesapta (e-posta ya da kullanıcı adı olarak) kullanılıyorsa yeni hesap açılmaz.
     const clash = await prisma.user.findFirst({ where: { OR: [{ username }, { email: username }] }, select: { id: true, role: true } });
     if (clash) { report.conflicts.push(`"${username}" kullanıcı adı başka bir hesapta kullanılıyor — ${displayName} oluşturulmadı`); continue; }
-    const password = randomPassword();
-    report.teachersCreated.push(`${displayName} → ${username}`);
-    credentials.push({ role: "Öğretmen", name: displayName, username, password });
+    report.teachersCreated.push(`${displayName} → kullanıcı adı ve ilk şifre: ${username}`);
     if (APPLY) {
       const created = await prisma.user.create({
-        data: { role: "TEACHER", name: displayName, username, passwordHash: await bcrypt.hash(password, 10), mustChangePassword: true },
+        data: { role: "TEACHER", name: displayName, username, passwordHash: await bcrypt.hash(username, 10), mustChangePassword: true },
       });
       teacherIdByName.set(t.name, created.id);
     } else {
@@ -184,19 +188,14 @@ async function main() {
   console.log(`Öğretmen — eşleşen: ${report.teachersMatched.length}, yeni: ${report.teachersCreated.length}`);
   report.teachersMatched.forEach((t) => console.log(`  = ${t}`));
   report.teachersCreated.forEach((t) => console.log(`  + ${t}`));
-  console.log(`Öğrenci — yeni: ${report.studentsCreated}, güncellenen: ${report.studentsUpdated}, değişmeyen: ${report.studentsUnchanged}, şifresi sıfırlanan: ${report.passwordsReset}`);
+  console.log(`Öğrenci — yeni: ${report.studentsCreated}, güncellenen: ${report.studentsUpdated}, değişmeyen: ${report.studentsUnchanged}`);
+  if (report.passwordsReset) console.log(`Kendi şifresi başlangıç şifresine çekilen hesap (öğretmen + öğrenci): ${report.passwordsReset}`);
   if (notInRoster.length) console.log(`Listede olmayan ${notInRoster.length} öğrenci hesabı var (dokunulmadı): ${notInRoster.map((e) => e.name).join(", ")}`);
   if (report.conflicts.length) {
     console.log(`\nDikkat (${report.conflicts.length}):`);
     report.conflicts.forEach((c) => console.log(`  ! ${c}`));
   }
 
-  if (APPLY && credentials.length) {
-    const out = path.join(path.dirname(path.resolve(file)), `ogretmen-sifreleri-${new Date().toISOString().slice(0, 10)}.csv`);
-    const csv = ["Rol;Ad Soyad;Kullanıcı adı;İlk şifre", ...credentials.map((c) => `${c.role};${c.name};${c.username};${c.password}`)].join("\n");
-    fs.writeFileSync(out, "﻿" + csv, { mode: 0o600 });
-    console.log(`\nYeni öğretmen şifreleri: ${out} (git dışında — dağıttıktan sonra sil)`);
-  }
   if (!APPLY) console.log("\nKuru çalışmaydı — hiçbir şey yazılmadı. Uygulamak için aynı komutu --apply ile çalıştır.");
 }
 
