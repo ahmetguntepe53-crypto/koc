@@ -462,7 +462,7 @@ function Discipline({ model, isCoach, onOpenRecipient, onOpenAssignment }) {
   const silentColor = isCoach ? C.red : C.amber;
   const openList = openMore ? d.open : d.open.slice(0, 5);
   return (
-    <Section id="odev" title="Ödev düzeni" info="Teslim % = zamanında + geç teslim / vadesi gelen ödev. Ele alınan % = teslim + pas / vadesi gelen. Pas geçmek dürüst bir 'ele alma'dır; seriyi bozmaz.">
+    <Section id="odev" title="Ödev düzeni" info="Teslim % = teslim edilen / vadesi gelen ödev. Ele alınan % = teslim + pas / vadesi gelen. Pas geçmek dürüst bir 'ele alma'dır; seriyi bozmaz. Süresi içinde pas geçip sonra yine de çözdüğün ödev 'pastan dönüş'tür: teslim sayılır, gecikme sayılmaz.">
       <Card style={{ padding: 16 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
           <span><span style={mono(24)}>{t.V >= 5 ? fmtPct(t.deliveredPct) : `${t.delivered}/${t.V}`}</span> <span style={text(12, 500, C.mutedLight)}>teslim</span></span>
@@ -472,13 +472,15 @@ function Discipline({ model, isCoach, onOpenRecipient, onOpenAssignment }) {
         <div style={{ marginTop: 12 }}>
           <SegmentBar parts={[
             { label: "Zamanında", value: t.onTime, color: C.green },
-            { label: "Geç", value: t.late, color: `${C.green}88` },
+            { label: "Pastan dönüş", value: t.fixed, color: `${C.green}BB` },
+            { label: "Geç", value: t.late, color: `${C.green}77` },
             { label: "Pas", value: t.skip, color: C.amber },
             { label: "Sessiz", value: t.silent, color: silentColor },
           ]} />
           <Legend style={{ marginTop: 8 }} items={[
             { label: "zamanında", value: t.onTime, color: C.green },
-            { label: "geç", value: t.late, color: `${C.green}88` },
+            ...(t.fixed ? [{ label: "pastan dönüş", value: t.fixed, color: `${C.green}BB` }] : []),
+            { label: "geç", value: t.late, color: `${C.green}77` },
             { label: "pas", value: t.skip, color: C.amber },
             { label: "sessiz", value: t.silent, color: silentColor },
           ]} />

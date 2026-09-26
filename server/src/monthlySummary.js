@@ -123,12 +123,12 @@ export async function buildMonthlySummary(studentId, month, now = new Date()) {
   const skipReasons = { konuyuBilmiyorum: 0, zamanYetmedi: 0, kaynagimYok: 0, baskaSebep: 0 };
   const reasonKey = { KONU: "konuyuBilmiyorum", ZAMAN: "zamanYetmedi", KAYNAK: "kaynagimYok", DIGER: "baskaSebep" };
   const activeDays = new Set();
-  let due = 0, done = 0, onTime = 0, skipped = 0, missed = 0, open = 0;
+  let due = 0, done = 0, onTime = 0, fromSkip = 0, skipped = 0, missed = 0, open = 0;
 
   for (const r of cur.recipients) {
     const a = r.assignment;
     const key = `${a.examType} ${a.subject}`;
-    const s = bySubject.get(key) || { ders: key, odev: 0, cozulen: 0, zamanindaCozulen: 0, pas: 0, yapilmayan: 0, sonuc: agg(), sinifFarklari: [] };
+    const s = bySubject.get(key) || { ders: key, odev: 0, cozulen: 0, zamanindaCozulen: 0, pastanDonen: 0, pas: 0, yapilmayan: 0, sonuc: agg(), sinifFarklari: [] };
     s.odev += 1;
     const status = recipientStatus(r, now);
     if (status === "open") open += 1; else due += 1;
@@ -136,6 +136,8 @@ export async function buildMonthlySummary(studentId, month, now = new Date()) {
       done += 1; s.cozulen += 1;
       const intime = r.completedAt && r.completedAt.getTime() <= a.endDate.getTime() + TR_END_OF_DAY_GRACE_MS;
       if (intime) { onTime += 1; s.zamanindaCozulen += 1; }
+      // Süresi içinde pas geçilip sonra çözülen ödev gecikme değil düzeltmedir.
+      else if (r.priorSkippedAt && r.priorSkippedAt.getTime() <= a.endDate.getTime() + TR_END_OF_DAY_GRACE_MS) { fromSkip += 1; s.pastanDonen += 1; }
     }
     if (status === "skipped") { skipped += 1; s.pas += 1; if (reasonKey[r.skipReason]) skipReasons[reasonKey[r.skipReason]] += 1; }
     if (status === "missed") { missed += 1; s.yapilmayan += 1; }
@@ -187,7 +189,7 @@ export async function buildMonthlySummary(studentId, month, now = new Date()) {
     const sonuc = derive(s.sonuc);
     const p = prevBySubject.get(s.ders);
     return {
-      ders: s.ders, odev: s.odev, cozulen: s.cozulen, zamanindaCozulen: s.zamanindaCozulen, pas: s.pas, yapilmayan: s.yapilmayan,
+      ders: s.ders, odev: s.odev, cozulen: s.cozulen, zamanindaCozulen: s.zamanindaCozulen, pastanDonen: s.pastanDonen, pas: s.pas, yapilmayan: s.yapilmayan,
       ...sonuc,
       oncekiAyNetOrani: p ? derive(p).netOrani : null,
       okulMedyaninaGoreFark: s.sinifFarklari.length ? r1(s.sinifFarklari.reduce((x, y) => x + y, 0) / s.sinifFarklari.length) : null,
@@ -204,7 +206,7 @@ export async function buildMonthlySummary(studentId, month, now = new Date()) {
     sinifDuzeyi: student?.gradeLevel ?? null,
     yksyeKalanGun: ykskalan != null && ykskalan > 0 ? ykskalan : null,
     sonGiristenBuyanaGun: student?.lastSeenAt ? Math.floor((now.getTime() - student.lastSeenAt.getTime()) / DAY) : null,
-    odevDuzeni: { verilen: cur.recipients.length, suresiDolan: due, cozulen: done, zamanindaCozulen: onTime, pasGecilen: skipped, yapilmayan: missed, suresiDolmayan: open, pasSebepleri: skipReasons },
+    odevDuzeni: { verilen: cur.recipients.length, suresiDolan: due, cozulen: done, zamanindaCozulen: onTime, pastanDonen: fromSkip, pasGecilen: skipped, yapilmayan: missed, suresiDolmayan: open, pasSebepleri: skipReasons },
     toplam: derive(totals),
     oncekiAyToplam: prevTotals.soru ? derive(prevTotals) : null,
     dersler,

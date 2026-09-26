@@ -153,6 +153,44 @@ describe("kayıtlar", () => {
   });
 });
 
+describe("pastan dönüş (pas geçilip sonra teslim)", () => {
+  it("süresi içinde pas geçilip sonra teslim edilen ödev teslim sayılır, geç sayılmaz", () => {
+    const items = [
+      // bitiş 6 gün önce; 7 gün önce pas geçildi; 2 gün önce teslim → pastan dönüş
+      item({ correct: 30, wrong: 5, blank: 5, endAgo: 6, doneAgo: 2, extra: { priorSkippedAt: at(7), priorSkipReason: "ZAMAN" } }),
+      // bitiş 6 gün önce; pas geçmeden 2 gün önce teslim → geç
+      item({ correct: 30, wrong: 5, blank: 5, endAgo: 6, doneAgo: 2 }),
+      // bitiş 6 gün önce; süre bittikten SONRA pas (4 gün önce), sonra teslim → geç (zaten gecikmişti)
+      item({ correct: 30, wrong: 5, blank: 5, endAgo: 6, doneAgo: 1, extra: { priorSkippedAt: at(4), priorSkipReason: "ZAMAN" } }),
+      // pas geçilip süresi içinde teslim → zamanında
+      item({ correct: 30, wrong: 5, blank: 5, endAgo: 6, doneAgo: 6, extra: { priorSkippedAt: at(8), priorSkipReason: "KONU" } }),
+    ];
+    const m = buildReport(raw(items), { now: NOW });
+    expect(m.discipline.total).toMatchObject({ V: 4, onTime: 1, fixed: 1, late: 2, skip: 0, silent: 0, delivered: 4 });
+    expect(m.discipline.total.deliveredPct).toBe(100);
+    expect(m.discipline.avgDelay).toBe(4.5); // yalnız iki geç teslim: 4 ve 5 gün
+    expect(m.history.TYT.map((it) => it.state).sort()).toEqual(["fixed", "late", "late", "onTime"]);
+  });
+  it("R06 örneklemi zamanı ölçülebilir teslimlerle sayılır: 4 pastan dönüş + 1 geç uyarı üretmez", () => {
+    const fixed = [1, 2, 3, 4].map((k) => item({ correct: 30, wrong: 5, blank: 5, endAgo: 4 + k, doneAgo: 1 + k, extra: { priorSkippedAt: at(5 + k), priorSkipReason: "KONU" } }));
+    const late = item({ correct: 30, wrong: 5, blank: 5, endAgo: 6, doneAgo: 2 });
+    const m = buildReport(raw([...fixed, late]), { now: NOW });
+    expect(m.discipline.total).toMatchObject({ fixed: 4, late: 1 });
+    expect(m.recs.all.some((r) => r.id === "R06")).toBe(false);
+  });
+  it("pastan dönüşler zaman sıkıntısı (R06) ve son gün (R16) hesabına gecikme olarak girmez", () => {
+    const items = [1, 2, 3, 4, 5].map((k) => item({
+      correct: 30, wrong: 5, blank: 5, endAgo: 2 + k, doneAgo: 1 + k,
+      extra: { priorSkippedAt: at(3 + k), priorSkipReason: "ZAMAN", scheduledDate: dayIso(6 + k) },
+    }));
+    const m = buildReport(raw(items), { now: NOW });
+    expect(m.discipline.total.fixed).toBe(5);
+    expect(m.recs.all.some((r) => r.id === "R06")).toBe(false);
+    expect(m.recs.all.some((r) => r.id === "R16")).toBe(false);
+    expect(m.discipline.multiDay).toBe(0);
+  });
+});
+
 describe("öneri motoru", () => {
   it("az veride R00 ve bastırılan öneriler üretilmez", () => {
     const m = buildReport(makeFixture({ sparse: true, weeks: 1 }), { now: FIXTURE_NOW });

@@ -235,6 +235,9 @@ statsRouter.get("/full-report", async (req, res) => {
         completedAt: r.completedAt,
         skippedAt: r.completed ? null : r.skippedAt,
         skipReason: r.completed ? null : r.skipReason,
+        // Pas geçilip sonra teslim edildiyse pasın zamanı/sebebi — rapor bunu gecikme saymaz (bkz. reportModel.js).
+        priorSkippedAt: r.completed ? r.priorSkippedAt : null,
+        priorSkipReason: r.completed ? r.priorSkipReason : null,
         reminderAt: r.overdueReminderSentAt,
         correct: sub?.correctCount ?? null,
         wrong: sub?.wrongCount ?? null,

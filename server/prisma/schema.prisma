@@ -273,6 +273,11 @@ model AssignmentRecipient {
   skippedAt  DateTime?
   skipReason String?
   skipNote   String?
+  // Öğrenci önce pas geçip SONRA sonucunu girdiyse (ya da pası geri alıp girdiyse) o pasın zamanı ve sebebi (skippedAt
+  // silinir). Rapor bu teslimi — pas bitiş gününden önce verildiyse — "geç teslim" değil "pastan dönüş" (dürüst pasın
+  // düzeltilmesi) sayar. Yalnızca teslim edilmiş kayıtta anlamlıdır.
+  priorSkippedAt  DateTime?
+  priorSkipReason String?
 
   submission Submission?
   // Submission'dan bağımsız — öğrenci sonucu girmeden ÖNCE de kanıt fotoğrafı ekleyebilir.

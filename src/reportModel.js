@@ -293,8 +293,13 @@ export function buildReport(raw, opts = {}) {
       topicKey: t.key, topicName: t.name, topicApprox: t.approx, topicUnmatched: t.unmatched,
       isSchool: it.source === "branch",
     };
-    x.state = x.completed ? (x.doneDay <= endDay ? "onTime" : "late") : x.skippedAt ? "skip" : endDay < today ? "silent" : "open";
-    x.handled = x.state === "onTime" || x.state === "late" || x.state === "skip";
+    // Durumlar: onTime (bitiş günü içinde teslim) · fixed "pastan dönüş" (süresi içinde pas geçilmiş, sonra teslim —
+    // teslim sayılır ama gecikme sayılmaz; bu bir düzeltmedir) · late · skip · silent · open.
+    x.priorSkipDay = x.completed && it.priorSkippedAt ? trDay(it.priorSkippedAt) : null;
+    x.state = x.completed
+      ? (x.doneDay <= endDay ? "onTime" : x.priorSkipDay != null && x.priorSkipDay <= endDay ? "fixed" : "late")
+      : x.skippedAt ? "skip" : endDay < today ? "silent" : "open";
+    x.handled = x.state === "onTime" || x.state === "late" || x.state === "fixed" || x.state === "skip";
     return x;
   });
 
@@ -578,9 +583,9 @@ export function buildReport(raw, opts = {}) {
   const inV = (it) => isTracked(it.key) && inRange(it.endDay, win.start, win.end) && (it.endDay < today || it.handled);
   const V = items.filter(inV);
   function disc(list) {
-    const c = { V: list.length, onTime: 0, late: 0, skip: 0, silent: 0 };
+    const c = { V: list.length, onTime: 0, fixed: 0, late: 0, skip: 0, silent: 0 };
     for (const it of list) if (c[it.state] != null) c[it.state] += 1;
-    c.delivered = c.onTime + c.late;
+    c.delivered = c.onTime + c.fixed + c.late;
     c.deliveredPct = c.V ? (c.delivered / c.V) * 100 : null;
     c.handledPct = c.V ? ((c.delivered + c.skip) / c.V) * 100 : null;
     c.label = c.V < 5 ? null : c.handledPct >= 95 && (c.onTime / c.V) * 100 >= 75 ? "great" : c.handledPct >= 80 ? "good" : "needs";
@@ -592,7 +597,8 @@ export function buildReport(raw, opts = {}) {
   const vTotal = disc(V);
   const dominant = vTotal.skip && vTotal.V && vTotal.skip / vTotal.V >= 0.3 ? Object.entries(skipReasons).sort((a, b) => b[1] - a[1])[0][0] : null;
   const lateItems = V.filter((it) => it.state === "late");
-  const multiDay = V.filter((it) => it.completed && it.schedDay < it.endDay);
+  // Son gün oranı: pastan dönüşler hariç (dürüst pasın düzeltilmesi erteleme sayılmaz).
+  const multiDay = V.filter((it) => it.completed && it.state !== "fixed" && it.schedDay < it.endDay);
   const lastDayCount = multiDay.filter((it) => it.doneDay >= it.endDay || (it.reminderAt && new Date(it.completedAt) > new Date(it.reminderAt))).length;
   const reminded = V.filter((it) => it.reminderAt);
   const heatStart = win.key === "all" ? Math.max(win.start, today - 7 * 26 + 1) : win.start;
@@ -1037,8 +1043,11 @@ function buildRecommendations(c) {
   const zaman14 = items.filter((it) => it.state === "skip" && it.skipReason === "ZAMAN" && inR(it.skipDay, asOf - 13, asOf));
   const done28 = c.V28.filter((it) => it.completed);
   const late28 = done28.filter((it) => it.state === "late");
-  const lateRatio = done28.length ? late28.length / done28.length : 0;
-  const r06 = zaman14.length >= 2 || (done28.length >= 5 && lateRatio >= 0.4);
+  // Geç / (Zamanında + Geç) — pastan dönüş ne zamanında ne geç sayılır.
+  const timed28 = done28.filter((it) => it.state === "onTime" || it.state === "late").length;
+  const lateRatio = timed28 ? late28.length / timed28 : 0;
+  // En az 5 zamanı ölçülebilir teslim (zamanında + geç) — oranla aynı payda; pastan dönüşler ikisine de girmez.
+  const r06 = zaman14.length >= 2 || (timed28 >= 5 && lateRatio >= 0.4);
   if (r06) {
     const late14 = items.filter((it) => it.state === "late" && inR(it.doneDay, asOf - 13, asOf)).length;
     const withE = items.filter((it) => it.expected).sort((a, b) => b.schedDay - a.schedDay)[0];
@@ -1202,7 +1211,7 @@ function buildRecommendations(c) {
   }
 
   // R16 — son gün ertelemesi (R06 varsa bastırılır)
-  const md = c.V28.filter((it) => it.completed && it.schedDay < it.endDay);
+  const md = c.V28.filter((it) => it.completed && it.state !== "fixed" && it.schedDay < it.endDay);
   if (md.length >= 5 && !r06) {
     const last = md.filter((it) => it.doneDay >= it.endDay || (it.reminderAt && new Date(it.completedAt) > new Date(it.reminderAt))).length;
     if (last / md.length >= 0.6) add("R16", {
@@ -1438,7 +1447,7 @@ export function isRecHidden(rec, store, now = Date.now()) {
 }
 
 // Metin yardımcıları — ekran ve PDF aynı sözcükleri kullanır.
-export const STATE_LABEL = { onTime: "Zamanında", late: "Geç", skip: "Pas", silent: "Sessiz", open: "Açık" };
+export const STATE_LABEL = { onTime: "Zamanında", fixed: "Pastan dönüş", late: "Geç", skip: "Pas", silent: "Sessiz", open: "Açık" };
 export const SKIP_LABEL = { KONU: "Konu", ZAMAN: "Zaman", KAYNAK: "Kaynak", DIGER: "Diğer" };
 export const SKIP_OWNER = { KONU: "Branş öğretmeni", ZAMAN: "Koç", KAYNAK: "Yönetim", DIGER: "Koç" };
 export const TOPIC_STATUS = { solid: "Pekişti", growing: "Gelişiyor", review: "Tekrar gerekli", few: "Az veri", open: "Açık" };

@@ -925,17 +925,18 @@ function skipBreakdown(skips) {
 function discRow(w, name, c, skips, bold = false) {
   const cell = (v) => (bold ? { content: v, styles: { fontStyle: "bold" } } : v);
   return [
-    cell(name), cell(fmtInt(c.V)), cell(fmtInt(c.onTime)), cell(fmtInt(c.late)),
+    cell(name), cell(fmtInt(c.V)), cell(fmtInt(c.onTime)), cell(fmtInt(c.fixed || 0)), cell(fmtInt(c.late)),
     cell(c.skip ? `${fmtInt(c.skip)} (${skipBreakdown(skips)})` : "0"),
     c.silent ? colored(fmtInt(c.silent), w.coach ? RED : AMBER, true) : cell("0"),
     cell(ratio(c.delivered, c.V)), cell(ratio(c.delivered + c.skip, c.V)),
   ];
 }
-const DISC_HEAD = ["Verilen", "Zamanında", "Geç", "Pas (K/Z/Ka/D)", "Sessiz", "Teslim %", "Ele alınan %"];
+// "Pastan dönüş": süresi içinde pas geçilip sonra teslim edilen ödev — teslim sayılır, gecikme sayılmaz.
+const DISC_HEAD = ["Verilen", "Zamanında", "Pastan dönüş", "Geç", "Pas (K/Z/Ka/D)", "Sessiz", "Teslim %", "Ele alınan %"];
 function disciplineSummaryTable(w, model) {
   const d = model.discipline;
   const cs = { 0: { cellWidth: 36 } };
-  for (let i = 1; i <= 7; i++) cs[i] = { halign: "right" };
+  for (let i = 1; i <= DISC_HEAD.length; i++) cs[i] = { halign: "right" };
   w.table({
     head: ["", ...DISC_HEAD],
     body: [
@@ -1017,7 +1018,7 @@ function drawHeatmap(w, model) {
 function disciplineComment(model) {
   const t = model.discipline.total;
   if (!t.V) return "Bu aralıkta vadesi gelen ödev yok.";
-  const s1 = `Vadesi gelen ${fmtInt(t.V)} ödevden ${fmtInt(t.delivered)} tanesi teslim edildi (${fmtInt(t.onTime)} zamanında, ${fmtInt(t.late)} geç), ${fmtInt(t.skip)} tanesi pas geçildi, ${fmtInt(t.silent)} tanesi sessiz kaldı.`;
+  const s1 = `Vadesi gelen ${fmtInt(t.V)} ödevden ${fmtInt(t.delivered)} tanesi teslim edildi (${fmtInt(t.onTime)} zamanında${t.fixed ? `, ${fmtInt(t.fixed)} pas geçildikten sonra` : ""}, ${fmtInt(t.late)} geç), ${fmtInt(t.skip)} tanesi pas geçildi, ${fmtInt(t.silent)} tanesi sessiz kaldı.`;
   let s2 = "";
   if (t.skip) {
     const parts = [];
@@ -1034,13 +1035,13 @@ function disciplineComment(model) {
 }
 function renderDiscipline(w, model) {
   const d = model.discipline;
-  w.h1("Ödev düzeni", "Teslim % = (zamanında + geç) / verilen · Ele alınan % = (zamanında + geç + pas) / verilen. 5'ten az ödevde kesir yazılır. Pas nedenleri: K konu, Z zaman, Ka kaynak, D diğer. Açık ve süresi dolmamış ödevler oranlara girmez.", { keep: 45 });
+  w.h1("Ödev düzeni", "Teslim % = (zamanında + pastan dönüş + geç) / verilen · Ele alınan % = (teslim + pas) / verilen. Pastan dönüş: süresi içinde pas geçilip sonra teslim edilen ödev; gecikme sayılmaz. 5'ten az ödevde kesir yazılır. Pas nedenleri: K konu, Z zaman, Ka kaynak, D diğer. Açık ve süresi dolmamış ödevler oranlara girmez.", { keep: 45 });
   disciplineSummaryTable(w, model);
   w.block([{ text: disciplineComment(model), size: 8.2, gap: 1 }, d.label ? { text: `Düzen etiketi: ${d.label}`, size: 7.6, color: GREY } : null].filter(Boolean));
   if (d.bySubject.length) {
     w.h2("Ders bazında", { keep: 16 });
     const cs = { 0: { cellWidth: 36 } };
-    for (let i = 1; i <= 7; i++) cs[i] = { halign: "right" };
+    for (let i = 1; i <= DISC_HEAD.length; i++) cs[i] = { halign: "right" };
     w.table({
       head: ["Ders", ...DISC_HEAD],
       body: [...d.bySubject].sort((a, b) => byWeight(model.subjectMap.get(a.key) || a, model.subjectMap.get(b.key) || b))
@@ -1280,7 +1281,7 @@ function renderHistoryAppendix(w, model) {
       const done = it.correct != null;
       let state = STATE_LABEL[it.state] || it.state;
       if (it.state === "skip" && it.skipReason) state += ` (${SKIP_LABEL[it.skipReason]})`;
-      const stColor = it.state === "onTime" ? GREEN : it.state === "silent" ? (w.coach ? RED : AMBER) : it.state === "late" || it.state === "skip" ? AMBER : GREY;
+      const stColor = it.state === "onTime" || it.state === "fixed" ? GREEN : it.state === "silent" ? (w.coach ? RED : AMBER) : it.state === "late" || it.state === "skip" ? AMBER : GREY;
       body.push([
         fmtDay(it.endDay), it.isSchool ? "Okul" : "Kişisel", it.teacher || "—", subjectShort(it), `${it.topicApprox ? "~ " : ""}${it.topicName}`, it.sourceBook || "—",
         it.expected ? fmtInt(it.expected) : "—", colored(state, stColor),
@@ -1425,7 +1426,7 @@ function renderMethodAppendix(w) {
     ["Trend testi", "Δ = NO(son 4 hafta) − NO(önceki 4 hafta). Pencere standart hatası SE = max(4, √(Σw²·(r − NO)²) / Σw); SEΔ = √(SE_son² + SE_önceki²). Yükselişte: Δ ≥ +5 ve Δ ≥ 1,28·SEΔ. Düşüşte: Δ ≤ −5 ve Δ ≤ −1,96·SEΔ. Arası Sabit. Aynı ödevlerde okul medyanı da benzer biçimde düştüyse düşüş Sabit sayılır (konular zorlaşmış olabilir)."],
     ["Ders etiketi", "adjNO ≥ 65 ise Güçlü, adjNO < 40 ise Odak, arası Yolunda. Okul düzeltmesi: en az 3 karşılaştırılabilir okul ödevi varsa, bu ödevlerdeki sıra yüzdeliklerinin medyanına göre etiket en fazla bir kademe değişir: medyan 60 ve üzerindeyse Odak › Yolunda, 75 ve üzerindeyse Yolunda › Güçlü; 40 ve altındaysa Güçlü › Yolunda, 25 ve altındaysa Yolunda › Odak. \"Konuyu bilmiyorum\" öz-beyanı: son 28 günde aynı derste en az 2 çözülmemiş konu pası varsa Veri az ya da Yolunda olan ders Odak olur; Güçlü dersin etiketi kalır, \"konu pası\" notu düşülür."],
     ["Öncelik", "Odak derslerin sırası = YKS test soru sayısı × (65 − adjNO). Bu sayı yalnızca sıralamada kullanılır; puan, sıralama ya da tahmini net üretilmez."],
-    ["Ödev düzeni", "Teslim % = (zamanında + geç) / verilen; ele alınan % = (zamanında + geç + pas) / verilen. Sessiz: süresi geçmiş, ne teslim edilmiş ne pas geçilmiş ödev. Açık ve süresi dolmamış ödevler oranlara girmez. Gün ve hafta sınırları Türkiye saatine göredir; hafta Pazartesi–Pazar."],
+    ["Ödev düzeni", "Teslim % = (zamanında + pastan dönüş + geç) / verilen; ele alınan % = (teslim + pas) / verilen. Pastan dönüş: bitiş günü bitmeden pas geçilmiş, sonra yine de teslim edilmiş ödev — bir düzeltmedir, gecikme sayılmaz. Sessiz: süresi geçmiş, ne teslim edilmiş ne pas geçilmiş ödev. Açık ve süresi dolmamış ödevler oranlara girmez. Gün ve hafta sınırları Türkiye saatine göredir; hafta Pazartesi–Pazar."],
     ["Veri kaynağı", "Sonuçlar öğrencinin kendi girdiği D/Y/B sayılarına dayanır."],
     ["Konu eşleşmesi", "Konu eşleşmesi yaklaşıktır: ödevdeki konu adı müfredat listesiyle metin benzerliğine göre eşleştirilir; \"~\" işaretli konular yaklaşık eşleşmedir, eşleşmeyen konu kendi başlığıyla ayrı tutulur."],
     ["Gizlilik", "Okul karşılaştırmaları yalnızca aynı ödevi çözenlerin toplu verisidir, kimsenin adı yer almaz. Bir ödev ancak en az 10 başka geçerli teslim varsa karşılaştırılır."],

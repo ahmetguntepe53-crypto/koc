@@ -74,8 +74,19 @@ async function submitHandler(req, res) {
     const cleanQuestionNumbers = Array.isArray(questionNumbers) ? questionNumbers.filter((n) => Number.isInteger(n) && n >= 0 && n <= MAX_ANSWER_COUNT) : [];
 
     const submission = await prisma.$transaction(async (tx) => {
-      // Sonuç girilen ödev artık "pas geçildi" değil.
-      await tx.assignmentRecipient.update({ where: { id: recipient.id }, data: { completed: true, completedAt: new Date(), skippedAt: null, skipReason: null, skipNote: null } });
+      // Sonuç girilen ödev artık "pas geçildi" değil — ama pas geçilip sonra teslim edildiği bilgisi korunur
+      // (priorSkippedAt): rapor bunu gecikme değil düzeltme sayar. Zaten girilmiş bir sonucun düzenlenmesi teslim
+      // zamanını DEĞİŞTİRMEZ; önceden düzenleme anı yeni teslim zamanı oluyor, zamanında ödev geriye dönük "geç"e dönüyordu.
+      const firstCompletion = !recipient.completed;
+      await tx.assignmentRecipient.update({
+        where: { id: recipient.id },
+        data: {
+          completed: true,
+          ...(firstCompletion || !recipient.completedAt ? { completedAt: new Date() } : {}),
+          ...(firstCompletion && recipient.skippedAt ? { priorSkippedAt: recipient.skippedAt, priorSkipReason: recipient.skipReason } : {}),
+          skippedAt: null, skipReason: null, skipNote: null,
+        },
+      });
       return tx.submission.upsert({
         where: { recipientId: recipient.id },
         update: { correctCount, wrongCount, blankCount, note: note ? String(note).trim() : null, questionNumbers: cleanQuestionNumbers },
@@ -122,7 +133,15 @@ assignmentRecipientsRouter.delete("/:id/skip", async (req, res) => {
     assert(req.userRole === "STUDENT", "Bu işlem için yetkin yok", 403);
     const recipient = await prisma.assignmentRecipient.findUnique({ where: { id: req.params.id } });
     assert(recipient && recipient.studentId === req.userId, "Bulunamadı", 404);
-    await prisma.assignmentRecipient.update({ where: { id: recipient.id }, data: { skippedAt: null, skipReason: null, skipNote: null } });
+    // Pası geri alıp sonra sonucunu giren öğrenci de pasını "düzeltmiş" sayılır — pasın zamanı/sebebi saklanır ki süresi
+    // içinde verilmiş bir pas, geri alınınca sonraki teslimi "geç"e çevirmesin (rapor yalnızca teslim edilmişse kullanır).
+    await prisma.assignmentRecipient.update({
+      where: { id: recipient.id },
+      data: {
+        skippedAt: null, skipReason: null, skipNote: null,
+        ...(recipient.skippedAt && !recipient.completed ? { priorSkippedAt: recipient.skippedAt, priorSkipReason: recipient.skipReason } : {}),
+      },
+    });
     res.json({ ok: true });
   } catch (e) {
     handleErr(res, e);

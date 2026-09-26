@@ -166,6 +166,21 @@ for (const [topic, c, w, b, d] of [["Paragraf", 30, 6, 4, 0], ["Cümle Yorumu", 
 await prisma.coachNote.create({ data: { studentId: zeynep.id, teacherId: ayse.id, text: "Türkçe'de çok iyi gidiyor, paragrafta 31 net. Buradan güven kazandırıyorum.", createdAt: new Date(NOW.getTime() - 9 * DAY), updatedAt: new Date(NOW.getTime() - 9 * DAY) } });
 await prisma.coachNote.create({ data: { studentId: zeynep.id, teacherId: ayse.id, text: "Matematik'te tıkanıyor, rasyonel sayılar konusunu hiç açmadı.\nAilesiyle görüştüm, akşam programı dağınık.", createdAt: new Date(NOW.getTime() - 2 * DAY), updatedAt: new Date(NOW.getTime() - 2 * DAY) } });
 
+// "Pastan dönüş": Zeynep iki hafta önceki bir okul ödevini süresi içinde pas geçmiş, bitişten 2 gün sonra yine de çözmüş
+// (rapor bunu gecikme saymaz — bkz. src/reportModel.js).
+const zeynepDone = await prisma.assignmentRecipient.findFirst({
+  where: { studentId: zeynep.id, completed: true, assignment: { targetMode: "SCHOOL_WIDE", endDate: { gte: weekStart(-2), lt: weekStart(-1) } } },
+  include: { assignment: { select: { endDate: true } } },
+  orderBy: { assignment: { subject: "asc" } },
+});
+if (zeynepDone) {
+  const end = zeynepDone.assignment.endDate.getTime();
+  await prisma.assignmentRecipient.update({
+    where: { id: zeynepDone.id },
+    data: { priorSkippedAt: new Date(end - DAY + 16 * 3600e3), priorSkipReason: "ZAMAN", completedAt: new Date(end + 2 * DAY + 15 * 3600e3) },
+  });
+}
+
 // Bildirimlerin zamanları sabit: yayın anında yazılanlar "az önce" görünmesin, günlere yayılsın.
 const notes = await prisma.notification.findMany({ where: { userId: zeynep.id }, orderBy: { createdAt: "asc" } });
 for (let i = 0; i < notes.length; i++) {
