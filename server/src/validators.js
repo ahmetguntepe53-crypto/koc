@@ -12,3 +12,13 @@ export function isValidEmail(email) {
 export function assert(condition, message, status = 400) {
   if (!condition) throw Object.assign(new Error(message), { status });
 }
+
+// Yıllık plan kaydı başına soru sınırı — okul kuralı günde en fazla 30 soru; birden çok günü kapsayan
+// kayıtta gün sayısıyla çarpılır (7 günlük haftalık kayıt: 210). date/endDate UTC gece yarısı Date'leri.
+export const MAX_QUESTIONS_PER_DAY = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+export function maxQuestionCount(date, endDate) {
+  const days = date && endDate ? Math.round((endDate.getTime() - date.getTime()) / DAY_MS) + 1 : 1;
+  return MAX_QUESTIONS_PER_DAY * Math.max(1, days);
+}

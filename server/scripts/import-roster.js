@@ -14,12 +14,16 @@
 // - Tekrar çalıştırmak güvenlidir: var olan hesaplar kullanıcı adına, yoksa ada göre bulunur, ikinci kez
 //   oluşturulmaz. Var olan bir hesabın kendi belirlediği şifresi (ve e-postası) değiştirilmez
 //   (--reset-passwords hariç); kullanıcı adı yoksa eklenir.
+// - Öğretmende "branches": ["Matematik"] varsa branş öğretmeni yapılır (teachingSubjects + isSubjectTeacher —
+//   okul çapında ortak ödev yetkisi); alan yoksa öğretmenin mevcut branşına dokunulmaz. Yıllık planlar
+//   ayrıca scripts/import-plans.js ile branş öğretmenine yüklenir.
 // - Liste dosyası reşit olmayanların kişisel verisidir: server/data/ git dışıdır (bkz. .gitignore).
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/db.js";
+import { BRANCHES } from "../src/subjects.js";
 
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith("--"));
@@ -62,6 +66,11 @@ const rows = [];
 const seenNos = new Map();
 for (const t of roster.teachers || []) {
   if (!t.name) fail("İsmi olmayan bir öğretmen var");
+  if (t.branches !== undefined) {
+    if (!Array.isArray(t.branches) || !t.branches.length) fail(`${t.name}: "branches" boş olmayan bir liste olmalı`);
+    const bad = t.branches.filter((b) => !BRANCHES.includes(b));
+    if (bad.length) fail(`${t.name}: geçersiz branş ${bad.join(", ")} — geçerliler: ${BRANCHES.join(", ")}`);
+  }
   for (const s of t.students || []) {
     const no = String(s.schoolNo || "").trim();
     if (!/^\d{1,8}$/.test(no)) fail(`Geçersiz okul numarası: "${s.schoolNo}" (${s.name})`);
@@ -84,11 +93,13 @@ const report = { teachersCreated: [], teachersMatched: [], studentsCreated: 0, s
 
 async function main() {
   // --- Öğretmenler ---
-  const existingTeachers = await prisma.user.findMany({ where: { role: "TEACHER" }, select: { id: true, name: true, username: true, email: true, passwordHash: true } });
+  const existingTeachers = await prisma.user.findMany({ where: { role: "TEACHER" }, select: { id: true, name: true, username: true, email: true, passwordHash: true, isSubjectTeacher: true, teachingSubjects: true } });
   const teacherIdByName = new Map();
   for (const t of roster.teachers) {
     const displayName = titleCaseTr(t.name);
     const username = teacherUsername(t.name);
+    const branches = t.branches ? BRANCHES.filter((b) => t.branches.includes(b)) : null;
+    const branchNote = branches ? `, branş: ${branches.join(", ")}` : "";
     const byName = existingTeachers.filter((e) => foldName(e.name) === foldName(t.name));
     const match = existingTeachers.find((e) => e.username === username) || (byName.length === 1 ? byName[0] : null);
     if (byName.length > 1) report.conflicts.push(`Öğretmen "${displayName}" adıyla birden fazla hesap var — elle kontrol et`);
@@ -108,17 +119,24 @@ async function main() {
         data.mustChangePassword = true;
         if (match.passwordHash) { data.tokenVersion = { increment: 1 }; report.passwordsReset++; }
       }
+      if (branches && (!match.isSubjectTeacher || match.teachingSubjects.join("|") !== branches.join("|"))) {
+        data.teachingSubjects = branches;
+        data.isSubjectTeacher = true;
+      }
       if (APPLY && Object.keys(data).length) await prisma.user.update({ where: { id: match.id }, data });
-      report.teachersMatched.push(`${displayName} (${data.username ? `kullanıcı adı eklendi: ${data.username}` : match.username || match.email}${data.passwordHash ? ", ilk şifre = kullanıcı adı" : ""})`);
+      report.teachersMatched.push(`${displayName} (${data.username ? `kullanıcı adı eklendi: ${data.username}` : match.username || match.email}${data.passwordHash ? ", ilk şifre = kullanıcı adı" : ""}${data.teachingSubjects ? branchNote : ""})`);
       continue;
     }
     // Kullanıcı adı başka bir hesapta (e-posta ya da kullanıcı adı olarak) kullanılıyorsa yeni hesap açılmaz.
     const clash = await prisma.user.findFirst({ where: { OR: [{ username }, { email: username }] }, select: { id: true, role: true } });
     if (clash) { report.conflicts.push(`"${username}" kullanıcı adı başka bir hesapta kullanılıyor — ${displayName} oluşturulmadı`); continue; }
-    report.teachersCreated.push(`${displayName} → kullanıcı adı ve ilk şifre: ${username}`);
+    report.teachersCreated.push(`${displayName} → kullanıcı adı ve ilk şifre: ${username}${branchNote}`);
     if (APPLY) {
       const created = await prisma.user.create({
-        data: { role: "TEACHER", name: displayName, username, passwordHash: await bcrypt.hash(username, 10), mustChangePassword: true },
+        data: {
+          role: "TEACHER", name: displayName, username, passwordHash: await bcrypt.hash(username, 10), mustChangePassword: true,
+          ...(branches ? { teachingSubjects: branches, isSubjectTeacher: true } : {}),
+        },
       });
       teacherIdByName.set(t.name, created.id);
     } else {

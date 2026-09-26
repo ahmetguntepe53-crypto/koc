@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
-import { assert } from "../validators.js";
+import { assert, MAX_QUESTIONS_PER_DAY, maxQuestionCount } from "../validators.js";
 import { isValidSubject, trackForGrade, trackForExamType } from "../subjects.js";
 import { EXAM_TYPES, recipientInclude, notifyRecipientsAssignmentSent } from "./assignments.js";
 
@@ -16,7 +16,8 @@ const AUTO_SEND_MODES = ["OFF", "ON_DATE", "DAY_BEFORE"];
 // 20-30 aralığı ÖNERİ olarak gösterilir; burada yalnızca üst sınır sert kural olarak zorlanır. Aynı
 // güne BİRDEN FAZLA satır eklenebildiği için (bkz. schema.prisma > PlanEntry) bu sınır satır
 // başınadır, bir günün TOPLAMını sınırlamaz — koç bilerek aynı gün 2-3 farklı ders ekleyebilir.
-const MAX_QUESTION_COUNT = 30;
+// Birden çok günü kapsayan kayıtta (ör. branş öğretmeninin haftalık planı) sınır gün başınadır —
+// bkz. validators.js > maxQuestionCount.
 const ALREADY_PUBLISHED_MESSAGE = "Bu kayıt zaten yayınlandı — ödevi Ödevlerim'den düzenle";
 
 function parseDateOnly(value) {
@@ -51,7 +52,9 @@ function validateBody(body, { requireDate }) {
   let cleanQuestionCount = null;
   if (questionCount !== undefined && questionCount !== null && questionCount !== "") {
     cleanQuestionCount = Number(questionCount);
-    assert(Number.isInteger(cleanQuestionCount) && cleanQuestionCount > 0 && cleanQuestionCount <= MAX_QUESTION_COUNT, `Soru sayısı en fazla ${MAX_QUESTION_COUNT} olabilir`);
+    const max = maxQuestionCount(cleanDate, cleanEndDate);
+    assert(Number.isInteger(cleanQuestionCount) && cleanQuestionCount > 0 && cleanQuestionCount <= max,
+      max === MAX_QUESTIONS_PER_DAY ? `Soru sayısı en fazla ${max} olabilir` : `Soru sayısı bu tarih aralığı için en fazla ${max} olabilir (günde ${MAX_QUESTIONS_PER_DAY})`);
   }
 
   const cleanAutoSend = autoSend === undefined ? "OFF" : autoSend;

@@ -25,6 +25,15 @@ export const SUBJECTS_BY_EXAM = {
   AYT: ["Matematik", "Geometri", "Fizik", "Kimya", "Biyoloji", "Edebiyat", "Tarih-1", "Tarih-2", "Coğrafya-1", "Coğrafya-2", "Felsefe", "Mantık", "Psikoloji", "Sosyoloji", "Din Kültürü ve Ahlak Bilgisi"],
 };
 
+// Branş öğretmeninin okuttuğu ana dersler (User.teachingSubjects) — server/src/subjects.js ile aynı.
+// AYT'deki alt adlar branşına bağlanır: Tarih-1/2 → Tarih, Coğrafya-1/2 → Coğrafya, Mantık/Psikoloji/Sosyoloji → Felsefe.
+export const BRANCHES = ["Türkçe", "Edebiyat", "Matematik", "Geometri", "Fizik", "Kimya", "Biyoloji", "Tarih", "Coğrafya", "Felsefe", "Din Kültürü ve Ahlak Bilgisi"];
+const SUBJECT_BRANCH = { "Tarih-1": "Tarih", "Tarih-2": "Tarih", "Coğrafya-1": "Coğrafya", "Coğrafya-2": "Coğrafya", Mantık: "Felsefe", Psikoloji: "Felsefe", Sosyoloji: "Felsefe" };
+
+export function branchOfSubject(subject) {
+  return SUBJECT_BRANCH[subject] || subject;
+}
+
 export const PERIOD_LABELS = { WEEKLY: "Haftalık", MONTHLY: "Aylık", YEARLY: "Yıllık" };
 export const SEND_MODE_LABELS = {
   AUTO_ON_DATE: "Otomatik — tarihi gelince gönder",

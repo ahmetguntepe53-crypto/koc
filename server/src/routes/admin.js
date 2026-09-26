@@ -8,7 +8,7 @@ import { safeUser } from "../serialize.js";
 import { sendAccountSetupEmail } from "../mailer.js";
 import { handleErr } from "../handleErr.js";
 import { isValidEmail, isValidUsername, assert } from "../validators.js";
-import { GRADE_LEVELS } from "../subjects.js";
+import { GRADE_LEVELS, BRANCHES } from "../subjects.js";
 import { recipientPhotosDir } from "../uploads.js";
 
 // Bu router server/src/app.js'de zaten requireAuth + requireRole("ADMIN") ile mount edilir —
@@ -281,12 +281,22 @@ adminRouter.post("/users/:id/set-password", async (req, res) => {
 // Bir öğretmeni "ders öğretmeni" (branş öğretmeni) olarak işaretler/kaldırır — bu bayrağa sahip
 // öğretmenler Takvim'den okuldaki TÜM ilgili sınav türü öğrencilerine (kendi koçluk ettikleriyle
 // sınırlı olmadan) ortak ödev gönderebilir (bkz. routes/planEntries.js > publishPlanEntry).
+// Gövde { subjects: ["Matematik"] } ise branşlar yazılır ve yetki branş varsa açılır, yoksa kapanır;
+// eski istemcilerin { isSubjectTeacher } gövdesi de çalışır (yetki kalkınca branşlar da silinir).
 adminRouter.post("/users/:id/subject-teacher", async (req, res) => {
   try {
-    const { isSubjectTeacher } = req.body || {};
+    const { isSubjectTeacher, subjects } = req.body || {};
     const user = await prisma.user.findUnique({ where: { id: req.params.id } });
     assert(user && user.role === "TEACHER", "Bu işlem yalnızca öğretmenler için geçerli");
-    const updated = await prisma.user.update({ where: { id: user.id }, data: { isSubjectTeacher: !!isSubjectTeacher } });
+    let data;
+    if (subjects !== undefined) {
+      assert(Array.isArray(subjects) && subjects.every((s) => BRANCHES.includes(s)), "Geçersiz branş");
+      const clean = BRANCHES.filter((b) => subjects.includes(b));
+      data = { teachingSubjects: clean, isSubjectTeacher: clean.length > 0 };
+    } else {
+      data = isSubjectTeacher ? { isSubjectTeacher: true } : { isSubjectTeacher: false, teachingSubjects: [] };
+    }
+    const updated = await prisma.user.update({ where: { id: user.id }, data });
     res.json({ user: safeUser(updated) });
   } catch (e) {
     handleErr(res, e);

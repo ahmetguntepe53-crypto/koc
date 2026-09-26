@@ -9,6 +9,16 @@ export const SUBJECTS_BY_EXAM = {
   AYT: ["Matematik", "Geometri", "Fizik", "Kimya", "Biyoloji", "Edebiyat", "Tarih-1", "Tarih-2", "Coğrafya-1", "Coğrafya-2", "Felsefe", "Mantık", "Psikoloji", "Sosyoloji", "Din Kültürü ve Ahlak Bilgisi"],
 };
 
+// Branş öğretmeninin okuttuğu ana dersler (User.teachingSubjects) — TYT/AYT listelerindeki alt adlar
+// branşına branchOfSubject ile bağlanır: AYT Tarih-1/2 → Tarih, Coğrafya-1/2 → Coğrafya, felsefe grubu
+// (Mantık, Psikoloji, Sosyoloji) → Felsefe.
+export const BRANCHES = ["Türkçe", "Edebiyat", "Matematik", "Geometri", "Fizik", "Kimya", "Biyoloji", "Tarih", "Coğrafya", "Felsefe", "Din Kültürü ve Ahlak Bilgisi"];
+const SUBJECT_BRANCH = { "Tarih-1": "Tarih", "Tarih-2": "Tarih", "Coğrafya-1": "Coğrafya", "Coğrafya-2": "Coğrafya", Mantık: "Felsefe", Psikoloji: "Felsefe", Sosyoloji: "Felsefe" };
+
+export function branchOfSubject(subject) {
+  return SUBJECT_BRANCH[subject] || subject;
+}
+
 // Yeni kayıt oluştururken kabul edilen sınav türleri (eski LGS kayıtları yalnızca okunur).
 export const EXAM_TYPES = ["TYT", "AYT"];
 

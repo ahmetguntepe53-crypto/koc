@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Plus, Send, Trash2, Clock } from "lucide-rea
 import { C, displayFont, bodyFont, monoFont } from "../../theme.js";
 import { Card, Button, Input, Select, Textarea, Pill, Chip, SectionHeader, EmptyState, Modal, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { SUBJECTS_BY_EXAM, trackForGrade } from "../../subjects.js";
+import { SUBJECTS_BY_EXAM, trackForGrade, branchOfSubject } from "../../subjects.js";
 import TopicField from "../../components/TopicField.jsx";
 
 // Telefonda bir güne dokunmak o günün kayıtlarını listeleyen alt sayfayı (DayAgendaModal) açar —
@@ -20,7 +20,13 @@ function useIsMobile() {
   return isMobile;
 }
 
-const MAX_QUESTION_COUNT = 30;
+// Okul kuralı günde en fazla 30 soru — birden çok günü kapsayan kayıtta sınır gün sayısıyla çarpılır
+// (sunucu: routes/planEntries.js > maxQuestionCount).
+const MAX_QUESTIONS_PER_DAY = 30;
+function dayCount(date, endDate) {
+  if (!date || !endDate || endDate <= date) return 1;
+  return Math.round((new Date(`${endDate}T00:00:00Z`) - new Date(`${date}T00:00:00Z`)) / 86400000) + 1;
+}
 const KIND_LABELS = { TOPIC: "Konu anlatımı", PRACTICE_TEST: "Deneme", HOLIDAY: "Tatil ödevi" };
 const KIND_TONES = { TOPIC: "accent", PRACTICE_TEST: "amber", HOLIDAY: "muted" };
 const AUTO_SEND_LABELS = { ON_DATE: "Tarihi gelince otomatik", DAY_BEFORE: "Bir gün önceden otomatik" };
@@ -250,6 +256,7 @@ export default function PlanScreen({ user }) {
           dateKey={modalState.date}
           existing={modalState.entry}
           isSubjectTeacher={isSubjectTeacher}
+          teachingSubjects={user?.teachingSubjects || []}
           onClose={() => setModalState(null)}
           onSaved={afterSave}
         />
@@ -342,6 +349,7 @@ function MonthEntries({ entries, onOpenEntry }) {
 function EntryRow({ entry, onClick }) {
   const d = new Date(`${entry.date.slice(0, 10)}T00:00:00`);
   const status = entryStatus(entry);
+  const days = dayCount(entry.date.slice(0, 10), entry.endDate?.slice(0, 10));
   return (
     <button
       type="button"
@@ -364,6 +372,7 @@ function EntryRow({ entry, onClick }) {
         </span>
         <span style={{ display: "block", fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
           {KIND_LABELS[entry.kind]}
+          {days > 1 ? <> · <span style={{ fontFamily: monoFont }}>{days}</span> gün</> : null}
           {entry.questionCount ? <> · <span style={{ fontFamily: monoFont }}>{entry.questionCount}</span> soru</> : null}
           {entry.schoolWide ? " · okul çapında" : ""}
         </span>
@@ -382,13 +391,19 @@ function Legend({ color, label }) {
   );
 }
 
-function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTeacher, onClose, onSaved }) {
+// Branş öğretmeninin yeni kaydında ders kendi branşından biriyle başlar (ör. Coğrafya öğretmeni AYT'de Coğrafya-1).
+function defaultSubject(examType, teachingSubjects) {
+  const list = SUBJECTS_BY_EXAM[examType];
+  return list.find((s) => teachingSubjects.includes(branchOfSubject(s))) || list[0];
+}
+
+function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTeacher, teachingSubjects, onClose, onSaved }) {
   const published = !!existing?.assignmentId;
   // Var olan bir kayıt düzenlenirken KENDİ sınav türü kullanılır — açık sekmeninki değil; aksi halde
   // kayıt sessizce başka sınav türüne taşınıyor ya da "Geçersiz ders" hatası veriyordu.
   const examType = existing?.examType || tabExamType;
   const [kind, setKind] = useState(existing?.kind || "TOPIC");
-  const [subject, setSubject] = useState(existing?.subject || SUBJECTS_BY_EXAM[examType][0]);
+  const [subject, setSubject] = useState(existing?.subject || defaultSubject(examType, teachingSubjects));
   const [topic, setTopic] = useState(existing?.topic || "");
   const [sourceBook, setSourceBook] = useState(existing?.sourceBook || "");
   const [pageRange, setPageRange] = useState(existing?.pageRange || "");
@@ -401,6 +416,7 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
+  const maxQuestions = MAX_QUESTIONS_PER_DAY * dayCount(date, endDate);
 
   const payload = () => ({
     examType, date, endDate: endDate || undefined, kind, subject: kind === "TOPIC" ? subject : undefined, topic: topic.trim(),
@@ -485,7 +501,7 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
         <div style={{ fontFamily: displayFont, fontSize: 16, fontWeight: 700, letterSpacing: -0.1, color: C.text, marginBottom: 4 }}>
           {existing.subject ? `${existing.subject} — ` : ""}{existing.topic}
         </div>
-        {existing.questionCount && (
+        {existing.questionCount > 0 && (
           <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted }}>
             <span style={{ fontFamily: monoFont }}>{existing.questionCount}</span> soru
           </div>
@@ -527,7 +543,10 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
             <Input label="Kaynak kitap (opsiyonel)" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} placeholder="ör. 3D Yayınları" />
             <Input label="Sayfa / soru aralığı (opsiyonel)" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="ör. 45-60" />
             <Input
-              label={`Soru sayısı (opsiyonel, önerilen 20-${MAX_QUESTION_COUNT})`} type="number" inputMode="numeric" pattern="[0-9]*" min="1" max={MAX_QUESTION_COUNT}
+              label={maxQuestions === MAX_QUESTIONS_PER_DAY
+                ? `Soru sayısı (opsiyonel, önerilen 20-${MAX_QUESTIONS_PER_DAY})`
+                : `Soru sayısı (opsiyonel, günde ${MAX_QUESTIONS_PER_DAY} → en fazla ${maxQuestions})`}
+              type="number" inputMode="numeric" pattern="[0-9]*" min="1" max={maxQuestions}
               value={questionCount} onChange={(e) => setQuestionCount(e.target.value)} placeholder="ör. 25"
             />
           </>

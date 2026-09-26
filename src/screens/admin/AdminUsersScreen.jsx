@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { UserPlus, Upload, RotateCcw, KeyRound, Ban, ShieldCheck, Trash2, GraduationCap, Search } from "lucide-react";
 import { C, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Select, Pill, Modal, EmptyState, Avatar, roleLabel, LoadingState, confirmDialog } from "../../components/common.jsx";
+import { Card, Button, Input, Select, Pill, Chip, Modal, EmptyState, Avatar, roleLabel, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { GRADE_OPTIONS, GRADE_LEVELS, trackForGrade } from "../../subjects.js";
+import { GRADE_OPTIONS, GRADE_LEVELS, BRANCHES, trackForGrade } from "../../subjects.js";
 
 export default function AdminUsersScreen() {
   const [users, setUsers] = useState([]);
@@ -15,6 +15,7 @@ export default function AdminUsersScreen() {
   const [addModalRole, setAddModalRole] = useState(null); // "TEACHER" | "STUDENT" | null
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [setPasswordFor, setSetPasswordFor] = useState(null); // user
+  const [branchesFor, setBranchesFor] = useState(null); // öğretmen
 
   const load = async () => {
     setLoading(true);
@@ -55,7 +56,6 @@ export default function AdminUsersScreen() {
   const changeGradeLevel = withAction((studentId, gradeLevel) => api.adminUpdateUser(studentId, { gradeLevel }));
   const resendActivation = withAction(async (id) => { await api.adminResendActivation(id); setToast({ type: "ok", text: "Aktivasyon bağlantısı tekrar gönderildi." }); });
   const toggleBan = withAction(async (u) => { u.banned ? await api.adminUnbanUser(u.id) : await api.adminBanUser(u.id); });
-  const toggleSubjectTeacher = withAction(async (u) => { await api.adminSetSubjectTeacher(u.id, !u.isSubjectTeacher); });
   const remove = withAction(async (u) => {
     if (!(await confirmDialog({ title: `${u.name} silinsin mi?`, message: "Hesap kalıcı olarak silinecek. Bu işlem geri alınamaz.", confirmLabel: "Hesabı Sil", danger: true }))) return;
     await api.adminDeleteUser(u.id);
@@ -109,7 +109,7 @@ export default function AdminUsersScreen() {
               onChangeGradeLevel={(gradeLevel) => changeGradeLevel(u.id, gradeLevel)}
               onResendActivation={() => resendActivation(u.id)}
               onToggleBan={() => toggleBan(u)}
-              onToggleSubjectTeacher={() => toggleSubjectTeacher(u)}
+              onEditBranches={() => setBranchesFor(u)}
               onSetPassword={() => setSetPasswordFor(u)}
               onDelete={() => remove(u)}
             />
@@ -130,6 +130,13 @@ export default function AdminUsersScreen() {
           teachers={teachers}
           onClose={() => setBulkModalOpen(false)}
           onDone={() => { setBulkModalOpen(false); load(); }}
+        />
+      )}
+      {branchesFor && (
+        <BranchesModal
+          user={branchesFor}
+          onClose={() => setBranchesFor(null)}
+          onDone={() => { setBranchesFor(null); setToast({ type: "ok", text: "Branş kaydedildi." }); load(); }}
         />
       )}
       {setPasswordFor && (
@@ -215,7 +222,7 @@ function ExamDatesCard() {
 // Kart düzeni: üstte kimlik (avatar, ad, rozetler, e-posta), öğrencide altında etiketli iki seçim
 // (sınıf düzeyi, koç), en altta işlem düğmeleri — önceden seçimler rozetlerin arasına karışıyor, telefonda
 // düzensiz satırlara kırılıyordu; seçimlerin neyi değiştirdiği de etiketsizdi.
-function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onResendActivation, onToggleBan, onToggleSubjectTeacher, onSetPassword, onDelete }) {
+function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onResendActivation, onToggleBan, onEditBranches, onSetPassword, onDelete }) {
   const isStudent = user.role === "STUDENT";
   return (
     <Card hover style={{ padding: 16 }}>
@@ -229,7 +236,9 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onRese
             {user.banned && <Pill tone="red">Askıda</Pill>}
             {!user.hasPassword && <Pill tone="amber">Aktivasyon bekleniyor</Pill>}
             {isStudent && !GRADE_LEVELS.includes(user.gradeLevel) && <Pill tone="red">{user.gradeLevel ? "Sınıf düzeyi güncellenmeli" : "Sınıf düzeyi girilmedi"}</Pill>}
-            {user.role === "TEACHER" && user.isSubjectTeacher && <Pill tone="accent">Ders öğretmeni</Pill>}
+            {user.role === "TEACHER" && user.isSubjectTeacher && (
+              <Pill tone="accent">{user.teachingSubjects?.length ? `Branş: ${user.teachingSubjects.join(", ")}` : "Ders öğretmeni"}</Pill>
+            )}
           </div>
           <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[user.username && `Kullanıcı adı: ${user.username}`, user.email].filter(Boolean).join(" · ")}</div>
         </div>
@@ -254,9 +263,9 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onRese
         )}
         {user.role === "TEACHER" && (
           <IconButton
-            title={user.isSubjectTeacher ? "Ders öğretmeni yetkisini kaldır" : "Ders öğretmeni yap (okul çapında ortak ödev gönderebilsin)"}
+            title="Branş (ders öğretmeni — okul çapında ortak ödev gönderebilsin)"
             icon={GraduationCap}
-            onClick={onToggleSubjectTeacher}
+            onClick={onEditBranches}
             active={user.isSubjectTeacher}
           />
         )}
@@ -382,6 +391,43 @@ function SetPasswordModal({ user, onClose, onDone }) {
         {error && <div style={{ color: C.red, fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
         <Button full type="submit" disabled={saving}>{saving ? "Kaydediliyor..." : "Şifreyi Belirle"}</Button>
       </form>
+    </Modal>
+  );
+}
+
+// Öğretmenin okuttuğu dersler — en az bir ders seçilince "ders öğretmeni" yetkisi açılır (Takvim'den
+// okuldaki tüm öğrencilere ortak ödev), hiç seçilmezse kalkar.
+function BranchesModal({ user, onClose, onDone }) {
+  const [selected, setSelected] = useState(user.teachingSubjects || []);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const toggle = (b) => setSelected((cur) => (cur.includes(b) ? cur.filter((x) => x !== b) : [...cur, b]));
+
+  const save = async () => {
+    setError("");
+    setSaving(true);
+    try {
+      await api.adminSetTeacherSubjects(user.id, selected);
+      onDone();
+    } catch (err) {
+      setError(err.message || "Kaydedilemedi");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title={`${user.name} — Branş`} onClose={onClose}>
+      <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, lineHeight: 1.45, marginBottom: 14 }}>
+        Okuttuğu dersleri seç. Branş öğretmeni Takvim'den okuldaki tüm 11-12. sınıflara ortak ödev gönderebilir; hiç ders seçilmezse bu yetki kalkar.
+      </div>
+      <div role="group" aria-label="Dersler" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 18 }}>
+        {BRANCHES.map((b) => <Chip key={b} active={selected.includes(b)} onClick={() => toggle(b)}>{b}</Chip>)}
+      </div>
+      {user.isSubjectTeacher && selected.length === 0 && (
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.amber, fontWeight: 600, marginBottom: 12 }}>Kaydedince ders öğretmeni yetkisi kalkacak.</div>
+      )}
+      {error && <div role="alert" style={{ color: C.red, fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
+      <Button full disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
     </Modal>
   );
 }

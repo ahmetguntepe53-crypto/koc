@@ -123,7 +123,8 @@ export const api = {
   adminDeletePhoto: (photoId) => request(`/admin/photos/${photoId}`, { method: "DELETE" }),
   adminGetSettings: () => request("/admin/settings"),
   adminUpdateSettings: (patch) => request("/admin/settings", { method: "PUT", body: patch }),
-  adminSetSubjectTeacher: (id, isSubjectTeacher) => request(`/admin/users/${id}/subject-teacher`, { method: "POST", body: { isSubjectTeacher } }),
+  // Branş öğretmeninin dersleri — en az bir ders "ders öğretmeni" yetkisini açar, boş liste kapatır.
+  adminSetTeacherSubjects: (id, subjects) => request(`/admin/users/${id}/subject-teacher`, { method: "POST", body: { subjects } }),
 
   // --- okul ayarları (herkese salt-okunur) ---
   getExamDates: () => request("/settings"),

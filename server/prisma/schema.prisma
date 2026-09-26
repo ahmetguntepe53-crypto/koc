@@ -113,6 +113,10 @@ model User {
   // bu yetkiyi asla görmez/kullanamaz — okul çapında yanlışlıkla toplu gönderim riskini admin'in
   // bilinçli onayına bağlar.
   isSubjectTeacher Boolean @default(false)
+  // Branş öğretmeninin okuttuğu dersler (ör. ["Türkçe", "Edebiyat"]) — server/src/subjects.js > BRANCHES
+  // listesindeki ana ders adları; AYT'deki alt adlar (Tarih-1, Coğrafya-2, Mantık...) branşa
+  // branchOfSubject ile bağlanır. Admin bir öğretmene en az bir branş verince isSubjectTeacher de açılır.
+  teachingSubjects String[] @default([])
 
   createdAt DateTime @default(now())
 
