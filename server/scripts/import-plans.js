@@ -7,6 +7,8 @@
 //   node scripts/import-plans.js data/yillik-plan-2026.json                  → KURU ÇALIŞMA: yalnızca rapor
 //   node scripts/import-plans.js data/yillik-plan-2026.json --apply          → uygular
 //   ... --include-past   → bitmiş haftaları da yükler (varsayılan: bitiş günü bugünden önceki haftalar atlanır)
+//   ... --grade 12       → ZORUNLU: planın sınıf düzeyi (11 ya da 12). Yayınlanınca yalnızca o sınıf düzeyindeki
+//                          öğrencilere gider; aynı ders ve hafta için 11 ve 12. sınıf planları ayrı kayıt olur.
 //
 // Kurallar:
 // - Planın sahibi, teachingSubjects'inde o branş olan TEK öğretmendir (bkz. import-roster.js "branches",
@@ -22,12 +24,14 @@ import { BRANCHES, EXAM_TYPES, isValidSubject, branchOfSubject } from "../src/su
 import { maxQuestionCount } from "../src/validators.js";
 
 const args = process.argv.slice(2);
-const file = args.find((a) => !a.startsWith("--"));
+const file = args.find((a, i) => !a.startsWith("--") && args[i - 1] !== "--grade");
 const APPLY = args.includes("--apply");
 const INCLUDE_PAST = args.includes("--include-past");
+const gradeArg = args.includes("--grade") ? Number(args[args.indexOf("--grade") + 1]) : null;
 
-if (!file) {
-  console.error("Kullanım: node scripts/import-plans.js <plan.json> [--apply] [--include-past]");
+if (!file || ![11, 12].includes(gradeArg)) {
+  console.error("Kullanım: node scripts/import-plans.js <plan.json> --grade <11|12> [--apply] [--include-past]");
+  console.error("  --grade zorunlu: planın hangi sınıf düzeyi için olduğu (yayınlanınca yalnızca o sınıflara gider).");
   process.exit(1);
 }
 
@@ -67,6 +71,7 @@ for (const p of plans) {
 const weekTotal = plans.reduce((n, p) => n + p.weeks.length, 0);
 console.log(`Dosya: ${plans.length} plan, ${weekTotal} haftalık kayıt — doğrulandı.`);
 console.log(`Bugün: ${today}${INCLUDE_PAST ? " (bitmiş haftalar da yüklenecek)" : " (bitiş günü bugünden önceki haftalar atlanır)"}`);
+console.log(`Sınıf düzeyi: ${gradeArg}. sınıf (yayınlanınca yalnızca ${gradeArg}. sınıflara gider)`);
 console.log(APPLY ? "Mod: UYGULA\n" : "Mod: KURU ÇALIŞMA (hiçbir şey yazılmayacak — uygulamak için --apply)\n");
 
 async function main() {
@@ -89,8 +94,10 @@ async function main() {
       continue;
     }
     const owner = owners[0];
+    // Aynı sınıf düzeyinin kaydı varsa atlanır (11 ve 12. sınıf planları aynı haftaya düşebilir). Düzeyi boş eski
+    // kayıtlar (fix-grade-targets.js çalışmadan önceki) her düzeyle çakışır sayılır — çift yükleme olmasın.
     const have = await prisma.planEntry.findMany({
-      where: { teacherId: owner.id, examType: p.examType, subject: p.subject },
+      where: { teacherId: owner.id, examType: p.examType, subject: p.subject, OR: [{ gradeLevel: gradeArg }, { gradeLevel: null }] },
       select: { date: true },
     });
     const haveDays = new Set(have.map((e) => e.date.toISOString().slice(0, 10)));
@@ -112,6 +119,7 @@ async function main() {
         sourceBook: w.sourceBook || null,
         questionCount: w.questionCount ?? null,
         schoolWide: true,
+        gradeLevel: gradeArg,
         autoSend: "OFF",
       });
     }

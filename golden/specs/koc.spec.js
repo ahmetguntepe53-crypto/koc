@@ -76,3 +76,23 @@ test("Aylık raporlar ve öğrencinin aylık raporu", async ({ golden, page }) =
   await golden.settle();
   await golden.snap("aylik-rapor-ogrenci");
 });
+
+test("Bildirimler: aylık rapor bildirimi aylık raporlara götürür", async ({ golden, page }) => {
+  await golden.open("koc");
+  await page.getByRole("button", { name: "Bildirimler" }).click();
+  await golden.settle();
+  await golden.snap("koc-bildirimler");
+  await page.getByText("raporları hazır", { exact: false }).first().click();
+  await golden.settle();
+  await golden.snap("bildirim-aylik-raporlar");
+});
+
+test("Koç paneli: otomatik aylık değerlendirme", async ({ golden, page }) => {
+  await golden.open("koc");
+  await page.getByText("Zeynep Kaya").first().click();
+  await golden.settle();
+  await page.getByRole("button", { name: "Rapor", exact: true }).click();
+  await golden.settle();
+  await page.getByText("Aylık değerlendirme", { exact: true }).scrollIntoViewIfNeeded();
+  await golden.snap("koc-aylik-degerlendirme");
+});

@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert, MAX_QUESTIONS_PER_DAY, maxQuestionCount } from "../validators.js";
-import { isValidSubject, trackForGrade, trackForExamType } from "../subjects.js";
+import { isValidSubject, trackForGrade, trackForExamType, GRADE_LEVELS } from "../subjects.js";
 import { EXAM_TYPES, recipientInclude, notifyRecipientsAssignmentSent } from "./assignments.js";
 
 // server/src/app.js'de requireAuth + requireRole("TEACHER") ile mount edilir — yıllık takvim
@@ -30,7 +30,10 @@ function parseDateOnly(value) {
 }
 
 function validateBody(body, { requireDate }) {
-  const { examType, date, endDate, kind, subject, topic, sourceBook, pageRange, questionCount, note, autoSend, schoolWide } = body || {};
+  const { examType, date, endDate, kind, subject, topic, sourceBook, pageRange, questionCount, note, autoSend, schoolWide, gradeLevel } = body || {};
+  // Hedef sınıf: 11, 12 ya da boş (ikisi) — sayı ya da sayı metni gelebilir.
+  const cleanGrade = gradeLevel === undefined || gradeLevel === null || gradeLevel === "" ? null : Number(gradeLevel);
+  assert(cleanGrade === null || GRADE_LEVELS.includes(cleanGrade), "Geçersiz sınıf düzeyi");
   assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü");
   assert(KINDS.includes(kind), "Geçersiz tür");
   assert(topic && String(topic).trim(), "Konu/başlık gerekli");
@@ -71,6 +74,8 @@ function validateBody(body, { requireDate }) {
     note: note ? String(note).trim() : null,
     autoSend: cleanAutoSend,
     schoolWide: !!schoolWide,
+    // Alan hiç gönderilmediyse (eski uygulama sürümü) undefined kalır: oluştururken boş, düzenlerken mevcut değer korunur.
+    gradeLevel: gradeLevel === undefined ? undefined : cleanGrade,
   };
 }
 
@@ -134,13 +139,15 @@ planEntriesRouter.put("/:id", async (req, res) => {
 // yalnızca isSubjectTeacher=true hesaplar çağırabilir (bkz. assertCanUseSchoolWide).
 planEntriesRouter.get("/school-wide-count", async (req, res) => {
   try {
-    const { examType } = req.query || {};
+    const { examType, gradeLevel } = req.query || {};
     assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü");
+    const grade = gradeLevel ? Number(gradeLevel) : null;
+    assert(grade === null || GRADE_LEVELS.includes(grade), "Geçersiz sınıf düzeyi");
     const me = await prisma.user.findUnique({ where: { id: req.userId }, select: { isSubjectTeacher: true } });
     assert(me?.isSubjectTeacher, "Bu işlem için yetkin yok", 403);
     const targetTrack = trackForExamType(examType);
     const candidates = await prisma.user.findMany({ where: { role: "STUDENT", banned: false }, select: { gradeLevel: true } });
-    const count = candidates.filter((s) => trackForGrade(s.gradeLevel) === targetTrack).length;
+    const count = candidates.filter((s) => trackForGrade(s.gradeLevel) === targetTrack && (grade === null || s.gradeLevel === grade)).length;
     res.json({ count });
   } catch (e) {
     handleErr(res, e);
@@ -285,8 +292,11 @@ export async function publishPlanEntry(entry) {
       : { role: "STUDENT", teacherId: entry.teacherId, banned: false },
     select: { id: true, gradeLevel: true },
   });
-  const matching = candidates.filter((s) => trackForGrade(s.gradeLevel) === targetTrack);
-  assert(matching.length > 0, entry.schoolWide ? "Bu sınav türünde okulda henüz öğrenci yok" : "Bu sınav türünde henüz öğrencin yok (sınıf düzeyi girilmiş olmalı)");
+  // Hedef sınıf düzeyi seçildiyse (ör. 12. sınıfın yıllık planı) yalnızca o düzeydeki öğrenciler.
+  const matching = candidates.filter((s) => trackForGrade(s.gradeLevel) === targetTrack && (entry.gradeLevel == null || s.gradeLevel === entry.gradeLevel));
+  assert(matching.length > 0, entry.gradeLevel != null
+    ? `${entry.gradeLevel}. sınıfta ${entry.schoolWide ? "okulda" : "senin"} henüz öğrenci yok`
+    : entry.schoolWide ? "Bu sınav türünde okulda henüz öğrenci yok" : "Bu sınav türünde henüz öğrencin yok (sınıf düzeyi girilmiş olmalı)");
 
   // Assignment oluşturma + PlanEntry'yi "yayınlandı" olarak işaretleme TEK bir transaction içinde —
   // (çift tetikleyici -> çift ödev/bildirim riski — bkz. yayınla uç noktasının/scheduler'ın kullanımı)
@@ -308,6 +318,7 @@ export async function publishPlanEntry(entry) {
         // Takvim kaydı her zaman TÜM track'i hedefler, öğrenci bazlı kısmi seçim yok — schoolWide
         // ise bu, kendi öğrencilerinin ötesinde okuldaki TÜM track'i kapsar (bkz. targetTrack yukarıda).
         targetMode: entry.schoolWide ? "SCHOOL_WIDE" : "WHOLE_GROUP",
+        targetGrade: entry.gradeLevel ?? null,
         status: "SENT",
         sentAt: new Date(),
         recipients: { create: matching.map((s) => ({ studentId: s.id })) },

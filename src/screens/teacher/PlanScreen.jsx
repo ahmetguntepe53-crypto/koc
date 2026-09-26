@@ -347,6 +347,7 @@ function DayAgendaModal({ dateKey, entries, onClose, onOpenEntry, onAddNew }) {
                   {entryTitle(entry)}
                 </span>
                 {entry.schoolWide && <Pill tone="blue">Okul çapında</Pill>}
+                {entry.gradeLevel && <Pill mono>{entry.gradeLevel}. sınıf</Pill>}
                 <Pill tone={STATUS_META[status].tone}>{STATUS_META[status].label}</Pill>
               </button>
             );
@@ -407,6 +408,7 @@ function EntryRow({ entry, onClick }) {
           {days > 1 ? <> · <span style={{ fontFamily: monoFont }}>{days}</span> gün</> : null}
           {entry.questionCount ? <> · <span style={{ fontFamily: monoFont }}>{entry.questionCount}</span> soru</> : null}
           {entry.schoolWide ? " · okul çapında" : ""}
+          {entry.gradeLevel ? ` · ${entry.gradeLevel}. sınıf` : ""}
         </span>
       </span>
       <Pill tone={STATUS_META[status].tone}>{STATUS_META[status].label}</Pill>
@@ -445,6 +447,8 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
   const [endDate, setEndDate] = useState(existing?.endDate ? existing.endDate.slice(0, 10) : "");
   const [autoSend, setAutoSend] = useState(existing?.autoSend || "OFF");
   const [schoolWide, setSchoolWide] = useState(existing?.schoolWide || false);
+  // Hedef sınıf: "" = 11 ve 12 (tüm YKS), "11" / "12" = yalnız o düzey. Yıllık planlar sınıf düzeyine göre ayrıdır.
+  const [gradeLevel, setGradeLevel] = useState(existing?.gradeLevel ? String(existing.gradeLevel) : "");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -455,6 +459,7 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
     sourceBook: sourceBook.trim() || undefined, pageRange: pageRange.trim() || undefined,
     questionCount: questionCount ? Number(questionCount) : undefined,
     note: note.trim() || undefined, autoSend, schoolWide: isSubjectTeacher ? schoolWide : false,
+    gradeLevel: gradeLevel ? Number(gradeLevel) : null,
   });
   // Son kaydedilmiş hâlin anlık görüntüsü — "Yayınla"ya basıldığında formda kaydedilmemiş değişiklik
   // olup olmadığını anlamak için.
@@ -482,12 +487,13 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
     const current = payload();
     const dirty = JSON.stringify(current) !== savedSnapshot;
     if (dirty && !current.topic) { setError(kind === "TOPIC" ? "Konu gerekli" : "Başlık gerekli (ör. Deneme Sınavı)"); return; }
-    let confirmText = "Bu kayıt tüm öğrencilerinize şimdi gönderilsin mi? Bu işlem geri alınamaz.";
+    const g = current.gradeLevel;
+    let confirmText = `Bu kayıt ${g ? `${g}. sınıftaki ` : "tüm "}öğrencilerinize şimdi gönderilsin mi? Bu işlem geri alınamaz.`;
     if (current.schoolWide) {
-      confirmText = "Bu kayıt OKULDAKİ TÜM ilgili öğrencilere gönderilecek. Bu işlem geri alınamaz.";
+      confirmText = `Bu kayıt OKULDAKİ ${g ? `TÜM ${g}. SINIF` : "TÜM ilgili"} öğrencilere gönderilecek. Bu işlem geri alınamaz.`;
       try {
-        const { count } = await api.planSchoolWideCount(examType);
-        confirmText = `Bu kayıt okuldaki TÜM ${count} ${examType} öğrencisine gönderilecek (yalnızca sizin öğrencileriniz değil). Bu işlem geri alınamaz. Devam edilsin mi?`;
+        const { count } = await api.planSchoolWideCount(examType, g);
+        confirmText = `Bu kayıt okuldaki ${count} ${g ? `${g}. sınıf ` : ""}${examType} öğrencisine gönderilecek${g ? "" : " (11 ve 12. sınıflar)"} — yalnızca sizin öğrencileriniz değil. Bu işlem geri alınamaz. Devam edilsin mi?`;
       } catch { /* sayım alınamazsa genel uyarı ile devam */ }
     }
     if (dirty) confirmText = `Yaptığın değişiklikler önce kaydedilecek. ${confirmText}`;
@@ -529,6 +535,7 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
           <Pill tone="green">Gönderildi</Pill>
           <Pill tone={KIND_TONES[existing.kind]}>{KIND_LABELS[existing.kind]}</Pill>
           {existing.schoolWide && <Pill tone="blue">Okul çapında</Pill>}
+          {existing.gradeLevel && <Pill mono>{existing.gradeLevel}. sınıf</Pill>}
         </div>
         <div style={{ fontFamily: displayFont, fontSize: 16, fontWeight: 700, letterSpacing: -0.1, color: C.text, marginBottom: 4 }}>
           {existing.subject ? `${existing.subject} — ` : ""}{existing.topic}
@@ -610,12 +617,21 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
 
         {isSubjectTeacher && (
           <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 16, padding: "11px 12px", borderRadius: 12, background: schoolWide ? C.accentSoft : C.fieldBg, border: `1px solid ${schoolWide ? C.accent : C.border}`, cursor: "pointer" }}>
-            <input type="checkbox" checked={schoolWide} onChange={(e) => setSchoolWide(e.target.checked)} style={{ marginTop: 2, accentColor: C.accent }} />
+            <input type="checkbox" checked={schoolWide} onChange={(e) => { setSchoolWide(e.target.checked); if (e.target.checked && !existing && !gradeLevel) setGradeLevel("12"); }} style={{ marginTop: 2, accentColor: C.accent }} />
             <span style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.text2, lineHeight: 1.45 }}>
               <strong style={{ color: C.text }}>Okul çapında ortak ödev</strong> — yayınlandığında yalnızca sizin öğrencilerinize değil, okuldaki bu sınav türüne ({examType}) hazırlanan TÜM öğrencilere gönderilir.
             </span>
           </label>
         )}
+
+        <Select label="Hedef sınıf" value={gradeLevel} onChange={(e) => setGradeLevel(e.target.value)}>
+          <option value="">11 ve 12. sınıflar</option>
+          <option value="12">Yalnız 12. sınıf</option>
+          <option value="11">Yalnız 11. sınıf</option>
+        </Select>
+        <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginTop: -10, marginBottom: 16 }}>
+          Yayınlanınca yalnızca seçilen sınıf düzeyindeki öğrencilere gider{schoolWide ? " (okul çapında)" : " (senin öğrencilerin arasından)"}.
+        </div>
 
         {error && <div role="alert" style={{ color: C.red, fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{error}</div>}
 

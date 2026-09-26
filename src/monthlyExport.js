@@ -1,5 +1,6 @@
 import { api } from "./api.js";
 import { buildReport, monthWindowKey } from "./reportModel.js";
+import { buildNarrative } from "./narrative/index.js";
 import { monthLabel } from "./screens/teacher/MonthlyReportsScreen.jsx";
 
 // Aylık raporların tek PDF'i (koç): her öğrencinin o ayki raporu aynı modelle (src/reportModel.js) hesaplanır; varsa
@@ -14,7 +15,9 @@ export async function exportMonthlyReportsPdf({ month, students, coachName }) {
       const d = await api.getAiAnalysis(s.id, month);
       if (d?.analysis) ai = { ...d.analysis.content, generatedAt: d.analysis.updatedAt, month };
     } catch { /* inceleme yoksa PDF yine oluşur */ }
-    entries.push({ model, ai });
+    // Otomatik değerlendirme her öğrenci için (ücretsiz, cihazda); önceki aylarla karşılaştırmalı.
+    const narrative = buildNarrative(raw, { month });
+    entries.push({ model, ai, narrative });
   }
   const { downloadMonthlyReportsPdf } = await import("./reportPdf.js");
   await downloadMonthlyReportsPdf({ month, monthLabel: monthLabel(month), coachName, entries });

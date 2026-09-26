@@ -159,7 +159,7 @@ export const api = {
   previewPlanShift: (payload) => request("/plan-entries/shift/preview", { method: "POST", body: payload }),
   shiftPlan: (payload) => request("/plan-entries/shift", { method: "POST", body: payload }),
   restorePlanDates: (items) => request("/plan-entries/restore-dates", { method: "POST", body: { items } }),
-  planSchoolWideCount: (examType) => request(`/plan-entries/school-wide-count?examType=${encodeURIComponent(examType)}`),
+  planSchoolWideCount: (examType, gradeLevel) => request(`/plan-entries/school-wide-count?examType=${encodeURIComponent(examType)}${gradeLevel ? `&gradeLevel=${gradeLevel}` : ""}`),
 
   // --- bildirimler ---
   listNotifications: () => request("/notifications"),

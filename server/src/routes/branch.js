@@ -70,6 +70,7 @@ function summarize(assignment, now) {
     id: assignment.id, topic: assignment.topic, subject: assignment.subject, examType: assignment.examType,
     scheduledDate: assignment.scheduledDate, endDate: assignment.endDate, questionCount: q,
     counts, nets, avgNet, successPct, skipReasons, coachReminderSentAt: assignment.coachReminderSentAt,
+    targetGrade: assignment.targetGrade ?? null,
   };
 }
 
@@ -139,16 +140,19 @@ branchRouter.get("/overview", async (req, res) => {
     const plan = entries.map((e) => {
       let state = "taslak";
       if (e.assignmentId) state = (e.assignment?.endDate || e.endDate || e.date).getTime() + 21 * 3600e3 < today ? "kapandı" : "açık";
-      return { id: e.id, date: e.date, endDate: e.endDate, topic: e.topic, questionCount: e.questionCount, state, autoSend: e.autoSend, schoolWide: e.schoolWide };
+      return { id: e.id, date: e.date, endDate: e.endDate, topic: e.topic, questionCount: e.questionCount, state, autoSend: e.autoSend, schoolWide: e.schoolWide, gradeLevel: e.gradeLevel ?? null };
     });
     // Sıradaki yayınlanacak konu: bu haftadan itibaren ilk taslak.
     const { mon } = trWeekRange(now);
     const nextDraft = plan.find((p) => p.state === "taslak" && (p.endDate || p.date).getTime() >= mon.getTime()) || null;
 
     const students = await prisma.user.findMany({ where: { role: "STUDENT", banned: false }, select: { gradeLevel: true } });
-    const studentCount = students.filter((s) => trackForGrade(s.gradeLevel) === "YKS").length;
+    const yks = students.filter((s) => trackForGrade(s.gradeLevel) === "YKS");
+    const studentCount = yks.length;
+    // Sınıf düzeyine göre sayılar — 12. sınıfın planı yalnız 12. sınıflara gider (bkz. PlanEntry.gradeLevel).
+    const studentCounts = { all: studentCount, 11: yks.filter((s) => s.gradeLevel === 11).length, 12: yks.filter((s) => s.gradeLevel === 12).length };
 
-    res.json({ teacher: { name: me.name }, studentCount, current: currentSummary, previous: previousSummary, nonSubmitters, plan, nextDraft });
+    res.json({ teacher: { name: me.name }, studentCount, studentCounts, current: currentSummary, previous: previousSummary, nonSubmitters, plan, nextDraft });
   } catch (e) {
     handleErr(res, e);
   }

@@ -38,6 +38,7 @@ export default function ReportScreen({ user, studentId: fixedStudentId, studentN
   const [detailKey, setDetailKey] = useState(null);
   const [pdfOpen, setPdfOpen] = useState(false);
   const [ai, setAi] = useState(null);
+  const [narrative, setNarrative] = useState(null);
   const [hidden, setHidden] = useState(readHidden);
   const [headerSlot, setHeaderSlot] = useState(null);
   useEffect(() => setHeaderSlot(document.getElementById(HEADER_SLOT_ID)), []);
@@ -105,7 +106,7 @@ export default function ReportScreen({ user, studentId: fixedStudentId, studentN
             onOpenRecipient={onOpenRecipient} onOpenAssignment={onOpenAssignment} />
           {isCoach && studentId && (
             <Section id="koc" title="Koç paneli">
-              <CoachPanel model={model} studentId={studentId} aiMonth={month || model.window.month} onAiLoaded={setAi} onOpenAssignment={onOpenAssignment} />
+              <CoachPanel model={model} raw={raw} studentId={studentId} aiMonth={month || model.window.month} onAiLoaded={setAi} onNarrative={setNarrative} onOpenAssignment={onOpenAssignment} />
             </Section>
           )}
           <SubjectCards model={model} isCoach={isCoach} exam={exam} setExam={setExam} onOpen={setDetailKey} onStudy={study} />
@@ -126,7 +127,7 @@ export default function ReportScreen({ user, studentId: fixedStudentId, studentN
           onOpenItem={!isCoach ? onOpenRecipient : null} />
       )}
       {pdfOpen && raw && (
-        <PdfSheet raw={raw} isCoach={isCoach} initialWindow={windowKey} windows={windows} ai={ai} studentName={studentName} onClose={() => setPdfOpen(false)} />
+        <PdfSheet raw={raw} isCoach={isCoach} initialWindow={windowKey} windows={windows} ai={ai} narrative={narrative} studentName={studentName} onClose={() => setPdfOpen(false)} />
       )}
     </div>
   );
@@ -727,7 +728,7 @@ function Coverage({ model, isCoach, onOpenRecipient, onStudy }) {
 }
 
 // ---------------------------------------------------------------- PDF sayfası
-function PdfSheet({ raw, isCoach, initialWindow, windows, ai, studentName, onClose }) {
+function PdfSheet({ raw, isCoach, initialWindow, windows, ai, narrative, studentName, onClose }) {
   const [win, setWin] = useState(initialWindow);
   const [variant, setVariant] = useState(isCoach ? "coach" : "student");
   const [busy, setBusy] = useState(false);
@@ -738,7 +739,7 @@ function PdfSheet({ raw, isCoach, initialWindow, windows, ai, studentName, onClo
     try {
       const { downloadReportPdf } = await import("../reportPdf.js");
       const model = buildReport(raw, { window: win });
-      await downloadReportPdf({ model, variant, ai: variant === "coach" ? ai : null });
+      await downloadReportPdf({ model, variant, ai: variant === "coach" ? ai : null, narrative: variant === "coach" ? narrative : null });
       onClose();
     } catch (e) {
       console.error("[pdf] oluşturulamadı:", e);
@@ -762,7 +763,7 @@ function PdfSheet({ raw, isCoach, initialWindow, windows, ai, studentName, onClo
             <Chip active={variant === "parent"} onClick={() => setVariant("parent")}>Veli/öğrenci için</Chip>
           </div>
           <div style={{ ...text(12, 500, C.mutedLight), marginBottom: 14, lineHeight: 1.5 }}>
-            {variant === "coach" ? `Koç eki, öğrenci notları, veri notları${ai ? " ve yapay zekâ incelemesi" : ""} dahil.` : "Koç eki, notlar, veri notları ve yapay zekâ incelemesi çıkarılır."} Özel notların hiçbir PDF'e girmez.
+            {variant === "coach" ? `Koç eki, öğrenci notları, veri notları, aylık değerlendirme${ai ? " ve yapay zekâ incelemesi" : ""} dahil.` : "Koç eki, notlar, veri notları ve değerlendirmeler çıkarılır."} Özel notların hiçbir PDF'e girmez.
           </div>
         </>
       )}

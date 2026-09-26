@@ -809,7 +809,7 @@ export function buildReport(raw, opts = {}) {
   const freeGap = freeAgg.n >= 2 && hwAgg.n >= 2 ? freeAgg.NO - hwAgg.NO : null;
   const coach = {
     status, statusLabel: { intervene: "Müdahale", watch: "Takip et", ok: "Yolunda" }[status], reasons,
-    lastSeenDays: g, lastRecordDays: lastRecordDay != null ? today - lastRecordDay : null,
+    lastSeenDays: g, lastRecordDays: lastRecordDay != null ? ref - lastRecordDay : null,
     silent28: d28.silent, school: d28School, personal: d28Coach,
     afterReminder: { done: reminded.filter((it) => it.completed && new Date(it.completedAt) > new Date(it.reminderAt)).length, total: reminded.length },
     streak,
@@ -932,6 +932,8 @@ function buildRecommendations(c) {
       text: { student, coach }, title: { student: student ? firstSentence(student) : null, coach: coach ? firstSentence(coach) : null },
       short: o.short || (coach ? firstSentence(coach) : ""), audience: { student: o.forStudent !== false && !!student, coach: o.forCoach !== false && !!coach },
       action: o.action || null, section: o.section || null, meta: o.meta || null,
+      // Otomatik değerlendirme (src/narrative) cümlelerini bu sayılardan kurar — metinle aynı hesap.
+      data: o.data || null,
     });
   };
   const { today, asOf, ref, items, records, subjects, subjectMap, konuSkips, comparable, grade12, weeksLeft, d28, d28School, d28Coach, isTracked, recsIn } = c;
@@ -949,6 +951,7 @@ function buildRecommendations(c) {
   if (r00) add("R00", {
     student: `Raporun oluşuyor. Şu an ${plural(nRec, "kaydın")} var. Ödev sonuçlarını doğru/yanlış/boş olarak girdikçe ve ödev dışında çözdüklerini Serbest Çalışma olarak ekledikçe güçlü yanların ve odak alanların burada belirecek.`,
     coach: `Öğrencinin bu dönemde ${plural(nRec, "kaydı")} (${plural(qRec, "soru")}) var. Ders etiketleri için ders başına en az 3 kayıt, 60 soru ve 2 farklı hafta gerekiyor. Şimdilik teslim ve pas göstergelerine bakın. Sonuç girişini ve Serbest Çalışma kaydını öğrenciyle birlikte bir kez yapın.`,
+    data: { kayit: nRec, soru: qRec },
     evidence: `${plural(nRec, "kayıt")} · ${plural(qRec, "soru")}`, count: nRec, owner: "Öğrenci", action: { kind: "study" },
   });
 
@@ -963,6 +966,7 @@ function buildRecommendations(c) {
     add("R01", {
       student: `${plural(overdue.length, "ödevin")} süresi doldu ama hâlâ yapabilirsin. En kısasıyla başla: ${fmtIt(overdue[0])}. Çözdüysen sonucunu gir. Yapamayacaksan sebebini seçip pas geç. İkisi de koçunun sana doğru planı yapmasını sağlar.`,
       coach: `${plural(overdue.length, "ödev")} süresi geçtiği hâlde ne teslim edildi ne pas geçildi (en eskisi ${ref - oldest.endDay} gün önce, hatırlatma ${oldest.reminderAt ? "gönderildi" : "gönderilmedi"}): ${r01List}. Engeli doğrudan sorun; sessiz kalan ödev çoğu zaman bir zorlanma işaretidir. Gerekirse süreyi ya da yükü azaltın.`,
+      data: { sayi: overdue.length, enEski: ref - oldest.endDay, hatirlatma: !!oldest.reminderAt, ornekler: overdue.slice(0, 3).map((it) => ({ ders: it.name, konu: it.topicName, soru: it.expected ?? null })) },
       evidence: `${plural(overdue.length, "ödev")} sessiz · en eskisi ${ref - oldest.endDay} gün önce`, count: overdue.length, owner: "Öğrenci",
       subject: subjectMap.get(overdue[0].key), topic: overdue[0].topicName,
       action: { kind: "submit", itemId: overdue[0].id, assignmentId: overdue[0].assignmentId }, section: "odev",
@@ -982,6 +986,7 @@ function buildRecommendations(c) {
     if (coachTrig || studTrig) add("R02", {
       student: `Tekrar hoş geldin! ${c.k} gündür kayıt görünmüyor. Çalıştıysan girmeyi unutma, girilmeyen çalışma raporuna yansımaz. Kaldığın yerden devam etmek için bugün tek bir adım yeter: ${ilk}.`,
       coach: `Öğrenci ${c.g != null ? `${c.g} gündür uygulamaya girmedi` : "uygulamaya son giriş bilgisi yok"}, ${c.k} gündür kayıt girmedi. Bu hafta birebir ulaşın (sağlık, motivasyon, okul yükü). Uygulamayı açmak çalışmak demek değildir; asıl ölçüt son kayıt tarihidir.`,
+      data: { kayitGun: c.k, girisGun: c.g },
       evidence: `${c.k} gündür kayıt yok${c.g != null ? ` · son giriş ${c.g} gün önce` : ""}`, count: c.k, owner: "Koç",
       forStudent: studTrig, forCoach: coachTrig, action: openShort ? { kind: "submit", itemId: openShort.id, assignmentId: openShort.assignmentId } : { kind: "study" },
       short: `${c.k} gündür kayıt yok`,
@@ -1003,6 +1008,7 @@ function buildRecommendations(c) {
     add("R03", {
       student: `${s.name} dersinde '${konu}' konusunu 'konuyu bilmiyorum' diye pas geçtin. Bunu söylemen çok iyi oldu, eksiği bulmanın ilk adımı bu. Önce konu anlatımına dön (ders notu, video ya da ${hocaYa(t)} soru). Sonra 10–15 kolay soruyla başla ve sonucunu Serbest Çalışma olarak gir.`,
       coach: `${s.name} dersinde '${konu}' konusu 'konuyu bilmiyorum' gerekçesiyle pas geçildi (bu derste son 28 günde ${nAll} kez). Konu anlatımı eksik. Ödevi veren ${t ? hoca(t) : "branş öğretmeni"} ile etüt ayarlayın ya da kısa bir konu tekrarının ardından kolaydan zora 20–30 soruluk kişisel ödev verin.${kp != null ? ` Bu ödevde okul genelinde KONU pası oranı %${kp}.${kp >= 30 ? " Konu sınıf genelinde eksik olabilir; branş öğretmenine iletin." : ""}` : ""}`,
+      data: { ders: s.name, konular: topics.slice(0, 3), sayi: nAll, ogretmen: t || null, okulOrani: kp ?? null },
       evidence: `28 günde ${nAll} pas · neden: konu`, count: nAll, owner: "Branş öğretmeni", ownerName: t, subject: s, topic: topics[0],
       action: { kind: "study", subjectKey: key, topic: topics[0] }, coachAction: { kind: "assign", subjectKey: key, topic: topics[0] }, section: "konu",
       short: `${s.name}: konu pası`,
@@ -1025,6 +1031,7 @@ function buildRecommendations(c) {
     add("R04", {
       student: `'${name}' kitabı elinde olmadığı için ${s.name} dersinde ${plural(list.length, "ödevi")} yapamadın. Bu senin eksiğin değil, çözülebilir bir engel. Koçuna yaz. Kitap gelene kadar aynı konudan başka bir kaynakla çalışıp Serbest Çalışma olarak girebilirsin.`,
       coach: `Kaynak engeli: öğrencide '${name}' yok (${s.name}, ${plural(list.length, "ödev")} pas). Kitap temini için okul yönetimine ya da ${hocaYa(list[0].teacher)} iletin. O zamana kadar öğrencinin elindeki bir kaynaktan kişisel ödev verin. Sorun giderilmezse bu kaynaktan gelen okul ödevlerinin tamamı kaçar.`,
+      data: { ders: s.name, kitap: name, sayi: list.length, ogretmen: list[0].teacher || null },
       evidence: `${plural(list.length, "ödev")} pas · neden: kaynak`, count: list.length, owner: "Yönetim", subject: s, topic: name,
       short: `kaynak engeli (${cut(name, 24)})`,
     });
@@ -1035,6 +1042,7 @@ function buildRecommendations(c) {
   if (r05) add("R05", {
     student: `Son 4 haftada ${plural(d28.V, "ödevden")} ${d28.silent} tanesi sessiz kaldı: ne sonucu girildi ne pas geçildi. Hepsini birden telafi etmeye çalışma. Bugün birini seç; ya bitir ya da nedenini yazıp pas geç. Küçük bir adım ritmini yeniden başlatır.`,
     coach: `Son 28 günde vadesi gelen ${plural(d28.V, "ödevin")} ${d28.silent} tanesi sessiz kaldı (teslim ${fmtPct(d28.deliveredPct)}; okul ödevi ${fmtPct(d28School.deliveredPct)}, kişisel ödev ${fmtPct(d28Coach.deliveredPct)}; son giriş ${c.g != null ? `${c.g} gün önce` : "bilinmiyor"}). Kısa bir görüşmeyle sorunun motivasyon mu, zaman mı, yoksa uygulama kullanımı mı olduğunu netleştirin ve haftalık yükü gözden geçirin.${r01List ? ` Açık ödevler: ${r01List}.` : ""}`,
+    data: { V: d28.V, sessiz: d28.silent, eleAlinan: d28.handledPct, teslim: d28.deliveredPct, okulTeslim: d28School.deliveredPct, kisiselTeslim: d28Coach.deliveredPct },
     evidence: `28 günde ${d28.V} ödev · ${d28.silent} sessiz · ele alınan ${fmtPct(d28.handledPct)}`, count: d28.silent, owner: "Koç", section: "odev",
     short: `ele alınan ${fmtPct(d28.handledPct)}`,
   });
@@ -1057,6 +1065,7 @@ function buildRecommendations(c) {
     add("R06", {
       student: `Son iki haftada ${plural(zaman14.length + late14, "ödeve")} zaman yetmedi. Büyük ödevleri güne bölmeyi dene: ${Q} soruluk bir ödev 3 güne bölünürse günde ${Math.ceil(Q / 3)} soru eder. Ödev geldiği gün ilk parçayı bitir, son güne bir şey bırakma.`,
       coach: `Zaman yönetimi sinyali: son 14 günde 'zaman yetmedi' pası okul ödevlerinde ${zaman14.filter((it) => it.isSchool).length}, kişisel ödevlerde ${zaman14.filter((it) => !it.isSchool).length}; geç teslim oranı ${fmtPct(lateRatio * 100)}. Bu haftanın yükü ${weekNew.filter((it) => it.isSchool).length} okul ve ${weekNew.filter((it) => !it.isSchool).length} kişisel ödev, bilinen toplam yaklaşık ${weekNew.reduce((s, it) => s + (it.expected || 0), 0)} soru. Birlikte gün gün bir plan çıkarın; gerekirse bu hafta kişisel ödevi azaltın.`,
+      data: { zamanPasi: zaman14.length, gecOrani: lateRatio * 100, soru: Q, gunluk: Math.ceil(Q / 3) },
       evidence: `14 günde ${zaman14.length} zaman pası · geç teslim ${fmtPct(lateRatio * 100)}`, count: zaman14.length + late28.length, owner: "Koç", section: "odev",
       short: "zaman sıkıntısı",
     });
@@ -1074,6 +1083,7 @@ function buildRecommendations(c) {
       add("R07", {
         student: `${s.name} bu dönem en çok net kazanabileceğin alan (net oranın ${fmtPct(s.labelAgg.NO)}). Bu hafta bu derse ${hedefQ} soru ayır ve en çok zorlandığın konuyla başla: ${t1.name}. Küçük ama düzenli setler en hızlı artışı getirir.`,
         coach: `${s.name} odak ders: net oranı ${fmtPct(s.labelAgg.NO)} (${plural(s.labelAgg.Q, "soru")}, ${plural(s.labelAgg.n, "kayıt")}${s.pTilde != null && s.compCount >= 2 ? `; okul içi medyan yüzdelik ${fmtInt(s.pTilde)}` : ""}). En düşük konular: ${t1.name} (${fmtPct(t1.rStar)})${t2 ? `; ${t2.name} (${fmtPct(t2.rStar)})` : ""}. Bu haftaki kişisel ödevi bu konulara, kolaydan zora 20–30 soruluk setlerle verin.`,
+        data: { ders: s.name, NO: s.labelAgg.NO, n: s.labelAgg.n, Q: s.labelAgg.Q, pTilde: s.compCount >= 2 ? s.pTilde : null, hedefQ, konular: s.lists.first.slice(0, 3).map((t) => ({ ad: t.name, oran: t.rStar })) },
         evidence: s.reason.coach, evidenceStudent: s.reason.student, count: s.labelAgg.n, owner: "Koç", subject: s, topic: t1.name,
         action: { kind: "study", subjectKey: s.key, topic: t1.name }, coachAction: { kind: "assign", subjectKey: s.key, topic: t1.name }, section: "karne",
         short: `${s.name} odak`,
@@ -1101,6 +1111,7 @@ function buildRecommendations(c) {
     add("R08", {
       student: `${s.name} dersinde okulda işlenen ${list.length} konuda henüz kaydın yok: ${names}. Bu hafta birini seç ve 20–30 soru çöz. Sınıfın temposunu yakalamanın en kolay yolu bu.`,
       coach: `${s.name}: okulda işlenmiş ${list.length} konuda öğrencinin kaydı yok (${names}; konu eşleşmesi yaklaşık). Bunlardan birini bu haftanın kişisel ödevi yapın.${tempo}`,
+      data: { ders: s.name, sayi: list.length, konular: list.slice(0, 3).map((t) => t.name) },
       evidence: `${list.length} konu · son 56 gün okul ödevleri`, count: list.length, owner: "Koç", subject: s, topic: list[0].name,
       action: { kind: "study", subjectKey: s.key, topic: list[0].name }, coachAction: { kind: "assign", subjectKey: s.key, topic: list[0].name }, section: "kapsam",
       short: `${s.name}: ${list.length} konu kayıtsız`,
@@ -1115,6 +1126,7 @@ function buildRecommendations(c) {
       add("R09", {
         student: `${s.name} dersinde net oranın son 4 haftada ${fmtPct(t.a)} düzeyinden ${fmtPct(t.b)} düzeyine indi. Yeni konular daha zorlayıcı olabilir, bu normal. Önce '${konu}' konusunun temel sorularına dönüp onu sağlamlaştır, sonra zor sorulara geç.`,
         coach: `${s.name} düşüşte: önceki 4 haftada ${fmtPct(t.a)}, son 4 haftada ${fmtPct(t.b)}${t.hasSchool ? ` (okul medyanı ${fmtPct(t.ca)} → ${fmtPct(t.cb)})` : " (okul verisi yok)"}. ${t.hasSchool ? "Düşüş okul genelinde görülmüyor, bireysel görünüyor. " : ""}Son 2–3 ödevin yanlış soru numaralarına ve teslim notlarına birlikte bakın. Nedenin yeni konu mu, kaynak mı, yük mü olduğunu netleştirin.`,
+        data: { ders: s.name, a: t.a, b: t.b, delta: t.delta, okulVerisi: !!t.hasSchool, konu },
         evidence: `${fmtPct(t.a)} → ${fmtPct(t.b)} (Δ ${fmtSigned(t.delta)} puan)`, count: Math.round(-t.delta), owner: "Koç", subject: s, topic: konu,
         action: { kind: "study", subjectKey: s.key, topic: konu }, coachAction: { kind: "assign", subjectKey: s.key, topic: konu }, section: "trend",
         short: `${s.name} düşüşte`,
@@ -1133,6 +1145,7 @@ function buildRecommendations(c) {
       add("R10", {
         student: `${s.name} okul ödevlerinde aynı ödevi çözenlerin medyanına ortalama ${fmtInt(d)} puan uzaktasın. Bu fark kapanabilir. İlk adım olarak '${konu}' konusuna odaklan ve haftada bir ek set çöz.`,
         coach: `${s.name}: son ${comp.length} okul ödevinin ${low.length} tanesinde öğrenci okulun alt çeyreğinde (medyan yüzdelik ${fmtInt(median(comp.map((r) => r.item.school.pct)))}, ortalama katılım ${fmtPct(mean(comp.map((r) => r.item.school.participation ?? 0)))}). Aynı ödevi herkes çözdüğü için fark kitap zorluğundan kaynaklanmıyor. Branş öğretmeni ${t ? hoca(t) : ""} ile görüşüp etüt planlayın ve ek kişisel ödev verin.${r07 ? ` En düşük konular: ${r07.slice(0, 2).join("; ")}.` : ""}`.replace("  ", " "),
+        data: { ders: s.name, fark: d, k: low.length, n: comp.length, ogretmen: t || null, konu },
         evidence: `${comp.length} okul ödevinin ${low.length} tanesinde alt çeyrek`, evidenceStudent: `${comp.length} okul ödevinde okul medyanına ortalama ${fmtInt(d)} puan`, count: low.length, owner: "Branş öğretmeni", ownerName: t, subject: s, topic: konu,
         action: { kind: "study", subjectKey: s.key, topic: konu }, coachAction: { kind: "assign", subjectKey: s.key, topic: konu }, section: "karne",
         short: `${s.name}: okulda alt çeyrek`,
@@ -1146,6 +1159,7 @@ function buildRecommendations(c) {
       add("R11", {
         student: `${wrongS.name} dersinde işaretlediğin her 10 sorudan yaklaşık ${Math.round(10 * (1 - a.accuracy / 100))} tanesi yanlış çıkıyor; yanlışların ayrıca ${fmtDec(a.gotur, 1)} doğrunu götürdü. Yanlış yaptığın soruları çözümüne bakarak yeniden çöz ve her birinin yanına not düş: bilgi mi, dikkat mi, işlem mi? En sık çıkan hata türünden başla.`,
         coach: `${wrongS.name}: isabet ${fmtPct(a.accuracy)}, boş oranı düşük (${fmtPct(a.blankRate)}); yanlışlar ayrıca ${fmtDec(a.gotur, 1)} doğruyu götürdü. Kavram yanılgısı ya da acele olası. Yanlış soru numaralarını birlikte açın. Aynı hata tekrarlıyorsa konu tekrarı, hata türleri dağınıksa süre ve dikkat çalışması verin.`,
+        data: { ders: wrongS.name, isabet: a.accuracy, bos: a.blankRate, gotur: a.gotur, Y: a.Y, onda: Math.round(10 * (1 - a.accuracy / 100)) },
         evidence: `isabet ${fmtPct(a.accuracy)} · boş ${fmtPct(a.blankRate)} · ${plural(a.Q, "soru")}`, count: a.Y, owner: "Koç", subject: wrongS, section: "netkaybi",
         short: `${wrongS.name}: yanlış ağırlıklı`,
       });
@@ -1156,6 +1170,7 @@ function buildRecommendations(c) {
       add("R12", {
         student: `${cautS.name} dersinde işaretlediğin soruların ${fmtPct(a.accuracy)} kadarı doğru; bildiğin yerde çok iyisin. Ama soruların ${fmtPct(a.blankRate)} kadarı boş kaldı. Boşların hangi konudan geldiğine bak ve o konuyu tekrar et. Sınav için de hatırla: iki şıkka indirebildiğin soruyu işaretlemek ortalamada soru başına +0,375 net getirir.`,
         coach: `${cautS.name}: isabet yüksek (${fmtPct(a.accuracy)}) ama boş oranı ${fmtPct(a.blankRate)}. Sorun dikkat değil; büyük olasılıkla konu eksiği ya da süre. Boş kalan soruların konusuna kısa bir tekrar ödevi verin ve eleme stratejisini konuşun: iki şıkka inildiyse işaretlemek beklenen neti artırır.`,
+        data: { ders: cautS.name, isabet: a.accuracy, bos: a.blankRate },
         evidence: `isabet ${fmtPct(a.accuracy)} · boş ${fmtPct(a.blankRate)}`, count: a.B, owner: "Koç", subject: cautS, section: "netkaybi",
         short: `${cautS.name}: temkinli`,
       });
@@ -1167,6 +1182,7 @@ function buildRecommendations(c) {
       add("R13", {
         student: `${gapS.name} dersinde soruların ${fmtPct(a.blankRate)} kadarını boş bırakıyorsun; bu genelde konunun henüz oturmadığını gösterir. '${konu}' konusunu seç, konu anlatımına bir kez dön ve 15 kolay soruyla yeniden başla.`,
         coach: `${gapS.name}: boş oranı ${fmtPct(a.blankRate)}, isabet ${fmtPct(a.accuracy)}. Bu bir konu eksiği profili. En çok zorlanılan konu '${konu}'. Kısa bir konu anlatımı ve ardından kolaydan zora kısa bir kişisel ödev önerilir.`,
+        data: { ders: gapS.name, bos: a.blankRate, isabet: a.accuracy, konu },
         evidence: `boş ${fmtPct(a.blankRate)} · isabet ${fmtPct(a.accuracy)}`, count: a.B, owner: "Koç", subject: gapS, topic: konu,
         action: { kind: "study", subjectKey: gapS.key, topic: konu }, coachAction: { kind: "assign", subjectKey: gapS.key, topic: konu }, section: "netkaybi",
         short: `${gapS.name}: boş çok`,
@@ -1188,6 +1204,7 @@ function buildRecommendations(c) {
         add("R14", {
           student: `Serbest çalışmanın ${fmtPct((strongQ / freeQ) * 100)} kadarı zaten güçlü olduğun ${gs.name} dersine gidiyor; bu güzel bir temel. Bu hafta serbest çalışmanın yarısını ${f.name} dersine ayırmayı dene. En hızlı net artışı genellikle orada gelir.`,
           coach: `Serbest çalışmanın ${fmtPct((strongQ / freeQ) * 100)} kadarı güçlü derslere (${gs.name}), yalnızca ${fmtPct((focusQ / freeQ) * 100)} kadarı odak derse (${f.name}) gidiyor. Öğrenci rahat olduğu derse yöneliyor olabilir. Bu hafta ${f.name} için somut bir serbest çalışma soru hedefi koyun.`,
+          data: { gucluPay: (strongQ / freeQ) * 100, odakPay: (focusQ / freeQ) * 100, gucluDers: gs.name, odakDers: f.name, serbestSoru: freeQ },
           evidence: `serbest ${plural(freeQ, "soru")} · güçlü derslere ${fmtPct((strongQ / freeQ) * 100)}`, count: freeQ, owner: "Koç", subject: f,
           action: { kind: "study", subjectKey: f.key }, short: "serbest çalışma dağılımı",
         });
@@ -1204,6 +1221,7 @@ function buildRecommendations(c) {
       add("R15", {
         student: `Ödevlerini düzenli yapıyorsun, bu çok iyi. Bir sonraki adım: haftada 2 kez ${odak} kendi seçtiğin 20 soruyu çözüp Serbest Çalışma olarak gir. Hem gelişimin hızlanır hem raporun seni daha iyi tanır.`,
         coach: `Öğrenci ödevlerini yapıyor (teslim ${fmtPct(d28.deliveredPct)}) ama 3 haftadır ödev dışında kaydı yok. Çalışıp kaydetmiyor olabilir; bunu sorun. ${f ? f.name : "Odak ders"} için haftada 2 × 20 soruluk bir serbest çalışma hedefiyle başlanabilir.`,
+        data: { teslim: d28.deliveredPct, odakDers: f ? f.name : null },
         evidence: `21 günde serbest çalışma yok · teslim ${fmtPct(d28.deliveredPct)}`, count: 1, owner: "Koç", subject: f || null,
         action: { kind: "study", subjectKey: f?.key }, short: "serbest çalışma yok",
       });
@@ -1217,6 +1235,7 @@ function buildRecommendations(c) {
     if (last / md.length >= 0.6) add("R16", {
       student: "Ödevlerinin çoğunu son gün ya da hatırlatmadan sonra bitiriyorsun. Yeni ödev gelince ilk gün sadece 10 soru çöz. Son gün stresi yarıya iner, sorulara da daha dikkatli bakarsın.",
       coach: `Çok günlük ödevlerin ${fmtPct((last / md.length) * 100)} kadarı son gün ya da gecikme hatırlatmasından sonra teslim ediliyor; bir erteleme alışkanlığı var. Ödevin ortasına bir ara kontrol noktası koyun.`,
+      data: { oran: (last / md.length) * 100, sayi: last, toplam: md.length },
       evidence: `${md.length} çok günlük ödevin ${last} tanesi son gün`, count: last, owner: "Koç", section: "odev", short: "son gün ertelemesi",
     });
   }
@@ -1229,6 +1248,7 @@ function buildRecommendations(c) {
     add("R17", {
       student: `Bazı ödevlerinde girdiğin soru sayısı ödevdekinden az (ör. ${p.name}: ${p.Q}/${p.expected}). Çözemediğin soruları 'boş' olarak gir. Ödev yarım kaldıysa kalanını bitirip Serbest Çalışma olarak ekle. Böylece raporun seni daha doğru gösterir.`,
       coach: `${plural(partial.length, "ödevde")} beklenen sorunun %80'inden azı girilmiş (ör. ${p.name}: ${p.Q}/${p.expected}). Ödevin mi yarım kaldığını, boşların mı girilmediğini netleştirin. Bu dönemin boş oranlarını yaklaşık kabul edin.`,
+      data: { sayi: partial.length, toplam: withE.length, ornek: { ders: p.name, Q: p.Q, beklenen: p.expected } },
       evidence: `${withE.length} ödevin ${partial.length} tanesinde kısmi giriş`, count: partial.length, owner: "Öğrenci", subject: subjectMap.get(p.key), short: "kısmi teslim",
     });
   }
@@ -1240,6 +1260,7 @@ function buildRecommendations(c) {
     if (withNums / yb.length < 0.3) add("R18", {
       student: "Yanlış ve boş bıraktığın soruların numaralarını da girersen tekrar listen otomatik oluşur ve PDF'te yazdırılabilir bir kontrol listesi olarak çıkar. Bir sonraki ödevde yalnızca numaraları yazman yeterli.",
       coach: `Yanlış ya da boş sorusu olan kayıtların yalnızca ${fmtPct((withNums / yb.length) * 100)} kadarında soru numarası var. Hata analizi ve tekrar listesi için numara girmesini isteyin; nasıl yapıldığını bir kez birlikte gösterin.`,
+      data: { oran: (withNums / yb.length) * 100, sayi: yb.length },
       evidence: `${yb.length} kaydın ${withNums} tanesinde numara`, count: yb.length - withNums, owner: "Öğrenci", short: "soru numarası girilmiyor",
     });
   }
@@ -1253,6 +1274,7 @@ function buildRecommendations(c) {
       add("R19", {
         student: `'${t.name}' konusuna ${t.daysSince} gündür dönmedin; orada net oranın ${fmtPct(t.rStar)} idi. 15–20 soruluk kısa bir tekrar bilgini tazeler.`,
         coach: `Unutma riski: ${s.name}, '${t.name}' konusu (son çalışma ${t.daysSince} gün önce, net oranı ${fmtPct(t.rStar)}, ${plural(t.Q, "soru")}). Kısa bir tekrar ödevi uygun olur.`,
+        data: { ders: s.name, konu: t.name, gun: t.daysSince, oran: t.rStar, soru: t.Q },
         evidence: `son çalışma ${t.daysSince} gün önce · ${fmtPct(t.rStar)}`, count: 1, owner: "Koç", subject: s, topic: t.name,
         action: { kind: "study", subjectKey: s.key, topic: t.name }, coachAction: { kind: "assign", subjectKey: s.key, topic: t.name }, section: "konu",
         short: `${s.name}: tekrar zamanı`,
@@ -1264,6 +1286,7 @@ function buildRecommendations(c) {
     if (r20) add("R20", {
       student: `${r20.name} dersinde güçlüsün (net oranın ${fmtPct(r20.labelAgg.NO)}) ama ${r20.daysSinceLast} gündür bu derse soru çözmedin. Unutmamak için haftada bir karışık 20 soru yeter.`,
       coach: `${r20.name} güçlü (${fmtPct(r20.labelAgg.NO)}) ama ${r20.daysSinceLast} gündür kayıt yok. Unutmayı önlemek için haftalık karışık bir tekrar seti ekleyin.`,
+      data: { ders: r20.name, gun: r20.daysSinceLast, NO: r20.labelAgg.NO },
       evidence: `${r20.daysSinceLast} gündür kayıt yok · ${fmtPct(r20.labelAgg.NO)}`, count: 1, owner: "Koç", subject: r20, action: { kind: "study", subjectKey: r20.key },
       short: `${r20.name}: bakım`,
     });
@@ -1278,6 +1301,7 @@ function buildRecommendations(c) {
     add("R21", {
       student: `Son 4 haftada çözdüğün soruların yalnızca ${fmtPct(p)} kadarı ${sh.small}. Puanını iki oturum birlikte belirler. Bu hafta ${sh.small} tarafına en az ${hedef} soru ekle.`,
       coach: `Son 28 günde ${sh.small} payı ${fmtPct(p)} (${fmtInt(sh.total)} sorunun ${fmtInt(sh.smallQ)} tanesi). Sistemde alan bilgisi olmadığından kararı siz verin. Gerekiyorsa kişisel ödevlerin bir kısmını ${sh.small} tarafına kaydırın (bu hafta yaklaşık ${hedef} soru).`,
+      data: { kucuk: sh.small, oran: p, toplam: sh.total, kucukSoru: sh.smallQ, hedef },
       evidence: `${sh.small} payı ${fmtPct(p)} · ${plural(sh.total, "soru")}`, count: 1, owner: "Koç", section: "kapsam", short: `${sh.small} payı düşük`,
     });
   }
@@ -1289,6 +1313,7 @@ function buildRecommendations(c) {
     if (up) add("K01", {
       student: `Harika gidiyorsun: ${up.name} dersinde net oranın son 4 haftada ${fmtPct(up.trend.a)} düzeyinden ${fmtPct(up.trend.b)} düzeyine çıktı. Emeğinin karşılığını alıyorsun, bu ritmi koru.`,
       coach: `${up.name} yükselişte: ${fmtPct(up.trend.a)} → ${fmtPct(up.trend.b)}. Görüşmeyi bununla açın ve somut olarak takdir edin. Zorluğu bir kademe artırmak için uygun bir zaman.`,
+      data: { ders: up.name, a: up.trend.a, b: up.trend.b, delta: up.trend.delta },
       evidence: `${fmtPct(up.trend.a)} → ${fmtPct(up.trend.b)}`, count: Math.round(up.trend.delta), owner: "Koç", subject: up, section: "trend",
     });
     // K02 — etiket yükseldi (W1 etiketi W0 etiketinden yüksek)
@@ -1300,6 +1325,7 @@ function buildRecommendations(c) {
         add("K02", {
           student: `${s.name} dersinin etiketi ${LABELS[a.label]} → ${LABELS[b.label]} oldu. Son 4 haftadaki çalışman bunu sağladı, tebrikler!`,
           coach: `${s.name} etiketi ${LABELS[a.label]} → ${LABELS[b.label]} yükseldi. Mevcut plan işe yarıyor; öğrenciyi takdir edin ve aynı düzeni sürdürün.`,
+          data: { ders: s.name, eski: LABELS[a.label], yeni: LABELS[b.label] },
           evidence: `${LABELS[a.label]} → ${LABELS[b.label]}`, count: 1, owner: "Koç", subject: s, section: "karne",
         });
         break;
@@ -1315,6 +1341,7 @@ function buildRecommendations(c) {
         add("K03", {
           student: `${s.name} okul ödevlerinde medyanla aranı son 3 ödevde ortalama ${fmtInt(f1 - f0)} puan kapattın. Doğru yoldasın, aynı düzenle devam.`,
           coach: `${s.name}: okul medyanına göre ortalama fark ${fmtSigned(f0)} puandan ${fmtSigned(f1)} puana geldi (son 6 okul ödevi). Açık kapanıyor. Planı değiştirmeden sürdürün ve bu ilerlemeyi öğrenciyle paylaşın.`,
+          data: { ders: s.name, f0, f1, kapanan: f1 - f0 },
           evidence: `fark ${fmtSigned(f0)} → ${fmtSigned(f1)} puan`, count: 1, owner: "Koç", subject: s, section: "karne",
         });
         break;
@@ -1327,6 +1354,7 @@ function buildRecommendations(c) {
       add("K04", {
         student: `${top.name} ödevlerinde aynı ödevi çözenlerin üst çeyreğindesin. Artık daha zor, yeni nesil sorulara geçebilirsin; bunu koçuna söyle.`,
         coach: `${top.name}: okul içinde üst çeyrekte (medyan yüzdelik ${fmtInt(top.pTilde)}, ${plural(top.compCount, "ödev")}). Daha zor bir kaynak verilebilir${f ? `; bu dersin zamanının bir kısmı ${f.name} dersine aktarılabilir` : ""}.`,
+        data: { ders: top.name, pTilde: top.pTilde, n: top.compCount },
         evidence: `${plural(top.compCount, "okul ödevi")} · üst çeyrek`, count: top.compCount, owner: "Koç", subject: top, section: "karne",
       });
     }
@@ -1335,12 +1363,14 @@ function buildRecommendations(c) {
   if (d28.V >= 6 && d28.onTime / d28.V >= 0.9) add("K05", {
     student: `Son 4 haftada ${plural(d28.V, "ödevden")} ${d28.onTime} tanesini zamanında teslim ettin. Bu disiplin YKS yolunda en büyük avantajın.`,
     coach: `Teslim disiplini çok iyi: ${plural(d28.V, "ödevden")} ${d28.onTime} tanesi zamanında. Net düzeyinden bağımsız olarak takdir edin; bu, odak derslerde çalışmayı sürdürmesini kolaylaştırır.`,
+    data: { zamaninda: d28.onTime, V: d28.V },
     evidence: `${d28.onTime}/${d28.V} zamanında`, count: d28.onTime, owner: "Koç", section: "odev",
   });
   // K06 — düzen serisi
   if (c.streak >= 2) add("K06", {
     student: `${c.streak} haftadır serin sürüyor: hiçbir ödevi sessiz bırakmadın ve haftada en az 3 gün çalıştın. Bu düzen YKS'de fark yaratır.`,
     coach: `${c.streak} haftalık düzen serisi: sessiz kaçırma yok, haftada en az 3 aktif gün. Görüşmede takdir edin.`,
+    data: { seri: c.streak },
     evidence: `${c.streak} hafta seri`, count: c.streak, owner: "Koç", section: "odev", meta: { badge: [2, 4, 8, 12].includes(c.streak) },
   });
   // K07 — kişisel rekor
@@ -1351,6 +1381,7 @@ function buildRecommendations(c) {
       add("K07", {
         student: `Yeni kişisel rekor! ${s.name}: ${r.Q} soruda ${fmtNet(r.net)} net (net oranı ${fmtPct(r.r)}).`,
         coach: `Kişisel rekor: ${s.name}, ${fmtDay(r.day)}, ${r.Q} soruda ${fmtNet(r.net)} net (${fmtPct(r.r)}). Kısa bir tebrik mesajı atın.`,
+        data: { ders: s.name, Q: r.Q, net: r.net, oran: r.r, gun: fmtDay(r.day) },
         evidence: `${r.Q} soru · ${fmtPct(r.r)} · ${fmtDay(r.day)}`, count: 1, owner: "Koç", subject: s,
       });
       break;
@@ -1362,6 +1393,7 @@ function buildRecommendations(c) {
   if (f28 >= 100 && all28 && f28 / all28 >= 0.25) add("K08", {
     student: `Ödevlerinin dışında ${fmtInt(f28)} soru daha çözmüşsün. Kendi başına çalışman fark yaratıyor.`,
     coach: `Öğrenci ödev dışında ${fmtInt(f28)} soru çözdü (toplamın ${fmtPct((f28 / all28) * 100)} kadarı). Takdir edin; serbest çalışmayı odak konulara yönlendirmesini önerebilirsiniz.`,
+    data: { serbestSoru: f28, pay: (f28 / all28) * 100 },
     evidence: `serbest ${plural(f28, "soru")} · ${fmtPct((f28 / all28) * 100)}`, count: f28, owner: "Koç",
   });
   // K09 — güçlü alan (yedek: başka kutlama yoksa)
@@ -1374,6 +1406,7 @@ function buildRecommendations(c) {
       add("K09", {
         student: `${s.name} senin güçlü alanın (net oranı ${fmtPct(s.labelAgg.NO)}, ${kanit}). Bu seviyeyi korumak için haftada bir karışık set yeterli.${f ? ` Kalan zamanını ${f.name} dersine ayırırsan toplam netini en hızlı sen artırırsın.` : ""}`,
         coach: `${s.name} güçlü alan (${fmtPct(s.labelAgg.NO)}, ${kanit}). Bakım modunda tutun (haftalık karışık set)${f ? `; kişisel ödev zamanını ${f.name} dersine kaydırın` : ""}.`,
+        data: { ders: s.name, NO: s.labelAgg.NO, n: s.labelAgg.n, Q: s.labelAgg.Q, pTilde: s.compCount >= 2 ? s.pTilde : null },
         evidence: kanit, count: 1, owner: "Koç", subject: s, section: "karne",
       });
     }

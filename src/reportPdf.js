@@ -615,7 +615,7 @@ function renderSparseSummary(w, model) {
 }
 
 // ---------------------------------------------------------------- 2. Koç eki (yalnız koç nüshası)
-function renderCoachAppendix(w, model, { ai, withAi = true } = {}) {
+function renderCoachAppendix(w, model, { ai, narrative, withAi = true } = {}) {
   const c = model.coach;
   w.h1("Koç eki", "Yalnızca koç nüshasında yer alır. Koçun özel notları hiçbir PDF'e eklenmez.", { newPage: "soft", keep: 60 });
   w.block([
@@ -667,24 +667,47 @@ function renderCoachAppendix(w, model, { ai, withAi = true } = {}) {
   const { doc } = w;
   doc.setDrawColor(...RULE);
   doc.setLineWidth(0.2);
-  const lines = withAi && ai ? 5 : Math.max(5, Math.min(8, Math.floor((BOTTOM - w.y - 2) / 7.5)));
+  const lines = withAi && (ai || narrative) ? 5 : Math.max(5, Math.min(8, Math.floor((BOTTOM - w.y - 2) / 7.5)));
   for (let i = 0; i < lines; i++) {
     w.y += 7.5;
     doc.line(M, w.y, M + CW, w.y);
   }
   w.y += 3;
+  if (withAi && narrative) renderNarrative(w, narrative);
   if (withAi && ai) renderAi(w, ai);
 }
 
 // ---------------------------------------------------------------- Yapay zekâ incelemesi (yalnız koç)
 const AI_LEVEL = { yeterli: "Veri yeterli", sinirli: "Veri sınırlı", yetersiz: "Veri yetersiz" };
 function renderAi(w, ai, { asSection = false } = {}) {
+  renderEvaluation(w, ai, { asSection, title: "Yapay zekâ incelemesi", disc: "Yapay zekâ önerisidir; son karar koçundur. Modele kimlik bilgisi gönderilmez." });
+}
+// Otomatik aylık değerlendirme (src/narrative) — kurallarla, raporun kendi sayılarından; aylık seyir tablosuyla.
+function renderNarrative(w, n, { asSection = false } = {}) {
+  if (!n) return;
+  renderEvaluation(w, n, {
+    asSection, title: `Aylık değerlendirme — ${n.ay}`,
+    disc: "Otomatik değerlendirme: raporun kendi sayılarından kurallarla üretilir; son karar koçundur.",
+    before: () => {
+      const rows = (n.seyir || []).filter((r) => r.kayit > 0 || r.V > 0);
+      if (rows.length < 2) return;
+      w.block([{ text: "Aylık seyir", bold: true, size: 8.8, gap: 0.6 }]);
+      w.table({
+        head: ["Ay", "TYT net oranı", "AYT net oranı", "Soru", "Teslim", "Aktif gün"],
+        body: rows.map((r) => [`${r.ay}${r.suruyor ? " (sürüyor)" : ""}`, r.tyt != null ? pctCell(r.tyt) : "—", r.ayt != null ? pctCell(r.ayt) : "—", fmtInt(r.soru), r.teslim != null ? fmtPct(r.teslim) : "—", `${fmtInt(r.aktifGun)}/${fmtInt(r.gunSayisi)}`]),
+        columnStyles: { 1: { halign: "right" }, 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" }, 5: { halign: "right" } },
+        fontSize: 7.6,
+      });
+      w.y += 1.5;
+    },
+  });
+}
+function renderEvaluation(w, ai, { asSection = false, title, disc, before } = {}) {
   if (!ai) return;
-  if (asSection) w.h1("Yapay zekâ incelemesi", null, { keep: 40 });
-  else w.h2("Yapay zekâ incelemesi", { keep: 40 });
+  if (asSection) w.h1(title, null, { keep: 40 });
+  else w.h2(title, { keep: 40 });
   const meta = [AI_LEVEL[ai.veriYeterliligi] || null, ai.generatedAt ? `Oluşturma: ${stampText(ai.generatedAt)}` : null].filter(Boolean).join(" · ");
   const { doc } = w;
-  const disc = "Yapay zekâ önerisidir; son karar koçundur. Modele kimlik bilgisi gönderilmez.";
   w.ensure(12);
   doc.setFillColor(...FILL);
   doc.roundedRect(M, w.y, CW, meta ? 10.5 : 7, 1.2, 1.2, "F");
@@ -692,6 +715,7 @@ function renderAi(w, ai, { asSection = false } = {}) {
   w.text(disc, M + 3, w.y + 4.6);
   if (meta) { w.font(false, 7.3, GREY); w.text(meta, M + 3, w.y + 8.6); }
   w.y += (meta ? 10.5 : 7) + 2.5;
+  if (before) before();
   const arr = (x) => (Array.isArray(x) ? x.filter((v) => v != null && v !== "") : []);
   if (ai.ozet) w.block([{ text: "Özet", bold: true, size: 8.8, gap: 0.6 }, { text: ai.ozet, size: 8.3, gap: 1.6 }]);
   const gy = arr(ai.gucluYonler);
@@ -1474,11 +1498,12 @@ function normalizeVariant(model, variant) {
   return model?.viewer === "student" ? "student" : v;
 }
 
-function renderStudentReport(w, model, { ai, monthly = false }) {
+function renderStudentReport(w, model, { ai, narrative, monthly = false }) {
   w.full = !monthly && model.enough;
   renderSummary(w, model);
-  if (w.coach) renderCoachAppendix(w, model, { ai, withAi: !monthly });
+  if (w.coach) renderCoachAppendix(w, model, { ai, narrative, withAi: !monthly });
   if (monthly) {
+    if (narrative) renderNarrative(w, narrative, { asSection: true });
     if (model.enough) renderKarne(w, model);
     if (ai) renderAi(w, ai, { asSection: true });
     return;
@@ -1499,13 +1524,14 @@ function renderStudentReport(w, model, { ai, monthly = false }) {
 }
 
 // PDF belgesini kurar ama kaydetmez (testler jsPDF/autoTable/font'u enjekte eder).
-export async function buildReportPdfDoc({ model, variant, ai = null, jsPDF, autoTable, font, logo } = {}) {
+export async function buildReportPdfDoc({ model, variant, ai = null, narrative = null, jsPDF, autoTable, font, logo } = {}) {
   if (!model) throw new Error("buildReportPdfDoc: model gerekli");
   const v = normalizeVariant(model, variant);
   const w = await setup({ jsPDF, autoTable, font, logo, variant: v });
   w.headerText = headerLine(model);
   w.headers[1] = w.headerText;
-  renderStudentReport(w, model, { ai: v === "coach" ? ai : null });
+  // Değerlendirmeler (otomatik ve yapay zekâ) koça yöneliktir: yalnız koç nüshasında.
+  renderStudentReport(w, model, { ai: v === "coach" ? ai : null, narrative: v === "coach" ? narrative : null });
   stampPages(w, stampText(model.generatedAt));
   return w.doc;
 }
@@ -1532,8 +1558,8 @@ async function saveDoc(doc, fileName) {
 }
 
 // jsPDF + jspdf-autotable yalnızca PDF istendiğinde dinamik import edilir — ilk sayfa yüklemesine eklenmesin diye.
-export async function downloadReportPdf({ model, variant, ai } = {}) {
-  const doc = await buildReportPdfDoc({ model, variant, ai });
+export async function downloadReportPdf({ model, variant, ai, narrative } = {}) {
+  const doc = await buildReportPdfDoc({ model, variant, ai, narrative });
   await saveDoc(doc, reportPdfFileName(model));
 }
 
@@ -1565,7 +1591,7 @@ function renderMonthlyCover(w, { monthLabel, coachName, entries, generatedAt }) 
   });
   const cs = { 0: { cellWidth: 34 }, 1: { cellWidth: 15, halign: "right" }, 2: { cellWidth: 17, halign: "right" }, 3: { cellWidth: 15, halign: "right" }, 4: { cellWidth: 17, halign: "right" }, 5: { cellWidth: 17, halign: "right" }, 7: { cellWidth: 20 } };
   w.table({ head: ["Ad", "Teslim %", "Ele alınan %", "Aktif gün", "TYT net oranı", "AYT net oranı", "Odak dersler", "Durum"], body, columnStyles: cs, fontSize: 7.6 });
-  w.note("Durum: Müdahale (14 günde en az 2 sessiz ödev, 7 gündür kayıt yok ya da ele alınan < %50) · Takip et (öncelikli öneri var) · Yolunda. 5'ten az ödevde kesir yazılır. Her öğrencinin sayfaları yeni sayfada başlar: özet, koç eki, ders karnesi ve varsa yapay zekâ incelemesi.");
+  w.note("Durum: Müdahale (14 günde en az 2 sessiz ödev, 7 gündür kayıt yok ya da ele alınan < %50) · Takip et (öncelikli öneri var) · Yolunda. 5'ten az ödevde kesir yazılır. Her öğrencinin sayfaları yeni sayfada başlar: özet, koç eki, aylık değerlendirme, ders karnesi ve varsa yapay zekâ incelemesi.");
 }
 
 export async function buildMonthlyReportsPdfDoc({ month, monthLabel, coachName, entries = [], jsPDF, autoTable, font, logo, now } = {}) {
@@ -1575,11 +1601,11 @@ export async function buildMonthlyReportsPdfDoc({ month, monthLabel, coachName, 
   w.headerText = [`Aylık raporlar · ${label}`, coachName ? `Koç: ${coachName}` : null].filter(Boolean).join(" · ");
   w.headers[1] = w.headerText;
   renderMonthlyCover(w, { monthLabel: label, coachName, entries, generatedAt });
-  for (const { model, ai } of entries) {
+  for (const { model, ai, narrative } of entries) {
     if (!model) continue;
     w.headerText = headerLine(model);
     w.newPage();
-    renderStudentReport(w, model, { ai, monthly: true });
+    renderStudentReport(w, model, { ai, narrative, monthly: true });
   }
   stampPages(w, stampText(generatedAt));
   return w.doc;

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { Copy, Check, Sparkles, RefreshCw } from "lucide-react";
+import { Copy, Check, Sparkles, RefreshCw, ClipboardCheck } from "lucide-react";
 import { C } from "../../theme.js";
-import { Card, Chip, Button, Pill } from "../../components/common.jsx";
+import { Card, Chip, Button, Pill, LoadingState } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { fmtPct, fmtDay } from "../../reportModel.js";
 import { Collapsible, mono, text } from "./parts.jsx";
 import { monthLabel, recentMonths, defaultReportMonth } from "../teacher/MonthlyReportsScreen.jsx";
+import { buildNarrative } from "../../narrative/index.js";
 
 // Koç paneli — yalnız koçun açtığı raporda. Durum çipi öğrenciye hiçbir zaman gösterilmez; "güven" ya da "hile"
 // imasıyla hiçbir metin üretilmez (fotoğraf oranı nötr bir sayıdır).
@@ -20,7 +21,7 @@ function Kpi({ label, value, color }) {
   );
 }
 
-export default function CoachPanel({ model, studentId, aiMonth, onAiLoaded, onOpenAssignment }) {
+export default function CoachPanel({ model, raw, studentId, aiMonth, onAiLoaded, onNarrative, onOpenAssignment }) {
   const c = model.coach;
   const [copied, setCopied] = useState(false);
   const seenColor = c.lastSeenDays == null ? C.mutedLight : c.lastSeenDays > 7 ? C.red : c.lastSeenDays > 3 ? C.amber : C.text;
@@ -87,6 +88,7 @@ export default function CoachPanel({ model, studentId, aiMonth, onAiLoaded, onOp
         </div>
       </Collapsible>
 
+      {raw && <NarrativeCard raw={raw} initialMonth={aiMonth} onReady={onNarrative} />}
       <AiCard studentId={studentId} initialMonth={aiMonth} onLoaded={onAiLoaded} />
     </>
   );
@@ -134,6 +136,7 @@ function AiCard({ studentId, initialMonth, onLoaded }) {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <Sparkles size={16} color={C.koc} aria-hidden="true" />
         <span style={{ ...text(14, 700), flex: 1 }}>Yapay zekâ incelemesi</span>
+        <Pill>isteğe bağlı</Pill>
       </div>
       <div className="k-chip-row" role="group" aria-label="İncelenecek ay" style={{ margin: "10px 0 4px" }}>
         {recentMonths().map((m) => <Chip key={m} active={m === month} onClick={() => setMonth(m)}>{monthLabel(m).split(" ")[0]}</Chip>)}
@@ -151,34 +154,7 @@ function AiCard({ studentId, initialMonth, onLoaded }) {
         </div>
       ) : (
         <div style={{ paddingTop: 6, display: "flex", flexDirection: "column", gap: 12 }}>
-          {a.veriYeterliligi && a.veriYeterliligi !== "yeterli" && <Pill tone="amber">{a.veriYeterliligi === "sinirli" ? "veri sınırlı" : "veri yetersiz"}</Pill>}
-          <div style={{ ...text(13.5, 500, C.text), lineHeight: 1.55 }}>{a.ozet}</div>
-          {a.gucluYonler?.length > 0 && (
-            <div>
-              <div style={{ ...text(12, 700, C.green), marginBottom: 4 }}>Güçlü yönler</div>
-              <ul style={{ margin: 0, paddingLeft: 18 }}>{a.gucluYonler.map((g, i) => <li key={i} style={{ ...text(13, 500, C.text2), lineHeight: 1.5 }}>{g}</li>)}</ul>
-            </div>
-          )}
-          {a.gelisimAlanlari?.length > 0 && (
-            <div>
-              <div style={{ ...text(12, 700, C.amber), marginBottom: 4 }}>Gelişim alanları</div>
-              {a.gelisimAlanlari.map((g, i) => (
-                <div key={i} style={{ padding: "6px 0", borderTop: i ? `1px solid ${C.divider}` : "none" }}>
-                  <div style={text(13, 700)}>{g.alan}</div>
-                  <div style={{ ...text(12, 500, C.mutedLight), marginTop: 2 }}>Kanıt: {g.kanit}</div>
-                  <div style={{ ...text(12.5, 500, C.text2), marginTop: 2 }}>Öneri: {g.oneri}</div>
-                </div>
-              ))}
-            </div>
-          )}
-          {a.kocaOneriler?.length > 0 && (
-            <div>
-              <div style={{ ...text(12, 700, C.text2), marginBottom: 4 }}>Önümüzdeki ay için</div>
-              <ol style={{ margin: 0, paddingLeft: 18 }}>{a.kocaOneriler.map((g, i) => <li key={i} style={{ ...text(13, 500, C.text2), lineHeight: 1.5 }}>{g}</li>)}</ol>
-            </div>
-          )}
-          {a.ogrenciyleKonusma && <div style={{ ...text(12.5, 500, C.text2), lineHeight: 1.5 }}><b>Görüşme için:</b> {a.ogrenciyleKonusma}</div>}
-          {a.dikkat?.length > 0 && <div style={{ ...text(12.5, 600, C.amber), lineHeight: 1.5 }}>Dikkat: {a.dikkat.join(" · ")}</div>}
+          <EvaluationView content={a} />
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <span style={{ ...text(11.5, 500, C.mutedLight), flex: 1, minWidth: 180 }}>Yapay zekâ önerisidir; son karar senin. Modele kimlik bilgisi gönderilmez.</span>
             {canRefresh && <Button small variant="secondary" icon={RefreshCw} disabled={busy} onClick={() => run(true)}>{busy ? "Hazırlanıyor…" : "Yeniden oluştur"}</Button>}
@@ -187,5 +163,116 @@ function AiCard({ studentId, initialMonth, onLoaded }) {
       )}
       {error && <div role="alert" style={{ ...text(12.5, 600, C.red), marginTop: 8 }}>{error}</div>}
     </Card>
+  );
+}
+
+// Otomatik aylık değerlendirme — kurallarla, raporun kendi sayılarından (src/narrative); ücretsiz ve veri cihazdan çıkmaz.
+// Seçilen ay önceki 5 aya kadar karşılaştırılır (aylık seyir).
+function NarrativeCard({ raw, initialMonth, onReady }) {
+  const [month, setMonth] = useState(initialMonth || defaultReportMonth());
+  useEffect(() => { if (initialMonth) setMonth(initialMonth); }, [initialMonth]);
+  // Birkaç ayın modeli hesaplandığı için (telefonda birkaç yüz ms) ilk çizimden SONRA hesaplanır — rapor açılışı takılmasın.
+  const [n, setN] = useState(undefined); // undefined: hazırlanıyor · null: hazırlanamadı
+  useEffect(() => {
+    let alive = true;
+    setN(undefined);
+    const t = setTimeout(() => {
+      let v = null;
+      try { v = buildNarrative(raw, { month }); } catch (e) { console.error("[değerlendirme]", e); }
+      if (alive) setN(v);
+    }, 30);
+    return () => { alive = false; clearTimeout(t); };
+  }, [raw, month]);
+  useEffect(() => { if (n !== undefined) onReady?.(n); }, [n]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Card style={{ padding: 16, marginTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <ClipboardCheck size={16} color={C.text2} aria-hidden="true" />
+        <span style={{ ...text(14, 700), flex: 1 }}>Aylık değerlendirme</span>
+        <Pill>otomatik</Pill>
+      </div>
+      <div className="k-chip-row" role="group" aria-label="Değerlendirilecek ay" style={{ margin: "10px 0 4px" }}>
+        {recentMonths().map((m) => <Chip key={m} active={m === month} onClick={() => setMonth(m)}>{monthLabel(m).split(" ")[0]}</Chip>)}
+      </div>
+      {n === undefined ? (
+        <div style={{ paddingTop: 8 }}><LoadingState rows={1} /></div>
+      ) : !n ? (
+        <div style={{ ...text(12.5, 500, C.mutedLight), padding: "8px 0" }}>Bu ay için değerlendirme hazırlanamadı.</div>
+      ) : (
+        <div style={{ paddingTop: 6, display: "flex", flexDirection: "column", gap: 12 }}>
+          <SeyirTable rows={n.seyir} />
+          <EvaluationView content={n} />
+          <div style={text(11.5, 500, C.mutedLight)}>Raporun kendi sayılarından kurallarla üretilir; ücretsizdir ve veri cihazdan çıkmaz. Son karar senin.</div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function SeyirTable({ rows }) {
+  const list = (rows || []).filter((r) => r.kayit > 0 || r.V > 0);
+  if (list.length < 2) return null;
+  const th = { ...text(11, 700, C.mutedLight), textAlign: "right", padding: "4px 6px", whiteSpace: "nowrap" };
+  const td = { ...mono(12, 600, C.text2), textAlign: "right", padding: "5px 6px", whiteSpace: "nowrap" };
+  return (
+    <div style={{ overflowX: "auto" }}>
+      <div style={{ ...text(12, 700, C.text2), marginBottom: 4 }}>Aylık seyir</div>
+      <table style={{ borderCollapse: "collapse", width: "100%" }}>
+        <thead>
+          <tr>
+            <th style={{ ...th, textAlign: "left" }}>Ay</th><th style={th}>TYT</th><th style={th}>AYT</th><th style={th}>Soru</th><th style={th}>Teslim</th><th style={th}>Gün</th>
+          </tr>
+        </thead>
+        <tbody>
+          {list.map((r) => (
+            <tr key={r.month} style={{ borderTop: `1px solid ${C.divider}` }}>
+              <td style={{ ...td, ...text(12, 600, C.text), textAlign: "left" }}>{r.ay}{r.suruyor ? " *" : ""}</td>
+              <td style={{ ...td, color: r.tyt < 0 ? C.red : C.text2 }}>{r.tyt != null ? fmtPct(r.tyt) : "—"}</td>
+              <td style={{ ...td, color: r.ayt < 0 ? C.red : C.text2 }}>{r.ayt != null ? fmtPct(r.ayt) : "—"}</td>
+              <td style={td}>{r.soru.toLocaleString("tr-TR")}</td>
+              <td style={td}>{r.teslim != null ? fmtPct(r.teslim) : "—"}</td>
+              <td style={td}>{r.aktifGun}/{r.gunSayisi}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div style={{ ...text(11, 500, C.mutedLight), marginTop: 4 }}>TYT/AYT: net oranı (ayda en az 3 kayıt ve 60 soru){list.some((r) => r.suruyor) ? " · * ay sürüyor" : ""}</div>
+    </div>
+  );
+}
+
+// Değerlendirme içeriği (otomatik ya da yapay zekâ — aynı biçim).
+function EvaluationView({ content: a }) {
+  return (
+    <>
+      {a.veriYeterliligi && a.veriYeterliligi !== "yeterli" && <Pill tone="amber">{a.veriYeterliligi === "sinirli" ? "veri sınırlı" : "veri yetersiz"}</Pill>}
+      {a.ozet && <div style={{ ...text(13.5, 500, C.text), lineHeight: 1.55 }}>{a.ozet}</div>}
+      {a.gucluYonler?.length > 0 && (
+        <div>
+          <div style={{ ...text(12, 700, C.green), marginBottom: 4 }}>Güçlü yönler</div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>{a.gucluYonler.map((g, i) => <li key={i} style={{ ...text(13, 500, C.text2), lineHeight: 1.5 }}>{g}</li>)}</ul>
+        </div>
+      )}
+      {a.gelisimAlanlari?.length > 0 && (
+        <div>
+          <div style={{ ...text(12, 700, C.amber), marginBottom: 4 }}>Gelişim alanları</div>
+          {a.gelisimAlanlari.map((g, i) => (
+            <div key={i} style={{ padding: "6px 0", borderTop: i ? `1px solid ${C.divider}` : "none" }}>
+              <div style={text(13, 700)}>{g.alan}</div>
+              <div style={{ ...text(12, 500, C.mutedLight), marginTop: 2 }}>Kanıt: {g.kanit}</div>
+              <div style={{ ...text(12.5, 500, C.text2), marginTop: 2 }}>Öneri: {g.oneri}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      {a.kocaOneriler?.length > 0 && (
+        <div>
+          <div style={{ ...text(12, 700, C.text2), marginBottom: 4 }}>Önümüzdeki ay için</div>
+          <ol style={{ margin: 0, paddingLeft: 18 }}>{a.kocaOneriler.map((g, i) => <li key={i} style={{ ...text(13, 500, C.text2), lineHeight: 1.5 }}>{g}</li>)}</ol>
+        </div>
+      )}
+      {a.ogrenciyleKonusma && <div style={{ ...text(12.5, 500, C.text2), lineHeight: 1.5 }}><b>Görüşme için:</b> {a.ogrenciyleKonusma}</div>}
+      {a.dikkat?.length > 0 && <div style={{ ...text(12.5, 600, C.amber), lineHeight: 1.5 }}>Dikkat: {a.dikkat.join(" · ")}</div>}
+    </>
   );
 }

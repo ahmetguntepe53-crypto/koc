@@ -104,7 +104,8 @@ for (const [username, subject] of Object.entries(branchOf)) {
     const entry = await prisma.planEntry.create({
       data: {
         teacherId: teacher.id, examType: "TYT", date: weekStart(w), endDate: new Date(weekStart(w).getTime() + 6 * DAY),
-        kind: "TOPIC", subject, topic: TOPICS[subject][w + 7], sourceBook: "Golden Yayınları", questionCount: QUESTIONS[subject], schoolWide: true,
+        // Gerçekteki gibi: yüklenen yıllık planlar yalnız 12. sınıf içindir (11. sınıflar bu ödevleri almaz).
+        kind: "TOPIC", subject, topic: TOPICS[subject][w + 7], sourceBook: "Golden Yayınları", questionCount: QUESTIONS[subject], schoolWide: true, gradeLevel: 12,
       },
     });
     if (w > 0) continue;
@@ -178,6 +179,22 @@ if (zeynepDone) {
   await prisma.assignmentRecipient.update({
     where: { id: zeynepDone.id },
     data: { priorSkippedAt: new Date(end - DAY + 16 * 3600e3), priorSkipReason: "ZAMAN", completedAt: new Date(end + 2 * DAY + 15 * 3600e3) },
+  });
+}
+
+// Koçun aylık rapor bildirimi (zamanlayıcının her ayın ilk haftasında gönderdiğiyle aynı biçim) — bildirimler ekranı ve
+// bildirime dokununca açılan aylık raporlar ekranı golden'da görünsün diye.
+{
+  const t = new Date(NOW.getTime() + 3 * 3600e3);
+  const prevMonth = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() - 1, 1));
+  const monthKey = `${prevMonth.getUTCFullYear()}-${String(prevMonth.getUTCMonth() + 1).padStart(2, "0")}`;
+  const MONTHS_TR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+  await prisma.notification.create({
+    data: {
+      // Okunmuş olarak: sahnede dokunmak okundu işaretleyip sunucu durumunu değiştirmesin (kayıttaki rozet sayısı sabit kalsın).
+      userId: ayse.id, type: "monthly_report", read: true, data: { screen: "monthlyReports", month: monthKey }, createdAt: new Date(NOW.getTime() - 26 * 3600e3),
+      text: `${MONTHS_TR[prevMonth.getUTCMonth()]} ayı raporları hazır — ${ayseStudents.length} öğrencinin aylık gelişim raporunu incele; hepsini tek PDF olarak da alabilirsin.`,
+    },
   });
 }
 

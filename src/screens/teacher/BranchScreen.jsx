@@ -32,6 +32,11 @@ function distributionSentence(bins, n) {
   return <>Dağılımın tepesi {rangeLabel(bins[top])} aralığında; sınıf geniş bir aralığa yayılmış.</>;
 }
 
+// Hedef sınıf düzeyine göre öğrenci sayısı (12. sınıfın planı yalnız 12. sınıflara gider). Eski sunucu yanıtında
+// studentCounts yoksa tüm YKS sayısına düşer.
+const countFor = (data, grade) => (data.studentCounts ? (grade ? data.studentCounts[grade] ?? 0 : data.studentCounts.all) : data.studentCount);
+const gradeText = (grade) => (grade ? `${grade}. sınıf` : "11–12. sınıf");
+
 function CurrentCard({ cur, studentCount }) {
   const closed = dayDiff(cur.endDate) < 0;
   const { total, done, skipped } = cur.counts;
@@ -66,7 +71,7 @@ function CurrentCard({ cur, studentCount }) {
         { label: "pas geçti", value: skipped, color: C.amber },
         { label: closed ? "yapmadı" : "henüz girmedi", value: notDone, color: closed ? C.red : C.faintest },
       ]} />
-      {studentCount > total && <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.mutedLight, marginTop: 10 }}>Okulda {studentCount} öğrenci var — sonradan eklenenler bu ödevi almadı.</div>}
+      {studentCount > total && <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.mutedLight, marginTop: 10 }}>Okulda {studentCount} öğrenci var{cur.targetGrade ? ` (${cur.targetGrade}. sınıf)` : ""} — sonradan eklenenler bu ödevi almadı.</div>}
     </Card>
   );
 }
@@ -130,7 +135,10 @@ export default function BranchScreen({ user, setHeader, onOpenPlan }) {
     api.branchOverview(track.examType, track.subject)
       .then((d) => {
         setData(d);
-        setHeader?.({ title: track.subject.replace(/-\d$/, ""), subtitle: [d.teacher?.name || user?.name, "11–12. sınıf", `${d.studentCount} öğrenci`].join(" · ") });
+        // Planın tamamı tek bir sınıf düzeyindeyse (ör. 12. sınıf yıllık planı) başlık onu ve o düzeydeki öğrenci sayısını gösterir.
+        const grades = [...new Set((d.plan || []).filter((p) => p.schoolWide).map((p) => p.gradeLevel ?? null))];
+        const g = grades.length === 1 ? grades[0] : null;
+        setHeader?.({ title: track.subject.replace(/-\d$/, ""), subtitle: [d.teacher?.name || user?.name, gradeText(g), `${countFor(d, g)} öğrenci`].join(" · ") });
       })
       .catch((e) => setError(e.message || "Yüklenemedi"))
       .finally(() => setLoading(false));
@@ -158,7 +166,9 @@ export default function BranchScreen({ user, setHeader, onOpenPlan }) {
 
   const publishNext = async () => {
     const next = data.nextDraft;
-    const reach = next.schoolWide ? `okuldaki ${data.studentCount} öğrenciye` : "yalnızca kendi öğrencilerine";
+    const reach = next.schoolWide
+      ? `okuldaki ${countFor(data, next.gradeLevel)} ${next.gradeLevel ? `${next.gradeLevel}. sınıf öğrencisine` : "öğrenciye"}`
+      : `yalnızca kendi ${next.gradeLevel ? `${next.gradeLevel}. sınıf ` : ""}öğrencilerine`;
     if (!(await confirmDialog({ title: "Konu yayınlansın mı?", message: `“${next.topic}” ${reach} gönderilecek. Bu işlem geri alınamaz.`, confirmLabel: "Yayınla" }))) return;
     setBusy(true);
     try {
@@ -203,7 +213,7 @@ export default function BranchScreen({ user, setHeader, onOpenPlan }) {
 
       {cur ? (
         <>
-          <CurrentCard cur={cur} studentCount={data.studentCount} />
+          <CurrentCard cur={cur} studentCount={countFor(data, cur.targetGrade)} />
           <DistributionCard cur={cur} prev={data.previous} />
           {diagnose && (
             <AlertBox style={{ marginTop: 12 }} title={`Pas geçen ${konu} öğrenci konuyu bilmediğini söyledi`}>
@@ -269,7 +279,7 @@ export default function BranchScreen({ user, setHeader, onOpenPlan }) {
       )}
 
       {data.nextDraft && (
-        <BottomActionBar caption={<>{data.nextDraft.schoolWide ? <><span style={{ fontFamily: monoFont }}>{data.studentCount}</span> öğrenciye gider</> : "Yalnızca kendi öğrencilerine gider"} · bildirim hemen gider (gece yayınlarsan sabah 07:00'de)</>}>
+        <BottomActionBar caption={<>{data.nextDraft.schoolWide ? <><span style={{ fontFamily: monoFont }}>{countFor(data, data.nextDraft.gradeLevel)}</span> {data.nextDraft.gradeLevel ? `${data.nextDraft.gradeLevel}. sınıf öğrencisine` : "öğrenciye"} gider</> : "Yalnızca kendi öğrencilerine gider"} · bildirim hemen gider (gece yayınlarsan sabah 07:00'de)</>}>
           <Button full disabled={busy} onClick={publishNext}>{shortDate(data.nextDraft.date)} konusunu yayınla</Button>
         </BottomActionBar>
       )}

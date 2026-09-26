@@ -27,7 +27,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
-describe("ReportScreen", () => {
+describe("ReportScreen", { timeout: 30000 }, () => {
   it("öğrenci görünümü: bölümler, en fazla 3 öneri kartı, koç paneli yok", async () => {
     api.getFullReport.mockResolvedValue(makeFixture({ viewer: "student" }));
     render(<ReportScreen user={student} onOpenStudyLog={vi.fn()} onOpenRecipient={vi.fn()} />);

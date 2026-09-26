@@ -169,6 +169,8 @@ model Assignment {
   sendMode SendMode
   status        AssignmentStatus @default(DRAFT)
   targetMode    AssignmentTarget
+  // Plan kaydından yayınlanan ödevin hedef sınıf düzeyi (null = 11 ve 12) — branş ekranı kişi sayısını buna göre verir.
+  targetGrade   Int?
   sentAt        DateTime?
   createdAt     DateTime         @default(now())
   // endDate geçtiğinde, hâlâ tamamlamamış öğrencisi varsa koça BİR KEZ gönderilen özet bildirimin
@@ -237,6 +239,9 @@ model PlanEntry {
   // okuldaki (examType'a karşılık gelen track'teki) TÜM öğrencilere gönderilsin mi — yalnızca
   // User.isSubjectTeacher=true olan öğretmenler true olarak ayarlayabilir (bkz. routes/planEntries.js).
   schoolWide Boolean @default(false)
+  // Hedef sınıf düzeyi (11 ya da 12) — null ise tüm YKS öğrencileri (11 ve 12). Yıllık planlar sınıf düzeyine
+  // göre ayrıdır: 12. sınıfın planı 11. sınıflara gitmemeli (bkz. publishPlanEntry, scripts/import-plans.js --grade).
+  gradeLevel Int?
 
   autoSend     PlanAutoSend @default(OFF)
   assignmentId String?      @unique
