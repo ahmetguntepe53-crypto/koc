@@ -2,3 +2,7 @@ node_modules/
 .env
 firebase-service-account.json
 uploads/
+
+# Öğrenci/öğretmen listeleri ve üretilen şifre dosyaları — reşit olmayanların kişisel verisi,
+# ASLA repoya girmemeli (bkz. scripts/import-roster.js).
+data/

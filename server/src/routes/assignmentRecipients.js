@@ -9,7 +9,8 @@ import { photoUpload, recipientPhotosDir, hasValidImageSignature } from "../uplo
 // server/src/app.js'de requireAuth ile mount edilir — sahiplik kontrolleri handler içinde yapılır.
 export const assignmentRecipientsRouter = Router();
 
-const MAX_PHOTOS_PER_RECIPIENT = 20;
+// 6: tasarım dokümanı — 20 fotoğraf ne öğrencinin yükleyeceği ne koçun bakacağı bir sayıydı.
+const MAX_PHOTOS_PER_RECIPIENT = 6;
 // Submission.correctCount/wrongCount/blankCount Int (32 bit) — çok büyük bir sayı DB'de taşıp 500'e
 // dönüşürdü; gerçekçi hiçbir ödev bu kadar soru içermez.
 const MAX_ANSWER_COUNT = 10000;

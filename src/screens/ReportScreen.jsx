@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Download, BarChart3 } from "lucide-react";
-import { C, displayFont, bodyFont } from "../theme.js";
-import { Card, Button, Pill, EmptyState, StatCard, StatGrid, LoadingState } from "../components/common.jsx";
+import { createPortal } from "react-dom";
+import { Download, BarChart3 } from "lucide-react";
+import { C, bodyFont, monoFont, formatNet } from "../theme.js";
+import {
+  Card, Pill, Chip, EmptyState, StatCard, StatGrid, LoadingState, SectionHeader, ProgressBar, SubjectIcon,
+  HeaderTextButton, HEADER_SLOT_ID,
+} from "../components/common.jsx";
 import { api } from "../api.js";
 import { formatDate } from "../dates.js";
+import { subjectIconUrl } from "../subjects.js";
 import { downloadReportPdf } from "../reportPdf.js";
 
 const GROUP_OPTIONS = [
@@ -11,6 +16,27 @@ const GROUP_OPTIONS = [
   { value: "week", label: "Haftalık" },
   { value: "month", label: "Aylık" },
 ];
+
+// Özet kartında son dönemin netinin yanına yazılan ifade — yalnızca son dönem gerçekten içinde
+// bulunulan dönemse gösterilir (bkz. SummaryCard).
+const CURRENT_PERIOD_LABELS = { day: "bugün", week: "bu hafta", month: "bu ay" };
+
+// Sunucudaki server/src/routes/stats.js > periodLabel ile AYNI anahtar üretimi: Türkiye saati (sabit
+// UTC+3, DST yok), gün "YYYY-MM-DD", ay "YYYY-MM", hafta ISO 8601 "YYYY-Hww". byPeriod'un son elemanının
+// "şu anki dönem" olup olmadığını bu anahtarla karşılaştırırız — cihazın kendi saat dilimi farklı olsa da
+// (yurt dışındaki bir cihaz) sunucuyla aynı sonucu versin diye yerel Date alanları kullanılmaz.
+const TR_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
+function currentPeriodKey(groupBy, now = Date.now()) {
+  const d = new Date(now + TR_UTC_OFFSET_MS);
+  if (groupBy === "day") return d.toISOString().slice(0, 10);
+  if (groupBy === "month") return d.toISOString().slice(0, 7);
+  const day = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+  const dayNum = day.getUTCDay() || 7;
+  day.setUTCDate(day.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(day.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((day - yearStart) / 86400000 + 1) / 7);
+  return `${day.getUTCFullYear()}-H${String(weekNo).padStart(2, "0")}`;
+}
 
 function formatPeriodLabel(period, groupBy) {
   if (groupBy === "day") return formatDate(period);
@@ -38,53 +64,126 @@ function shortPeriodLabel(period, groupBy) {
   return `H${Number(week)}'${year.slice(2)}`;
 }
 
-// Ders/dönem satırlarında net değerini görsel olarak karşılaştırmak için basit bir çubuk —
-// ayrı bir grafik kütüphanesi eklemeye gerek kalmasın diye düz div ile (genişlik = oran).
-function NetBar({ net, maxNet }) {
-  const pct = maxNet > 0 ? Math.max(4, Math.min(100, (Math.max(0, net) / maxNet) * 100)) : 0;
-  return (
-    <div style={{ height: 6, background: C.border, borderRadius: 999, overflow: "hidden", marginTop: 6 }}>
-      <div style={{ height: "100%", width: `${pct}%`, background: net < 0 ? C.red : C.accent, borderRadius: 999 }} />
-    </div>
-  );
-}
-
 // Başarı oranı = doğru sayısının toplam soru sayısına (doğru+yanlış+boş) oranı.
 function successRate(correctCount, wrongCount, blankCount) {
   const total = correctCount + wrongCount + blankCount;
   return total ? Math.round((correctCount / total) * 100) : null;
 }
 
-function rateTone(rate) {
-  if (rate == null) return "muted";
-  if (rate >= 70) return "green";
-  if (rate >= 40) return "amber";
-  return "red";
+// Ders kartındaki ilerleme çubuğu dersin kendi renginde — fonksiyon (sabit nesne değil), çünkü C.*
+// tema değişince yerinde güncelleniyor (bkz. theme.js). "-1/-2" ekli AYT dersleri ana dersin rengini alır.
+function subjectColor(subject) {
+  const base = String(subject || "").replace(/-\d+$/, "");
+  const colors = {
+    "Matematik": C.accent, "Geometri": C.accent,
+    "Türkçe": C.red, "Edebiyat": C.red,
+    "Fizik": C.blue, "Coğrafya": C.blue,
+    "Kimya": C.amber, "Tarih": C.amber, "T.C. İnkılap Tarihi ve Atatürkçülük": C.amber,
+    "Biyoloji": C.green, "Din Kültürü ve Ahlak Bilgisi": C.green,
+    "Felsefe": C.muted, "Felsefe Grubu": C.muted, "Mantık": C.muted, "Psikoloji": C.muted, "Sosyoloji": C.muted,
+  };
+  return colors[base] || C.accent;
 }
 
-// Satır düzeni her ekran genişliğinde aynı: solda başlık, sağda büyük net değeri; altında D/Y/B
-// (ve başarı) etiketleri tek sırada — önceden etiketler başlığın yanına sığmayınca düzensiz kırılıyordu.
-function ReportRow({ title, subtitle, correctCount, wrongCount, blankCount, net, maxNet, showRate }) {
-  const rate = showRate ? successRate(correctCount, wrongCount, blankCount) : null;
+// Kartların sağındaki net değeri — mono rakam, altında küçük "NET" etiketi. Negatif net kırmızı.
+function NetValue({ net, size }) {
   return (
-    <Card style={{ padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+    <div style={{ textAlign: "right", flexShrink: 0 }}>
+      <div style={{ fontFamily: monoFont, fontSize: size, fontWeight: 700, letterSpacing: -0.4, color: net < 0 ? C.red : C.text, lineHeight: 1.1 }}>
+        {formatNet(net, 2)}
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 9.5, fontWeight: 700, letterSpacing: 0.8, color: C.mutedLight, marginTop: 3 }}>NET</div>
+    </div>
+  );
+}
+
+function DybPills({ correctCount, wrongCount, blankCount }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", minWidth: 0 }}>
+      <Pill tone="green" mono>D {correctCount}</Pill>
+      <Pill tone="red" mono>Y {wrongCount}</Pill>
+      <Pill mono>B {blankCount}</Pill>
+    </div>
+  );
+}
+
+// Özet kartı: net asıl ölçü, doğru/yanlış/boş onun bileşeni — dört eşit kutucuk hiyerarşiyi siliyordu.
+// Büyük sayı tüm zamanların TOPLAM neti (overall.net); sağındaki "+X bu hafta" yalnızca byPeriod'un son
+// elemanı gerçekten içinde bulunulan dönemse gösterilir — aksi halde "bu hafta" yanlış bir iddia olurdu.
+function SummaryCard({ overall, lastPeriod, groupBy }) {
+  const isCurrent = !!lastPeriod && lastPeriod.period === currentPeriodKey(groupBy);
+  const delta = isCurrent ? lastPeriod.net : null;
+  const deltaColor = delta > 0 ? C.green : delta < 0 ? C.red : C.muted;
+  return (
+    <Card style={{ padding: 16 }}>
+      <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: C.mutedLight, whiteSpace: "nowrap" }}>TOPLAM NET</div>
+      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 12, marginTop: 4 }}>
+        <div style={{ fontFamily: monoFont, fontSize: 36, fontWeight: 700, letterSpacing: -1.6, color: overall.net < 0 ? C.red : C.accent, lineHeight: 1.1, minWidth: 0 }}>
+          {formatNet(overall.net)}
+        </div>
+        {delta != null && (
+          <div style={{ display: "flex", alignItems: "baseline", gap: 5, paddingBottom: 5, flexShrink: 0, whiteSpace: "nowrap" }}>
+            <span style={{ fontFamily: monoFont, fontSize: 12, fontWeight: 700, color: deltaColor }}>{delta >= 0 ? `+${formatNet(delta)}` : formatNet(delta)}</span>
+            <span style={{ fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight }}>{CURRENT_PERIOD_LABELS[groupBy]}</span>
+          </div>
+        )}
+      </div>
+      <div style={{ height: 1, background: C.divider, margin: "14px 0" }} />
+      <StatGrid style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))", marginBottom: 0 }}>
+        <StatCard label="Doğru" value={overall.correctCount} tone="green" />
+        <StatCard label="Yanlış" value={overall.wrongCount} tone="red" />
+        <StatCard label="Boş" value={overall.blankCount} tone="muted" />
+      </StatGrid>
+    </Card>
+  );
+}
+
+// Ders kartı: "N kayıt" görünür — 4 kayıtlık bir dersle 1 kayıtlık bir dersin yüzdesini yan yana
+// koymak yanıltıcı olurdu. Çubuk = başarı oranı, dersin kendi renginde.
+function SubjectCard({ subject, count, correctCount, wrongCount, blankCount, net }) {
+  const rate = successRate(correctCount, wrongCount, blankCount);
+  return (
+    <Card style={{ padding: "14px 16px 16px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <SubjectIcon src={subjectIconUrl(subject)} size={34} radius={11} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text, lineHeight: 1.3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subject}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, marginTop: 2 }}>{count} kayıt</div>
+        </div>
+        <NetValue net={net} size={19} />
+      </div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 12 }}>
+        <DybPills correctCount={correctCount} wrongCount={wrongCount} blankCount={blankCount} />
+        <div style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
+          <span style={{ fontFamily: monoFont, fontSize: 12, fontWeight: 700, color: C.text2 }}>{rate != null ? `%${rate}` : "—"}</span>
+          <span style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 500, color: C.mutedLight, marginLeft: 5 }}>başarı</span>
+        </div>
+      </div>
+      <div style={{ marginTop: 12 }}>
+        <ProgressBar value={rate} color={subjectColor(subject)} height={6} />
+      </div>
+    </Card>
+  );
+}
+
+// Dönem satırı (grafiğin altındaki döküm) — çubuk o dönemin netinin en yüksek döneme oranı.
+function PeriodCard({ title, count, correctCount, wrongCount, blankCount, net, maxNet }) {
+  const pct = maxNet > 0 ? Math.max(4, Math.min(100, (Math.max(0, net) / maxNet) * 100)) : 0;
+  return (
+    <Card style={{ padding: "12px 16px 14px" }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text }}>{title}</div>
-          {subtitle && <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+          <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text, lineHeight: 1.3 }}>{title}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, marginTop: 2 }}>{count} kayıt</div>
         </div>
-        <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: net < 0 ? C.red : C.accent, lineHeight: 1.1 }}>{net}</div>
-          <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.3 }}>net</div>
-        </div>
+        <NetValue net={net} size={17} />
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-        <Pill tone="green">D {correctCount}</Pill>
-        <Pill tone="red">Y {wrongCount}</Pill>
-        <Pill>B {blankCount}</Pill>
-        {showRate && <Pill tone={rateTone(rate)}>Başarı {rate != null ? `%${rate}` : "—"}</Pill>}
+      <div style={{ marginTop: 10 }}>
+        <DybPills correctCount={correctCount} wrongCount={wrongCount} blankCount={blankCount} />
       </div>
-      <NetBar net={net} maxNet={maxNet} />
+      <div style={{ marginTop: 10 }}>
+        <ProgressBar value={pct} color={net < 0 ? C.red : C.accent} height={5} />
+      </div>
     </Card>
   );
 }
@@ -154,15 +253,15 @@ function NetTrendSvg({ points, groupBy, W }) {
         <g key={p.period}>
           <circle cx={x(i)} cy={y(p.net)} r="4" fill={C.surface} stroke={C.accent} strokeWidth="2.5" />
           {i % labelEvery === 0 && (
-            <text x={x(i)} y={H - 6} textAnchor="middle" fontSize="11" fill={C.muted} fontFamily={bodyFont}>
+            <text x={x(i)} y={H - 6} textAnchor="middle" fontSize="10.5" fill={C.mutedLight} fontFamily={monoFont}>
               {shortPeriodLabel(p.period, groupBy)}
             </text>
           )}
         </g>
       ))}
-      <text x={x(points.length - 1)} y={y(last.net) - 10} textAnchor={points.length === 1 ? "middle" : "end"} fontSize="12" fontWeight="800" fill={C.accent} fontFamily={bodyFont}>{last.net}</text>
-      <text x={2} y={padT + 4} fontSize="11" fill={C.muted} fontFamily={bodyFont}>{Math.round(max)}</text>
-      <text x={2} y={H - padB} fontSize="11" fill={C.muted} fontFamily={bodyFont}>{Math.round(min)}</text>
+      <text x={x(points.length - 1)} y={y(last.net) - 10} textAnchor={points.length === 1 ? "middle" : "end"} fontSize="12" fontWeight="700" fill={C.accent} fontFamily={monoFont}>{formatNet(last.net)}</text>
+      <text x={2} y={padT + 4} fontSize="10.5" fill={C.mutedLight} fontFamily={monoFont}>{Math.round(max)}</text>
+      <text x={2} y={H - padB} fontSize="10.5" fill={C.mutedLight} fontFamily={monoFont}>{Math.round(min)}</text>
     </svg>
   );
 }
@@ -170,7 +269,9 @@ function NetTrendSvg({ points, groupBy, W }) {
 // Hem öğretmenin bir öğrencisinin özetinden hem de öğrencinin kendi profilinden açılan tek ekran —
 // TEACHER'da studentId/studentName SABİT olarak dışarıdan verilir (o öğrencinin özetinden açıldığı
 // için burada ayrıca bir öğrenci seçiciye gerek yok), STUDENT doğrudan kendi raporunu görür.
-export default function ReportScreen({ user, studentId: fixedStudentId, studentName: fixedStudentName, onBack, backLabel = "Geri dön" }) {
+// Geri düğmesi ve ekran başlığı ("Ayşe Yılmaz — Rapor") App başlığında — onBack/backLabel artık
+// sayfada kullanılmıyor (App.jsx > headerBack).
+export default function ReportScreen({ user, studentId: fixedStudentId, studentName: fixedStudentName }) {
   const isTeacher = user.role === "TEACHER";
   const studentId = isTeacher ? fixedStudentId : undefined;
   const studentName = isTeacher ? fixedStudentName : user.name;
@@ -180,6 +281,10 @@ export default function ReportScreen({ user, studentId: fixedStudentId, studentN
   const [error, setError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  // PDF düğmesi App başlığının sağındaki yuvaya (HEADER_SLOT_ID) portal ile konur — yuva App'in
+  // başlığında, ilk render'da DOM'da henüz olmayabileceği için effect'te bulunup state'e alınır.
+  const [headerSlot, setHeaderSlot] = useState(null);
+  useEffect(() => setHeaderSlot(document.getElementById(HEADER_SLOT_ID)), []);
 
   // Veri, hangi gruplamayla istendiğini kendi üzerinde taşır (data.groupBy) — etiketler ve PDF her
   // zaman o değere göre üretilir. Önceden Günlük/Haftalık/Aylık arasında hızlı geçişte geç gelen eski
@@ -212,43 +317,24 @@ export default function ReportScreen({ user, studentId: fixedStudentId, studentN
       .finally(() => { if (seq === loadSeq.current) setLoading(false); });
   }, [studentId, groupBy, isTeacher]);
 
+  const pdfDisabled = exporting || loading || !data || data.overall.count === 0;
+  // Sunucu zaten nete göre sıralı gönderiyor; yine de "nete göre sıralı" etiketi bir sözleşme olduğu için
+  // istemcide de garanti edilir.
+  const subjects = data ? [...data.bySubject].sort((a, b) => b.net - a.net) : [];
+
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-      {onBack && (
-        <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
-          <ArrowLeft size={16} /> {backLabel}
-        </button>
+      {headerSlot && createPortal(
+        <HeaderTextButton icon={Download} label={exporting ? "Hazırlanıyor..." : "PDF"} onClick={exportPdf} disabled={pdfDisabled} />,
+        headerSlot
       )}
-      {isTeacher && (
-        <div style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text, marginBottom: 16 }}>{studentName} — Rapor</div>
-      )}
-      {/* Gruplama tek parça bir segment kontrolü, PDF aynı satırın sağında — önceden iki satıra bölünüyordu. */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 20, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
-        <div role="tablist" aria-label="Gruplama" style={{ display: "inline-flex", padding: 3, borderRadius: 12, background: C.surface2, border: `1px solid ${C.border}` }}>
-          {GROUP_OPTIONS.map((g) => {
-            const active = groupBy === g.value;
-            return (
-              <button
-                key={g.value}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                className="k-btn"
-                onClick={() => setGroupBy(g.value)}
-                style={{
-                  padding: "7px 14px", borderRadius: 9, cursor: "pointer", border: "none",
-                  background: active ? C.surface : "transparent", boxShadow: active ? C.shadowSm : "none",
-                  color: active ? C.accent : C.muted, fontFamily: bodyFont, fontWeight: 700, fontSize: 13,
-                }}
-              >{g.label}</button>
-            );
-          })}
-        </div>
-        <Button small variant="secondary" icon={Download} onClick={exportPdf} disabled={exporting || loading || !data || data.overall.count === 0}>
-          {exporting ? "Hazırlanıyor..." : "PDF"}
-        </Button>
+
+      <div className="k-chip-row" role="group" aria-label="Gruplama" style={{ marginBottom: 14 }}>
+        {GROUP_OPTIONS.map((g) => (
+          <Chip key={g.value} active={groupBy === g.value} onClick={() => setGroupBy(g.value)}>{g.label}</Chip>
+        ))}
       </div>
-      {exportError && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginTop: -10, marginBottom: 16, textAlign: "right" }}>{exportError}</div>}
+      {exportError && <div role="alert" style={{ color: C.red, fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, marginBottom: 12 }}>{exportError}</div>}
 
       {loading ? (
         <LoadingState />
@@ -258,31 +344,23 @@ export default function ReportScreen({ user, studentId: fixedStudentId, studentN
         <EmptyState icon={BarChart3} text="Henüz raporlanacak bir sonuç yok — ödev sonuçları ve serbest çalışma kayıtları girildikçe burada görünecek." />
       ) : (
         <>
-          <StatGrid style={{ marginBottom: 24 }}>
-            <StatCard label="Doğru" value={data.overall.correctCount} tone="green" />
-            <StatCard label="Yanlış" value={data.overall.wrongCount} tone="red" />
-            <StatCard label="Boş" value={data.overall.blankCount} tone="muted" />
-            <StatCard label="Net" value={data.overall.net} tone="accent" />
-          </StatGrid>
+          <SummaryCard overall={data.overall} lastPeriod={data.byPeriod[data.byPeriod.length - 1]} groupBy={reportGroupBy} />
 
-          <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Derse Göre
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, margin: "22px 0 10px" }}>
+            <SectionHeader title="Derse göre" style={{ margin: 0 }} />
+            <span style={{ fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, whiteSpace: "nowrap" }}>nete göre sıralı</span>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 28 }}>
-            {data.bySubject.map((s) => (
-              <ReportRow key={s.subject} title={s.subject} subtitle={`${s.count} kayıt`} maxNet={data.bySubject[0]?.net || 1} showRate {...s} />
-            ))}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {subjects.map((s) => <SubjectCard key={s.subject} {...s} />)}
           </div>
 
-          <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-            Zamana Göre — Net Trendi
-          </div>
-          <div style={{ marginBottom: 16 }}>
+          <SectionHeader title="Zamana göre — net trendi" style={{ marginTop: 26 }} />
+          <div style={{ marginBottom: 10 }}>
             <NetTrendChart points={data.byPeriod} groupBy={reportGroupBy} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {[...data.byPeriod].reverse().map((p) => (
-              <ReportRow key={p.period} title={formatPeriodLabel(p.period, reportGroupBy)} subtitle={`${p.count} kayıt`} maxNet={Math.max(...data.byPeriod.map((x) => x.net), 1)} {...p} />
+              <PeriodCard key={p.period} title={formatPeriodLabel(p.period, reportGroupBy)} maxNet={Math.max(...data.byPeriod.map((x) => x.net), 1)} {...p} />
             ))}
           </div>
         </>

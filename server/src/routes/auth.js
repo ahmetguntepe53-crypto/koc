@@ -34,18 +34,20 @@ const DUMMY_PASSWORD_HASH = bcrypt.hashSync("timing-safety-dummy", 10);
 // AYNI mesajı döner — farklı mesajlar kayıtlı e-postaların (ve kimin hesabını etkinleştirmediğinin)
 // dışarıdan listelenmesine izin verirdi. Mesajın ikinci cümlesi, etkinleştirmemiş öğrenciyi yine de
 // doğru yöne yönlendirir.
-const LOGIN_FAILED_MESSAGE = "E-posta veya şifre hatalı. Hesabını henüz etkinleştirmediysen e-postana gelen kurulum bağlantısını kullan.";
+const LOGIN_FAILED_MESSAGE = "Kullanıcı adı / e-posta veya şifre hatalı. Hesabını henüz etkinleştirmediysen e-postana gelen kurulum bağlantısını kullan.";
 
 // loginLimiter (IP+e-posta) önce çalışır: kendi hesabında kilitlenmiş biri tekrar denedikçe ortak IP
 // kotasını (loginIpLimiter) tüketmesin diye.
 authRouter.post("/login", loginLimiter, loginIpLimiter, async (req, res) => {
   try {
-    const { email, password } = req.body || {};
-    if (!email || !password) return res.status(400).json({ error: "E-posta ve şifre gerekli" });
+    // Alan adı geriye dönük uyum için "email" kalır ama değer e-posta YA DA kullanıcı adı (öğrencide
+    // okul numarası) olabilir — ikisi de tekil, hangisi eşleşirse (bkz. schema.prisma > User).
+    const { email: identifier, password } = req.body || {};
+    if (!identifier || !password) return res.status(400).json({ error: "Kullanıcı adı / e-posta ve şifre gerekli" });
     // bcrypt string olmayan bir değerde fırlatır (500) — ör. {"password": 123} doğrudan 400 alsın.
-    if (typeof email !== "string" || typeof password !== "string") return res.status(400).json({ error: "E-posta ve şifre gerekli" });
-    const cleanEmail = email.trim().toLowerCase();
-    const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
+    if (typeof identifier !== "string" || typeof password !== "string") return res.status(400).json({ error: "Kullanıcı adı / e-posta ve şifre gerekli" });
+    const cleanId = identifier.trim().toLowerCase();
+    const user = await prisma.user.findFirst({ where: { OR: [{ email: cleanId }, { username: cleanId }] } });
     // Hesap yoksa ya da şifresi henüz yoksa da sahte hash'e karşı compare yapılır — süre eşit kalsın.
     const ok = await bcrypt.compare(password, user?.passwordHash || DUMMY_PASSWORD_HASH);
     if (!user || !user.passwordHash || !ok) return res.status(401).json({ error: LOGIN_FAILED_MESSAGE });
@@ -68,6 +70,7 @@ authRouter.post("/forgot-password", forgotPasswordLimiter, forgotPasswordIpLimit
     const cleanEmail = email.trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
     // Hesap yoksa bile aynı genel mesajı döneriz — e-posta adresi kayıtlı mı diye dışarıdan anlaşılmasın.
+    // (Yalnızca kullanıcı adıyla giren hesapların e-postası yok — onların şifresini admin belirler.)
     if (user && !user.banned) {
       const resetToken = crypto.randomBytes(32).toString("hex");
       await prisma.user.update({ where: { id: user.id }, data: { resetToken, resetTokenExpires: new Date(Date.now() + RESET_TOKEN_TTL_MS) } });
@@ -99,7 +102,7 @@ authRouter.post("/reset-password", resetPasswordLimiter, async (req, res) => {
     await prisma.user.update({
       where: { id: user.id },
       data: {
-        passwordHash, resetToken: null, resetTokenExpires: null, tokenVersion: { increment: 1 },
+        passwordHash, resetToken: null, resetTokenExpires: null, tokenVersion: { increment: 1 }, mustChangePassword: false,
         ...(isFirstSetup ? { termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION } : {}),
       },
     });
@@ -192,21 +195,34 @@ authRouter.get("/me", requireAuth, async (req, res) => {
 // "şifreyi doğrudan belirle" uç noktası da var — bkz. routes/admin.js).
 authRouter.post("/set-password", setPasswordLimiter, requireAuth, async (req, res) => {
   try {
-    const { currentPassword, newPassword } = req.body || {};
+    const { currentPassword, newPassword, acceptedTerms } = req.body || {};
     if (typeof newPassword !== "string" || newPassword.length < 8) return res.status(400).json({ error: "Yeni şifre en az 8 karakter olmalı" });
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (user.passwordHash) {
       if (!currentPassword || typeof currentPassword !== "string") return res.status(400).json({ error: "Mevcut şifre gerekli" });
       const ok = await bcrypt.compare(currentPassword, user.passwordHash);
       if (!ok) return res.status(401).json({ error: "Mevcut şifre hatalı" });
+      if (newPassword === currentPassword) return res.status(400).json({ error: "Yeni şifre eskisiyle aynı olamaz" });
+    }
+    // Okul numarası herkesçe bilinebilir — kullanıcı adıyla aynı şifre, zorunlu değişikliği anlamsız kılar.
+    if (user.username && newPassword.trim().toLowerCase() === user.username) {
+      return res.status(400).json({ error: "Şifren kullanıcı adınla (okul numaranla) aynı olamaz" });
+    }
+    // E-posta kurulum bağlantısından geçmemiş (okul numarasıyla açılmış) hesaplar metinleri burada kabul eder.
+    const needsTerms = !user.termsAcceptedAt;
+    if (needsTerms && !acceptedTerms) {
+      return res.status(400).json({ error: "Devam etmek için Gizlilik Politikası, KVKK Aydınlatma Metni ve Kullanım Şartları'nı kabul etmelisin." });
     }
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
+    const updated = await prisma.user.update({
       where: { id: user.id },
-      data: { passwordHash, tokenVersion: { increment: 1 } },
+      data: {
+        passwordHash, tokenVersion: { increment: 1 }, mustChangePassword: false,
+        ...(needsTerms ? { termsAcceptedAt: new Date(), termsVersion: TERMS_VERSION } : {}),
+      },
     });
-    const token = signToken(user.id, user.tokenVersion + 1);
-    res.json({ ok: true, token });
+    const token = signToken(user.id, updated.tokenVersion);
+    res.json({ ok: true, token, user: safeUser(updated) });
   } catch (e) {
     handleErr(res, e);
   }

@@ -231,7 +231,7 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onRese
             {isStudent && !GRADE_LEVELS.includes(user.gradeLevel) && <Pill tone="red">{user.gradeLevel ? "Sınıf düzeyi güncellenmeli" : "Sınıf düzeyi girilmedi"}</Pill>}
             {user.role === "TEACHER" && user.isSubjectTeacher && <Pill tone="accent">Ders öğretmeni</Pill>}
           </div>
-          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[user.username && `Kullanıcı adı: ${user.username}`, user.email].filter(Boolean).join(" · ")}</div>
         </div>
       </div>
       {isStudent && (
@@ -290,6 +290,7 @@ function IconButton({ icon: Icon, onClick, title, danger, active }) {
 function AddUserModal({ role, teachers, onClose, onCreated }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [className, setClassName] = useState("");
   const [gradeLevel, setGradeLevel] = useState("");
@@ -301,9 +302,10 @@ function AddUserModal({ role, teachers, onClose, onCreated }) {
     e.preventDefault();
     setError("");
     if (role === "STUDENT" && !gradeLevel) { setError("Sınıf düzeyi seçmelisin (11 veya 12. sınıf)"); return; }
+    if (!email.trim() && !username.trim()) { setError(role === "STUDENT" ? "Okul numarası ya da e-posta gir" : "Kullanıcı adı ya da e-posta gir"); return; }
     setSaving(true);
     try {
-      await api.adminCreateUser({ role, name, email, phone: phone || undefined, className: className || undefined, gradeLevel: gradeLevel || undefined, teacherId: teacherId || undefined });
+      await api.adminCreateUser({ role, name, email: email.trim() || undefined, username: username.trim() || undefined, phone: phone || undefined, className: className || undefined, gradeLevel: gradeLevel || undefined, teacherId: teacherId || undefined });
       onCreated();
     } catch (err) {
       setError(err.message || "Kaydedilemedi");
@@ -316,7 +318,15 @@ function AddUserModal({ role, teachers, onClose, onCreated }) {
     <Modal title={role === "TEACHER" ? "Öğretmen Ekle" : "Öğrenci Ekle"} onClose={onClose}>
       <form onSubmit={submit}>
         <Input label="Ad Soyad" value={name} onChange={(e) => setName(e.target.value)} required />
-        <Input label="E-posta" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <Input
+          label={role === "STUDENT" ? "Okul numarası (kullanıcı adı)" : "Kullanıcı adı (ör. ali.cihangir)"}
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          inputMode={role === "STUDENT" ? "numeric" : undefined}
+          autoCapitalize="none"
+          placeholder={role === "STUDENT" ? "ör. 621" : "ör. ali.cihangir"}
+        />
+        <Input label="E-posta (opsiyonel)" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         <Input label="Telefon (opsiyonel)" value={phone} onChange={(e) => setPhone(e.target.value)} />
         {role === "STUDENT" && (
           <>
@@ -333,7 +343,9 @@ function AddUserModal({ role, teachers, onClose, onCreated }) {
         )}
         {error && <div style={{ color: C.red, fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
         <div style={{ fontSize: 12, color: C.muted, marginBottom: 14 }}>
-          Kullanıcıya şifresini belirlemesi için bir e-posta gönderilecek.
+          {email.trim()
+            ? "Kullanıcıya şifresini belirlemesi için bir e-posta gönderilecek."
+            : `E-posta girilmezse ilk şifre ${role === "STUDENT" ? "okul numarasıyla" : "kullanıcı adıyla"} aynı olur; kullanıcı girdikten sonra Profilim'den değiştirebilir.`}
         </div>
         <Button full type="submit" disabled={saving}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
       </form>
@@ -382,12 +394,14 @@ function parseBulkText(text, role) {
     .map((line) => {
       const sep = line.includes("\t") ? "\t" : ",";
       const parts = line.split(sep).map((p) => p.trim());
+      // 2. sütun e-posta ya da kullanıcı adı (öğrencide okul numarası) olabilir — "@" içeriyorsa e-posta.
+      const identity = (v) => (v && v.includes("@") ? { email: v } : { username: v || undefined });
       if (role === "STUDENT") {
-        const [name, email, gradeLevel, className, teacherEmail] = parts;
-        return { name, email, gradeLevel: gradeLevel || undefined, className: className || undefined, teacherEmail: teacherEmail || undefined };
+        const [name, id, gradeLevel, className, teacherEmail] = parts;
+        return { name, ...identity(id), gradeLevel: gradeLevel || undefined, className: className || undefined, teacherEmail: teacherEmail || undefined };
       }
-      const [name, email] = parts;
-      return { name, email };
+      const [name, id] = parts;
+      return { name, ...identity(id) };
     });
 }
 
@@ -402,7 +416,7 @@ function BulkImportModal({ teachers, onClose, onDone }) {
   useEffect(() => {
     if (role !== "STUDENT") return;
     api.adminListUsers({ role: "TEACHER" }).then(({ users }) => {
-      setTeachersByEmail(Object.fromEntries(users.map((t) => [t.email.toLowerCase(), t])));
+      setTeachersByEmail(Object.fromEntries(users.flatMap((t) => [t.email, t.username].filter(Boolean).map((id) => [id.toLowerCase(), t]))));
     });
   }, [role]);
 
@@ -439,7 +453,7 @@ function BulkImportModal({ teachers, onClose, onDone }) {
             <option value="TEACHER">Öğretmen</option>
           </Select>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>
-            Her satıra bir kullanıcı — Excel/Sheets'ten kopyalayıp yapıştırabilirsin. Sütunlar: {role === "STUDENT" ? "Ad Soyad, E-posta, Sınıf Düzeyi (11 veya 12, zorunlu), Sınıf (opsiyonel), Koçun E-postası (opsiyonel)" : "Ad Soyad, E-posta"}.
+            Her satıra bir kullanıcı — Excel/Sheets'ten kopyalayıp yapıştırabilirsin. Sütunlar: {role === "STUDENT" ? "Ad Soyad, Okul No veya E-posta, Sınıf Düzeyi (11 veya 12, zorunlu), Sınıf (opsiyonel), Koçun E-postası / Kullanıcı Adı (opsiyonel)" : "Ad Soyad, E-posta"}.
           </div>
           <textarea
             value={text}
@@ -452,7 +466,7 @@ function BulkImportModal({ teachers, onClose, onDone }) {
             <div style={{ maxHeight: 180, overflowY: "auto", border: `1px solid ${C.border}`, borderRadius: 10, marginBottom: 14 }}>
               {resolvedRows.map((r, i) => (
                 <div key={i} style={{ padding: "6px 10px", fontSize: 12, borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <span>{r.name} · {r.email}{r.className ? ` · ${r.className}` : ""}</span>
+                  <span>{r.name} · {r.email || r.username}{r.className ? ` · ${r.className}` : ""}</span>
                   <span style={{ display: "flex", gap: 8 }}>
                     {role === "STUDENT" && (
                       <span style={{ color: r.gradeTrack ? C.muted : C.red }}>{r.gradeTrack ? `${r.gradeLevel}. sınıf` : "sınıf düzeyi geçersiz (11 veya 12 olmalı)"}</span>

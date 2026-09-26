@@ -1,36 +1,51 @@
-// İki tema: "light" (varsayılan, profesyonel SaaS/dashboard görünümü) ve "dark" (okul amblemindeki
-// koyu petrol yeşili + altın renklerinden esinlenilmiş). radiusSm/Md/Lg ve font'lar YAPISAL —
-// temaya göre değişmez, bu yüzden THEMES'in dışında, C üzerinde her zaman sabit tutulur (bkz. altta).
+// İki tema: "light" (varsayılan) ve "dark" (okul amblemindeki koyu petrol yeşili + altın renklerinden
+// esinlenilmiş). Açık temanın değerleri "Koçluk — 8 ekran tasarım güncellemesi" dokümanının jeton
+// tablosundan (0 — JETONLAR). radiusSm/Md/Lg ve font'lar YAPISAL — temaya göre değişmez, bu yüzden
+// THEMES'in dışında, C üzerinde her zaman sabit tutulur (bkz. altta).
 export const THEMES = {
   light: {
-    bg: "#F5F6FB",
+    bg: "#F4F5FA",
     surface: "#FFFFFF",
-    surface2: "#F0F2F8",
+    surface2: "#F1F3F8",        // nötr açık ton (ör. "Boş" kutucuğu, %0 tamamlama)
     surfaceHover: "#E9EBF4",
-    border: "rgba(15,23,42,0.09)",
-    borderStrong: "rgba(15,23,42,0.16)",
-    text: "#0F1729",
-    // Kontrast: eski mutedLight (#94A0BE) açık zeminlerde ~2.4:1'di — form etiketleri, bölüm başlıkları
-    // ve sayı kartı etiketleri okunmuyordu (WCAG AA küçük metin için 4.5:1 ister). İkisi de koyulaştırıldı,
-    // hiyerarşi renk yerine boyut/kalınlıkla korunuyor.
-    muted: "#5B6680",
-    mutedLight: "#646F88",
+    fieldBg: "#F7F8FC",         // form alanı zemini
+    border: "#E7E9F2",
+    borderStrong: "rgba(20,26,46,0.16)",
+    divider: "#EFF1F7",
+    text: "#141A2E",            // başlık
+    text2: "#3D465F",           // gövde, bölüm başlığı
+    // Metin tonları dokümandakilerden bir kademe koyu (#6B7590 → #525B73, #98A0B8 → #666E88): doküman
+    // değerleriyle ikincil/soluk metinler açık zeminlerde WCAG AA'nın (4.5:1) altında kalıyordu (tarama
+    // 363 kontrast sorunu buldu). Soluk yine ikincilden açık — hiyerarşi korunuyor.
+    muted: "#525B73",           // ikincil
+    mutedLight: "#666E88",      // soluk (meta metni, pasif alt menü)
+    faintest: "#BAC1D4",        // en soluk (ok ikonları, diğer ayın günleri)
 
-    accent: "#4338CA",
-    accentHover: "#372DAF",
-    accentSoft: "#EEF0FE",
-    accent2: "#6D62F0",
+    accent: "#4F36D6",
+    accentHover: "#4329C4",
+    accentSoft: "#EDEAFD",
+    accent2: "#6D5AE6",
     onAccent: "#FFFFFF",
 
-    green: "#15803D",
-    greenSoft: "#EDFAF1",
+    // Durum renkleri aynı anlamda (kırmızı geciken, amber bekleyen, yeşil tamamlanan), açık zeminleri
+    // dokümandaki gibi; yalnızca koyu tonları kendi açık zemininde 4.5:1'i geçecek kadar koyulaştırıldı
+    // (doküman: #16A34A / #D97706 / #DC2626 — yeşil ve amber ~2.9:1'di).
+    green: "#11803A",
+    greenSoft: "#E7F6ED",
     amber: "#B45309",
-    amberSoft: "#FDF6E9",
-    red: "#B91C1C",
+    amberSoft: "#FEF3E2",
+    red: "#D22424",
     redSoft: "#FDECEC",
     onRed: "#FFFFFF",
+    blue: "#2563EB",
+    blueSoft: "#E8F0FE",
 
-    // Kenar çubuğu koyu paleti — içerik alanının aksine ayrı, sabit bir renk seti.
+    // YKS sayacı kartı (bkz. StudentHomeScreen > ExamCountdownCard).
+    countdownBg: "linear-gradient(130deg,#5B41E0 0%,#4F36D6 48%,#3A25AE 100%)",
+    countdownShadow: "0 8px 20px rgba(79,54,214,0.28)",
+    onCountdown: "#FFFFFF",
+
+    // Kenar çubuğu (masaüstü) koyu paleti — içerik alanının aksine ayrı, sabit bir renk seti.
     sidebarBg: "#12142B",
     sidebarBgAlt: "#181A36",
     sidebarText: "#AEB3D6",
@@ -39,25 +54,27 @@ export const THEMES = {
     sidebarAccent: "#8B7FF6",
     sidebarBorder: "rgba(255,255,255,0.08)",
 
-    shadowSm: "0 1px 2px rgba(15,23,42,0.06)",
-    shadowMd: "0 1px 2px rgba(15,23,42,0.04), 0 8px 20px rgba(15,23,42,0.07)",
-    shadowLg: "0 4px 10px rgba(15,23,42,0.06), 0 16px 40px rgba(15,23,42,0.12)",
+    shadowSm: "0 1px 2px rgba(20,26,46,0.04)",
+    shadowMd: "0 1px 2px rgba(20,26,46,0.04), 0 6px 16px rgba(20,26,46,0.05)",
+    shadowLg: "0 4px 10px rgba(20,26,46,0.06), 0 16px 40px rgba(20,26,46,0.12)",
   },
-  // Okul amblemindeki koyu petrol yeşili (kanatlar) + altın (minare/hilal) paletinden esinlenilmiş —
-  // vurgu rengi açık temadaki mor yerine altın (amblemle doğrudan uyumlu), zemin nötr siyaha değil
-  // amblemin petrol yeşiline çekiliyor. Kartlardaki gradyan şerit (bkz. common.jsx > Card) bu yüzden
-  // altın'dan yumuşak bir nane yeşiline geçer — amblemin iki rengini birlikte taşır.
+  // Okul amblemindeki koyu petrol yeşili (kanatlar) + altın (minare/hilal) paleti — vurgu rengi açık
+  // temadaki mor yerine altın, zemin amblemin petrol yeşiline çekiliyor. Doküman yalnızca açık temayı
+  // tanımlıyor; buradaki yeni jetonlar (text2, faintest, fieldBg, blue...) aynı rolleri koyu zeminde taşır.
   dark: {
     bg: "#0A1A1E",
     surface: "#102428",
     surface2: "#173237",
     surfaceHover: "#1E3B41",
+    fieldBg: "#132B30",
     border: "rgba(255,255,255,0.09)",
     borderStrong: "rgba(255,255,255,0.18)",
+    divider: "rgba(255,255,255,0.06)",
     text: "#F2F6F5",
+    text2: "#D3E0E1",
     muted: "#9CB3B6",
-    mutedLight: "#86A0A3", // eski #6E888B yüzeylerde ~3.6:1'di
-
+    mutedLight: "#86A0A3",
+    faintest: "#5E7477",
 
     accent: "#D4A72C",
     accentHover: "#E4BC4C",
@@ -72,9 +89,13 @@ export const THEMES = {
     red: "#F87171",
     redSoft: "rgba(248,113,113,0.14)",
     onRed: "#2A0B0B", // açık kırmızı üzerinde beyaz metin okunmuyor
+    blue: "#60A5FA",
+    blueSoft: "rgba(96,165,250,0.14)",
 
-    // Kenar çubuğu ana zeminle aynı ailede (biraz daha koyu) — açık temadaki gibi apayrı, sabit bir
-    // lacivert değil, tek bütün bir koyu tema hissi versin diye.
+    countdownBg: "linear-gradient(130deg,#E4BC4C 0%,#D4A72C 48%,#B8891C 100%)",
+    countdownShadow: "0 8px 20px rgba(0,0,0,0.35)",
+    onCountdown: "#12201A",
+
     sidebarBg: "#071316",
     sidebarBgAlt: "#0D2024",
     sidebarText: "#9CB3B6",
@@ -83,10 +104,9 @@ export const THEMES = {
     sidebarAccent: "#D4A72C",
     sidebarBorder: "rgba(255,255,255,0.08)",
 
-    // Siyah gölge koyu zeminde neredeyse görünmez — derinlik burada ÇOĞUNLUKLA border'dan gelir,
-    // gölge yalnızca hafif bir ayrım için var.
+    // Siyah gölge koyu zeminde neredeyse görünmez — derinlik burada ÇOĞUNLUKLA border'dan gelir.
     shadowSm: "0 1px 2px rgba(0,0,0,0.25)",
-    shadowMd: "0 1px 2px rgba(0,0,0,0.2), 0 8px 20px rgba(0,0,0,0.35)",
+    shadowMd: "0 1px 2px rgba(0,0,0,0.2), 0 6px 16px rgba(0,0,0,0.3)",
     shadowLg: "0 4px 10px rgba(0,0,0,0.3), 0 16px 40px rgba(0,0,0,0.45)",
   },
 };
@@ -97,12 +117,30 @@ export const THEMES = {
 // render'da otomatik güncel değerleri görür (ayrı bir Context/prop-drilling gerekmez).
 export const C = {
   ...THEMES.light,
-  radiusSm: 8,
-  // 12 -> 16: Tailwind "rounded-xl" yerine "rounded-2xl" — kart/buton/giriş alanlarında istenen
-  // daha belirgin oval köşe hissi (bkz. tasarım kılavuzu: "rounded-2xl veya rounded-xl").
-  radiusMd: 16,
-  radiusLg: 18,
+  radiusSm: 11,   // çip, küçük düğme
+  radiusMd: 14,   // kart, satır, kutucuk
+  radiusLg: 18,   // sayaç kartı, pencere
 };
 
-export const displayFont = "'Manrope', -apple-system, 'Segoe UI', sans-serif";
-export const bodyFont = "'Manrope', -apple-system, 'Segoe UI', sans-serif";
+// Metin: Outfit. Rakamlar: JetBrains Mono — Outfit'in rakamları eşit genişlikte değil, kutucuk ve
+// tablolarda sayılar kayıyordu; net, D/Y/B, yüzde, gün sayısı, sayaç her yerde monoFont ile yazılır.
+export const displayFont = "'Outfit', -apple-system, 'Segoe UI', sans-serif";
+export const bodyFont = "'Outfit', -apple-system, 'Segoe UI', sans-serif";
+export const monoFont = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
+
+// Tamamlama yüzdesi rengi (dokümandaki 1b eşikleri) — 0 ayrı bir NÖTR renk: "hiç ödevi yapmadı / henüz
+// ödevi yok" ile "düşük başarı" aynı şey değil. null = ödevi hiç yok.
+export function completionTone(rate) {
+  if (rate == null || rate === 0) return { fg: C.muted, bg: C.surface2 };
+  if (rate >= 70) return { fg: C.green, bg: C.greenSoft };
+  if (rate >= 40) return { fg: C.amber, bg: C.amberSoft };
+  return { fg: C.red, bg: C.redSoft };
+}
+
+// Türkçe ondalık gösterim: 16.25 → "16,25" (net gibi değerler için). decimals verilirse sabit basamak
+// (ör. rapor kartlarında 13 → "13,00", sütunlar hizalı dursun diye).
+export function formatNet(value, decimals) {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  const opts = decimals == null ? { minimumFractionDigits: 0, maximumFractionDigits: 2 } : { minimumFractionDigits: decimals, maximumFractionDigits: decimals };
+  return Number(value).toLocaleString("tr-TR", opts);
+}

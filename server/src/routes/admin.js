@@ -7,7 +7,7 @@ import { prisma } from "../db.js";
 import { safeUser } from "../serialize.js";
 import { sendAccountSetupEmail } from "../mailer.js";
 import { handleErr } from "../handleErr.js";
-import { isValidEmail, assert } from "../validators.js";
+import { isValidEmail, isValidUsername, assert } from "../validators.js";
 import { GRADE_LEVELS } from "../subjects.js";
 import { recipientPhotosDir } from "../uploads.js";
 
@@ -57,6 +57,7 @@ adminRouter.get("/users", async (req, res) => {
       where.OR = [
         { name: { contains: String(q), mode: "insensitive" } },
         { email: { contains: String(q), mode: "insensitive" } },
+        { username: { contains: String(q), mode: "insensitive" } },
       ];
     }
     const users = await prisma.user.findMany({
@@ -84,13 +85,32 @@ adminRouter.get("/teachers", async (req, res) => {
   }
 });
 
-async function createOneUser({ role, name, email, phone, className, teacherId, gradeLevel }) {
+// Giriş kimliği çakışması: giriş e-posta VE kullanıcı adı alanlarının ikisine birden baktığı için
+// (bkz. auth.js > login) bir değer, başka bir hesabın ne e-postası ne de kullanıcı adı olabilir.
+async function findIdentifierClash(values, exceptUserId) {
+  const ids = values.filter(Boolean);
+  if (!ids.length) return null;
+  return prisma.user.findFirst({
+    where: {
+      OR: ids.flatMap((v) => [{ email: v }, { username: v }]),
+      ...(exceptUserId ? { NOT: { id: exceptUserId } } : {}),
+    },
+  });
+}
+
+// E-posta ya da kullanıcı adından en az biri zorunlu. E-posta verilirse eskisi gibi şifre belirleme
+// bağlantısı gider; YALNIZCA kullanıcı adı verilirse (e-postası olmayan öğrenci — okulun kuralı:
+// kullanıcı adı ve ilk şifre okul numarası) ilk şifre kullanıcı adıyla aynı olur.
+async function createOneUser({ role, name, email, username, phone, className, teacherId, gradeLevel }) {
   assert(role === "TEACHER" || role === "STUDENT", "Rol TEACHER veya STUDENT olmalı");
   assert(name && String(name).trim(), "İsim gerekli");
-  assert(isValidEmail(email), "Geçerli bir e-posta gerekli");
-  const cleanEmail = String(email).trim().toLowerCase();
-  const existing = await prisma.user.findUnique({ where: { email: cleanEmail } });
-  assert(!existing, `${cleanEmail} zaten kayıtlı`, 409);
+  const cleanEmail = email ? String(email).trim().toLowerCase() : null;
+  const cleanUsername = username ? String(username).trim().toLowerCase() : null;
+  assert(cleanEmail || cleanUsername, "E-posta ya da kullanıcı adı (okul numarası) gerekli");
+  if (cleanEmail) assert(isValidEmail(cleanEmail), "Geçerli bir e-posta gir");
+  if (cleanUsername) assert(isValidUsername(cleanUsername), "Kullanıcı adı yalnızca harf, rakam, nokta, tire ve alt çizgi içerebilir (2-40 karakter)");
+  const existing = await findIdentifierClash([cleanEmail, cleanUsername]);
+  assert(!existing, `${cleanUsername || cleanEmail} zaten kayıtlı`, 409);
 
   let resolvedTeacherId = null;
   let resolvedGradeLevel = null;
@@ -112,14 +132,20 @@ async function createOneUser({ role, name, email, phone, className, teacherId, g
       role,
       name: String(name).trim(),
       email: cleanEmail,
+      username: cleanUsername,
+      passwordHash: cleanEmail ? null : await bcrypt.hash(cleanUsername, 10),
+      // Kullanıcı adıyla aynı ilk şifre tahmin edilebilir — ilk girişte değiştirmek zorunlu.
+      mustChangePassword: !cleanEmail,
       phone: phone ? String(phone).trim() : null,
       className: role === "STUDENT" && className ? String(className).trim() : null,
       teacherId: resolvedTeacherId,
       gradeLevel: resolvedGradeLevel,
     },
   });
-  const token = await issueAccountSetupToken(user.id);
-  sendAccountSetupEmail(cleanEmail, token, user.name).catch((e) => console.error("[mailer] gönderilemedi:", e.message));
+  if (cleanEmail) {
+    const token = await issueAccountSetupToken(user.id);
+    sendAccountSetupEmail(cleanEmail, token, user.name).catch((e) => console.error("[mailer] gönderilemedi:", e.message));
+  }
   return user;
 }
 
@@ -144,9 +170,9 @@ adminRouter.post("/users/bulk-import", async (req, res) => {
     for (const row of rows) {
       try {
         const user = await createOneUser({ ...row, role: row.role || role });
-        results.push({ email: row.email, ok: true, id: user.id });
+        results.push({ email: row.email || row.username, ok: true, id: user.id });
       } catch (e) {
-        results.push({ email: row.email, ok: false, error: e.message || "Bilinmeyen hata" });
+        results.push({ email: row.email || row.username, ok: false, error: e.message || "Bilinmeyen hata" });
       }
     }
     res.json({ results, successCount: results.filter((r) => r.ok).length });
@@ -157,9 +183,21 @@ adminRouter.post("/users/bulk-import", async (req, res) => {
 
 adminRouter.patch("/users/:id", async (req, res) => {
   try {
-    const { name, phone, className, gradeLevel } = req.body || {};
+    const { name, phone, className, gradeLevel, username } = req.body || {};
     const data = {};
     if (name !== undefined) data.name = String(name).trim();
+    if (username !== undefined) {
+      const cleanUsername = username ? String(username).trim().toLowerCase() : null;
+      const current = await prisma.user.findUnique({ where: { id: req.params.id }, select: { email: true } });
+      assert(current, "Bulunamadı", 404);
+      // Hesabın giriş yapabileceği en az bir kimlik kalmalı.
+      assert(cleanUsername || current.email, "E-postası olmayan bir hesabın kullanıcı adı silinemez");
+      if (cleanUsername) {
+        assert(isValidUsername(cleanUsername), "Kullanıcı adı yalnızca harf, rakam, nokta, tire ve alt çizgi içerebilir (2-40 karakter)");
+        assert(!(await findIdentifierClash([cleanUsername], req.params.id)), `${cleanUsername} zaten kayıtlı`, 409);
+      }
+      data.username = cleanUsername;
+    }
     if (phone !== undefined) data.phone = phone ? String(phone).trim() : null;
     if (className !== undefined) data.className = className ? String(className).trim() : null;
     if (gradeLevel !== undefined) {
@@ -212,6 +250,7 @@ adminRouter.post("/users/:id/resend-activation", async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.params.id } });
     assert(user, "Kullanıcı bulunamadı", 404);
+    assert(user.email, "Bu kullanıcının e-posta adresi yok — şifresini doğrudan belirle", 400);
     const token = await issueAccountSetupToken(user.id);
     await sendAccountSetupEmail(user.email, token, user.name);
     res.json({ ok: true });
@@ -230,7 +269,8 @@ adminRouter.post("/users/:id/set-password", async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     await prisma.user.update({
       where: { id: req.params.id },
-      data: { passwordHash, resetToken: null, resetTokenExpires: null, tokenVersion: { increment: 1 } },
+      // Adminin sözlü ilettiği geçici şifre — kullanıcı ilk girişte kendi şifresini belirler.
+      data: { passwordHash, resetToken: null, resetTokenExpires: null, tokenVersion: { increment: 1 }, mustChangePassword: true },
     });
     res.json({ ok: true });
   } catch (e) {

@@ -34,7 +34,7 @@ export default function TopicField({ examType, subject, value, onChange, label =
           else { setCustomMode(false); onChange(e.target.value); }
         }}
       >
-        <option value="" disabled>Konu seç ({topics.length} konu)</option>
+        <option value="" disabled>Konu seç ({topics.length})</option>
         {topics.map((t, i) => <option key={t} value={t}>{i + 1}. {t}</option>)}
         <option value={CUSTOM}>Listede yok — kendim yazacağım</option>
       </Select>

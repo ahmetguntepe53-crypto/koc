@@ -42,7 +42,7 @@ export default function ProfileScreen({ user, onLogout, onOpenReport, theme, onC
           <Avatar name={user.name} size={52} />
           <div style={{ minWidth: 0 }}>
             <div style={{ fontFamily: displayFont, fontSize: 16.5, fontWeight: 800, color: C.text }}>{user.name}</div>
-            <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted, marginTop: 1 }}>{user.email}</div>
+            <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted, marginTop: 1 }}>{user.username ? `Kullanıcı adı: ${user.username}` : user.email}</div>
             <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap" }}>
               <Pill tone="accent">{roleLabel(user.role)}</Pill>
               {user.className && <Pill>{user.className}</Pill>}

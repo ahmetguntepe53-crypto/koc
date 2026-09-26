@@ -10,7 +10,7 @@ teacherRouter.get("/students", async (req, res) => {
   try {
     const students = await prisma.user.findMany({
       where: { teacherId: req.userId, role: "STUDENT" },
-      select: { id: true, name: true, email: true, className: true, gradeLevel: true, banned: true },
+      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, banned: true },
       orderBy: { name: "asc" },
     });
 
@@ -20,18 +20,27 @@ teacherRouter.get("/students", async (req, res) => {
     // TÜM gönderilmiş ödevler sayılır — öğrenci özet ekranındaki oranla aynı kural, ikisi tutarlı kalsın.
     const recipients = await prisma.assignmentRecipient.findMany({
       where: { studentId: { in: students.map((s) => s.id) }, assignment: { status: "SENT" } },
-      select: { studentId: true, completed: true },
+      select: { studentId: true, completed: true, assignment: { select: { endDate: true } } },
     });
+    // Geciken: tamamlanmamış ve bitiş gününün Türkiye'deki sonu (UTC gece yarısı + 21 saat) geçmiş —
+    // istemcideki "X gün gecikti" ve zamanlayıcının gecikme kuralıyla aynı (bkz. scheduler.js).
+    const overdueCutoff = Date.now() - 21 * 60 * 60 * 1000;
     const byStudent = new Map();
     for (const r of recipients) {
-      const entry = byStudent.get(r.studentId) || { total: 0, completed: 0 };
+      const entry = byStudent.get(r.studentId) || { total: 0, completed: 0, overdue: 0 };
       entry.total += 1;
       if (r.completed) entry.completed += 1;
+      else if (new Date(r.assignment.endDate).getTime() < overdueCutoff) entry.overdue += 1;
       byStudent.set(r.studentId, entry);
     }
     const withRates = students.map((s) => {
       const entry = byStudent.get(s.id);
-      return { ...s, completionRate: entry && entry.total ? Math.round((entry.completed / entry.total) * 100) : null };
+      return {
+        ...s,
+        completionRate: entry && entry.total ? Math.round((entry.completed / entry.total) * 100) : null,
+        assignmentCount: entry?.total || 0,
+        overdueCount: entry?.overdue || 0,
+      };
     });
 
     res.json({ students: withRates });
@@ -44,7 +53,7 @@ teacherRouter.get("/students/:id/overview", async (req, res) => {
   try {
     const student = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, name: true, email: true, className: true, gradeLevel: true, banned: true, teacherId: true, role: true, coachNote: true },
+      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, banned: true, teacherId: true, role: true, coachNote: true },
     });
     assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
     const [recipients, studySessions] = await Promise.all([

@@ -106,7 +106,7 @@ export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
             </div>
             {!forgotSent && (
               <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted, marginTop: 4 }}>
-                {forgotMode ? "E-posta adresini gir, sana bir bağlantı gönderelim." : "Devam etmek için hesabına giriş yap."}
+                {forgotMode ? "E-posta adresini gir, sana bir bağlantı gönderelim. Okul numarasıyla giriyorsan şifreni koçun ya da okul yönetimi sıfırlar." : "Devam etmek için hesabına giriş yap."}
               </div>
             )}
           </div>
@@ -128,7 +128,18 @@ export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
                     kullanıcı adı) — tarayıcının yerleşik e-posta biçimi doğrulaması ("@" gerekli)
                     bu girişi engellerdi. Şifremi unuttum modu gerçek bir e-postaya sıfırlama
                     bağlantısı gönderdiği için orada biçim doğrulaması anlamlı, o yüzden korunuyor. */}
-                <Input label="E-posta" type={forgotMode ? "email" : "text"} value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" required />
+                {/* Giriş modunda kimlik okul numarası (öğrenci), kullanıcı adı (öğretmen) ya da e-posta olabilir. */}
+                <Input
+                  label={forgotMode ? "E-posta" : "Okul numarası veya e-posta"}
+                  type={forgotMode ? "email" : "text"}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  required
+                />
                 {!forgotMode && (
                   <Input label="Şifre" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
                 )}

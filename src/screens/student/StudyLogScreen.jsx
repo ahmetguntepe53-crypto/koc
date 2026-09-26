@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Trash2, BookOpen } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Select, Pill, EmptyState, LoadingState, confirmDialog, alertDialog } from "../../components/common.jsx";
+import { Card, Button, Input, Select, Pill, EmptyState, LoadingState, confirmDialog, alertDialog, SectionHeader } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { SUBJECTS_BY_EXAM, trackForGrade } from "../../subjects.js";
 import { todayISO } from "../../dates.js";
@@ -121,7 +121,7 @@ export default function StudyLogScreen({ user }) {
         </form>
       </Card>
 
-      <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Geçmiş Kayıtlarım</div>
+      <SectionHeader title="Geçmiş kayıtlarım" count={loading || loadError ? null : sessions.length} />
       {loading ? (
         <LoadingState />
       ) : loadError ? (

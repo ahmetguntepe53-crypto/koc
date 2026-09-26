@@ -56,8 +56,16 @@ enum AssignmentTarget {
 }
 
 model User {
-  id    String @id @default(cuid())
-  email String @unique
+  id    String  @id @default(cuid())
+  // Giriş kimliği e-posta YA DA kullanıcı adı (username) olabilir — ikisi de tekil, en az biri dolu
+  // (bkz. routes/admin.js > createOneUser). Okuldaki öğrencilerin çoğunun e-postası yok: okul
+  // numarası kullanıcı adı olur. E-postası olmayan hesap "şifremi unuttum" kullanamaz, şifresini
+  // admin belirler.
+  email    String? @unique
+  username String? @unique
+  // İlk şifresi tahmin edilebilir olan hesaplar (okul numarası = şifre, ya da adminin belirlediği geçici
+  // şifre) ilk girişte kendi şifresini belirlemeden uygulamayı kullanamaz — bkz. middleware/auth.js.
+  mustChangePassword Boolean @default(false)
   // Hesap admin tarafından oluşturulduğunda bilerek null bırakılır — kullanıcı e-postasına gelen
   // "şifreni belirle" bağlantısıyla (resetToken) kendi şifresini kendisi koyar.
   passwordHash String?

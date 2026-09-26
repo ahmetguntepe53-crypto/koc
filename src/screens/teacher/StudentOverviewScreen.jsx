@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, ChevronRight, Plus, AlertTriangle } from "lucide-react";
-import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, StatGrid, Avatar, Modal, ShowMoreButton, LoadingState } from "../../components/common.jsx";
+import { PlusCircle } from "lucide-react";
+import { C, displayFont, bodyFont, monoFont, completionTone, formatNet } from "../../theme.js";
+import { Card, Button, Input, Textarea, Pill, Chip, EmptyState, StatCard, StatGrid, Avatar, Modal, ShowMoreButton, LoadingState, SectionHeader, AssignmentRow, Num } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { subjectIconUrl, gradeLabel } from "../../subjects.js";
-import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
+import { subjectIconUrl, gradeLabel, GRADE_LEVELS } from "../../subjects.js";
+import { formatDate, daysUntil } from "../../dates.js";
 
 // TYT/AYT'nin standart net hesaplama formülü — server/src/routes/stats.js'deki net()'in
-// birebir aynısı, burada yalnızca özet kartlarda göstermek için ayrıca hesaplanıyor.
+// birebir aynısı, burada yalnızca tamamlanan satırlardaki "Net" rozeti için ayrıca hesaplanıyor.
 function net(correctCount, wrongCount) {
   return Math.round((correctCount - wrongCount / 4) * 100) / 100;
 }
@@ -16,11 +16,15 @@ function net(correctCount, wrongCount) {
 // "Tümü" daha az kullanılan bir seçenek olduğu için listenin sonuna alındı.
 const DATE_FILTERS = [
   { value: "today", label: "Bugün" },
-  { value: "week", label: "Bu Hafta" },
-  { value: "month", label: "Bu Ay" },
+  { value: "week", label: "Bu hafta" },
+  { value: "month", label: "Bu ay" },
   { value: "range", label: "Aralık" },
   { value: "all", label: "Tümü" },
 ];
+
+// Her bölümde başta en fazla 2 satır; "N tane daha" her basışta 5 tane daha açar.
+const INITIAL_COUNT = 2;
+const PAGE_SIZE = 5;
 
 function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
 function endOfDay(d) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
@@ -31,7 +35,7 @@ function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 function endOfMonth(d) { return endOfDay(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
 
 // Bir ödevin [scheduledDate, endDate] aralığı seçilen dönemle KESİŞİYORSA eşleşir — böylece birden
-// çok günü kapsayan bir ödev, o aralığa denk gelen her dönem filtresinde de (ör. hem "Bu Hafta" hem
+// çok günü kapsayan bir ödev, o aralığa denk gelen her dönem filtresinde de (ör. hem "Bu hafta" hem
 // başladığı günün "Bugün"ünde) görünür, yalnızca tek bir güne sabitlenmiş gibi kaybolmaz.
 function overlapsRange(r, range) {
   if (!range) return true;
@@ -39,58 +43,73 @@ function overlapsRange(r, range) {
   return new Date(r.assignment.endDate) >= from && new Date(r.assignment.scheduledDate) <= to;
 }
 
-function SectionTitle({ children }) {
-  return (
-    <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>
-      {children}
-    </div>
-  );
+// Satırın durum rozeti — bölüme göre: geciken kırmızı gün sayısı, bekleyen amber kalan süre, taslak
+// nötr, tamamlanan yeşil net (tamamlanan bir ödevin en değerli bilgisi sonucudur).
+function rowStatus(r, section) {
+  if (section === "overdue") {
+    return { status: "overdue", badge: <Pill tone="red"><Num>{Math.abs(daysUntil(r.assignment.endDate))}</Num>gün gecikti</Pill> };
+  }
+  if (section === "completed") {
+    return {
+      status: "done",
+      badge: r.submission
+        ? <Pill tone="green" mono>Net {formatNet(net(r.submission.correctCount, r.submission.wrongCount))}</Pill>
+        : <Pill tone="green">Tamamlandı</Pill>,
+    };
+  }
+  // Taslak — öğrenciye henüz gönderilmedi, bu yüzden "gecikti"/"kaldı" rozeti burada ASLA
+  // gösterilmemeli (öğrenci ödevi hiç görmedi ki geciksin).
+  if (r.assignment.status !== "SENT") return { status: "draft", badge: <Pill tone="muted">Taslak</Pill> };
+  const diff = daysUntil(r.assignment.endDate);
+  return {
+    status: "pending",
+    badge: diff <= 0 ? <Pill tone="amber">Bugün son gün</Pill>
+      : diff === 1 ? <Pill tone="amber">Yarın</Pill>
+      : <Pill tone="amber"><Num>{diff}</Num>gün kaldı</Pill>,
+  };
 }
 
 // coachId: öğrencinin koçu (bu ekranı açan öğretmen) — ödevi başka bir öğretmen (ör. ders öğretmeninin
-// okul çapındaki ödevi ya da önceki koç) verdiyse satırda kimin verdiği gösterilir; detay salt okunur açılır.
-function RecipientRow({ r, onOpen, coachId }) {
-  const byOtherTeacher = r.assignment.teacherId !== coachId;
+// okul çapındaki ödevi ya da önceki koç) verdiyse meta satırında kimin verdiği gösterilir; detay salt okunur açılır.
+function RecipientRow({ r, section, onOpen, coachId }) {
+  const { status, badge } = rowStatus(r, section);
+  const byOtherTeacher = r.assignment.teacherId !== coachId && r.assignment.teacher?.name;
+  const meta = [r.assignment.examType, r.assignment.pageRange, byOtherTeacher ? `${r.assignment.teacher.name} verdi` : null].filter(Boolean).join(" · ");
   return (
-    <Card hover style={{ padding: 14, cursor: "pointer" }}>
-      <div onClick={() => onOpen(r.assignmentId, "studentOverview")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <img src={subjectIconUrl(r.assignment.subject)} alt="" width={34} height={34} style={{ borderRadius: 9, flexShrink: 0 }} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text }}>{r.assignment.subject} — {r.assignment.topic}</span>
-            <Pill>{r.assignment.examType}</Pill>
-            {byOtherTeacher && r.assignment.teacher?.name && <Pill tone="muted">{r.assignment.teacher.name} verdi</Pill>}
-            {r.submission ? (
-              <>
-                <Pill tone="green">D:{r.submission.correctCount} Y:{r.submission.wrongCount} B:{r.submission.blankCount}</Pill>
-                <Pill tone="accent">Net: {net(r.submission.correctCount, r.submission.wrongCount)}</Pill>
-              </>
-            ) : r.assignment.status === "SENT" ? (
-              r.completed ? (
-                <Pill tone="green">Tamamlandı</Pill>
-              ) : daysUntil(r.assignment.endDate) < 0 ? (
-                <Pill tone="red"><AlertTriangle size={11} strokeWidth={2.5} /> {Math.abs(daysUntil(r.assignment.endDate))} gün gecikti</Pill>
-              ) : (
-                <>
-                  <Pill tone="amber">Bekliyor</Pill>
-                  <UrgencyPill endDate={r.assignment.endDate} />
-                </>
-              )
-            ) : (
-              // Taslak — öğrenciye henüz gönderilmedi, bu yüzden "gecikti" rozeti burada
-              // ASLA gösterilmemeli (öğrenci ödevi hiç görmedi ki geciksin).
-              <Pill tone="muted">Taslak — henüz gönderilmedi</Pill>
-            )}
+    <AssignmentRow
+      iconSrc={subjectIconUrl(r.assignment.subject)}
+      title={`${r.assignment.subject} — ${r.assignment.topic}`}
+      status={status}
+      badge={badge}
+      meta={meta}
+      onClick={() => onOpen(r.assignmentId, "studentOverview")}
+    />
+  );
+}
+
+// Geciken / Bekleyen / Tamamlanan bölümlerinden biri. Kutucuğa tıklanıp tek bir bölüme süzülmüşken
+// başlıkta adet yerine "Tümünü göster" bağlantısı çıkar — eskiden "Toplam Ödev" kutucuğu bu işi
+// görüyordu, kutucuk sayısı üçe inince geri dönüş yolu buraya taşındı.
+function RecipientSection({ title, tone, section, items, visibleCount, onShowMore, emptyText, onClearFilter, onOpen, coachId }) {
+  return (
+    <div>
+      <SectionHeader
+        title={title}
+        count={items.length}
+        tone={tone}
+        action={onClearFilter ? { label: "Tümünü göster", onClick: onClearFilter } : undefined}
+      />
+      {items.length === 0 ? (
+        <EmptyState compact text={emptyText} />
+      ) : (
+        <>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {items.slice(0, visibleCount).map((r) => <RecipientRow key={r.id} r={r} section={section} onOpen={onOpen} coachId={coachId} />)}
           </div>
-          <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.muted, marginTop: 4 }}>
-            {formatDateRange(r.assignment.scheduledDate, r.assignment.endDate)}
-            {r.assignment.sourceBook ? ` · ${r.assignment.sourceBook}` : ""}
-            {r.assignment.pageRange ? ` · ${r.assignment.pageRange}` : ""}
-          </div>
-        </div>
-        <ChevronRight size={16} color={C.muted} />
-      </div>
-    </Card>
+          <ShowMoreButton remaining={items.length - Math.min(visibleCount, items.length)} onClick={onShowMore} />
+        </>
+      )}
+    </div>
   );
 }
 
@@ -140,34 +159,60 @@ function CoachNoteModal({ studentId, initialNote, onClose, onSaved }) {
   );
 }
 
-// Henüz gecikmemiş ama son 2 gün içindeyse gösterilen ek uyarı rozeti — gecikmiş olan durum
-// zaten RecipientRow'da ayrı (kırmızı, "X gün gecikti") bir rozetle ele alınıyor, burada tekrarlanmaz.
-function UrgencyPill({ endDate }) {
-  const diff = daysUntil(endDate);
-  if (diff === 0) return <Pill tone="amber">Son gün bugün</Pill>;
-  if (diff === 1) return <Pill tone="amber">Son 1 gün</Pill>;
-  if (diff === 2) return <Pill tone="amber">Son 2 gün</Pill>;
-  return null;
+// Öğrenci başlık kartı — eskiden ayrı kutucuklarda duran "Toplam Ödev" ve "Tamamlanma Oranı" buraya
+// taşındı: altı sayıyı aynı anda kimse okumuyordu. Durumu olmayan kart → sol şerit yok.
+function StudentHeaderCard({ student, assignmentCount, completionRate }) {
+  const gradeOk = GRADE_LEVELS.includes(student.gradeLevel);
+  const tone = completionTone(completionRate);
+  return (
+    <Card style={{ padding: 16, marginBottom: 14 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <Avatar name={student.name} size={48} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+            <span style={{ fontFamily: displayFont, fontSize: 16, fontWeight: 700, letterSpacing: -0.1, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{student.name}</span>
+            {student.banned && <Pill tone="red">Askıda</Pill>}
+          </div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 500, color: C.muted, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {student.className ? `${student.className} · ` : ""}
+            {/* Düzeyi eksik/eski (11-12 dışı) olan öğrenci ödev listelerinde görünmüyor — admin düzeltmeli. */}
+            <span style={gradeOk ? undefined : { color: C.red, fontWeight: 700 }}>{gradeLabel(student.gradeLevel)}</span>
+            {" · "}<span style={{ fontFamily: monoFont }}>{assignmentCount}</span> ödev
+          </div>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
+          <span style={{ fontFamily: monoFont, fontSize: 20, fontWeight: 700, letterSpacing: -0.4, color: tone.fg, lineHeight: 1.1 }}>
+            {completionRate != null ? `%${completionRate}` : "—"}
+          </span>
+          <span style={{ fontFamily: bodyFont, fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", color: C.mutedLight, marginTop: 4 }}>
+            Tamamlama
+          </span>
+        </div>
+      </div>
+    </Card>
+  );
 }
 
-export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignment, onCreateAssignment, noteOpen, onCloseNote }) {
+// onBack: geri düğmesi artık App başlığında (App.jsx > headerBack) — sayfada ayrı bir "dön" bağlantısı yok.
+export default function StudentOverviewScreen({ studentId, onOpenAssignment, onCreateAssignment, noteOpen, onCloseNote }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  // Üstteki "Toplam/Bekleyen/Tamamlanan" kartlarına tıklayınca aşağıdaki listeyi filtreler.
-  const [filter, setFilter] = useState("all"); // "all" | "pending" | "completed"
-  const [dateFilter, setDateFilter] = useState("today"); // bkz. DATE_FILTERS — varsayılan artık "Bugün"
+  // Geciken/Bekleyen/Tamamlanan kutucuklarına tıklayınca aşağıdaki liste o bölüme süzülür; aynı
+  // kutucuğa tekrar basmak (ya da başlıktaki "Tümünü göster") süzmeyi kaldırır.
+  const [filter, setFilter] = useState("all"); // "all" | "overdue" | "pending" | "completed"
+  const toggleFilter = (value) => setFilter((f) => (f === value ? "all" : value));
+  const [dateFilter, setDateFilter] = useState("today"); // bkz. DATE_FILTERS — varsayılan "Bugün"
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
-  // Geciken/Bekleyen/Tamamlanan — üçü de başta yalnızca 1 tanesi gösterilir, "Devamını Gör" her
-  // basışta 5 tane daha açar. Öğrenci ya da tarih aralığı değişince baştan başlar.
-  const [visibleOverdueCount, setVisibleOverdueCount] = useState(1);
-  const [visiblePendingCount, setVisiblePendingCount] = useState(1);
-  const [visibleCompletedCount, setVisibleCompletedCount] = useState(1);
+  // Her bölümde başta INITIAL_COUNT satır; öğrenci ya da tarih aralığı değişince baştan başlar.
+  const [visibleOverdueCount, setVisibleOverdueCount] = useState(INITIAL_COUNT);
+  const [visiblePendingCount, setVisiblePendingCount] = useState(INITIAL_COUNT);
+  const [visibleCompletedCount, setVisibleCompletedCount] = useState(INITIAL_COUNT);
   useEffect(() => {
-    setVisibleOverdueCount(1);
-    setVisiblePendingCount(1);
-    setVisibleCompletedCount(1);
+    setVisibleOverdueCount(INITIAL_COUNT);
+    setVisiblePendingCount(INITIAL_COUNT);
+    setVisibleCompletedCount(INITIAL_COUNT);
   }, [studentId, dateFilter, rangeStart, rangeEnd]);
 
   useEffect(() => {
@@ -191,17 +236,9 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
     return null;
   }, [dateFilter, rangeStart, rangeEnd]);
 
-  if (loading) return <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}><LoadingState /></div>;
-  if (error) {
-    return (
-      <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-        <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
-          <ArrowLeft size={16} /> Öğrencilerime dön
-        </button>
-        <EmptyState text={error} />
-      </div>
-    );
-  }
+  const page = (children) => <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>{children}</div>;
+  if (loading) return page(<LoadingState />);
+  if (error) return page(<EmptyState text={error} />);
   if (!data) return null;
 
   const { student, recipients, studySessions } = data;
@@ -210,50 +247,33 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
 
   // Tamamlanma oranı yalnızca GÖNDERİLMİŞ (SENT) ödevler üzerinden hesaplanır — taslaklar (DRAFT)
   // öğrenciye hiç ulaşmadığı için paydaya girerse oran yapay olarak düşer, ayrıca /teacher/students
-  // listesindeki orandan (o da yalnızca SENT sayar) tutarsız çıkar. "Toplam Ödev" ve aşağıdaki liste
-  // yine tüm recipients'ı (taslaklar dahil) gösterir — koç planladığı her şeyi görebilsin diye.
-  // Hepsi seçili tarih dönemine göre (dateFilteredRecipients) hesaplanır — "Bu Ay" seçiliyken
-  // kartların o ayki durumu yansıtması için.
+  // listesindeki orandan (o da yalnızca SENT sayar) tutarsız çıkar. Başlıktaki ödev sayısı ve aşağıdaki
+  // liste yine tüm recipients'ı (taslaklar dahil) gösterir — koç planladığı her şeyi görebilsin diye.
+  // Hepsi seçili tarih dönemine göre (dateFilteredRecipients) hesaplanır — "Bu ay" seçiliyken
+  // başlığın ve kutucukların o ayki durumu yansıtması için.
   const sentRecipients = dateFilteredRecipients.filter((r) => r.assignment.status === "SENT");
   const completionRate = sentRecipients.length ? Math.round((sentRecipients.filter((r) => r.completed).length / sentRecipients.length) * 100) : null;
   // Taslaklar (henüz öğrenciye gönderilmemiş) "tamamlanmış" olamayacağı için doğal olarak
   // bekleyenler tarafına düşer — koç onları da burada (ayrı "Taslak" rozetiyle) görsün ister.
   const pending = dateFilteredRecipients.filter((r) => !r.completed);
-  // Geciken ödevler artık kendi ayrı başlığında (en üstte) gösteriliyor — "Bekleyen Ödevler"
-  // bölümüyle çakışıp aynı ödevin iki kez listelenmemesi için buradan çıkarılıyor.
-  const overdue = pending.filter((r) => r.assignment.status === "SENT" && daysUntil(r.assignment.endDate) < 0);
-  const notOverdue = pending.filter((r) => !(r.assignment.status === "SENT" && daysUntil(r.assignment.endDate) < 0));
+  // Geciken ödevler kendi ayrı bölümünde (en üstte) gösteriliyor — "Bekleyen" bölümüyle çakışıp aynı
+  // ödevin iki kez listelenmemesi için buradan çıkarılıyor.
+  const isOverdue = (r) => r.assignment.status === "SENT" && daysUntil(r.assignment.endDate) < 0;
+  const overdue = pending.filter(isOverdue);
+  const notOverdue = pending.filter((r) => !isOverdue(r));
   const completed = dateFilteredRecipients.filter((r) => r.completed);
-  const visibleOverdue = overdue.slice(0, visibleOverdueCount);
-  const visiblePending = notOverdue.slice(0, visiblePendingCount);
-  const visibleCompleted = completed.slice(0, visibleCompletedCount);
+  const clearFilter = filter !== "all" ? () => setFilter("all") : undefined;
 
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-      <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
-        <ArrowLeft size={16} /> Öğrencilerime dön
-      </button>
-
-      <Card style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-          <Avatar name={student.name} size={44} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontFamily: displayFont, fontSize: 17, fontWeight: 800, color: C.text }}>{student.name}</span>
-              {student.className && <Pill>{student.className}</Pill>}
-              {student.gradeLevel && <Pill tone="amber">{gradeLabel(student.gradeLevel)}</Pill>}
-              {student.banned && <Pill tone="red">Askıda</Pill>}
-            </div>
-          </div>
-        </div>
-      </Card>
+      <StudentHeaderCard student={student} assignmentCount={dateFilteredRecipients.length} completionRate={completionRate} />
 
       {noteOpen && <CoachNoteModal key={studentId} studentId={studentId} initialNote={student.coachNote} onClose={onCloseNote} onSaved={updateCoachNote} />}
 
       {/* Tarih filtreleri tek satırda yatay kayar — telefonda "Tümü" tek başına alt satıra düşüyordu. */}
       <div className="k-chip-row" role="group" aria-label="Tarih aralığı" style={{ marginBottom: dateFilter === "range" ? 10 : 14, paddingBottom: 2 }}>
         {DATE_FILTERS.map((f) => (
-          <Button key={f.value} small variant={dateFilter === f.value ? "primary" : "secondary"} onClick={() => setDateFilter(f.value)}>{f.label}</Button>
+          <Chip key={f.value} active={dateFilter === f.value} onClick={() => setDateFilter(f.value)}>{f.label}</Chip>
         ))}
       </div>
       {dateFilter === "range" && (
@@ -264,19 +284,16 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
         </div>
       )}
 
-      <StatGrid min={96} style={{ marginBottom: 20 }}>
-        <StatCard label="Toplam Ödev" value={dateFilteredRecipients.length} tone="accent" onClick={() => setFilter("all")} active={filter === "all"} />
-        <StatCard label="Bekleyen" value={notOverdue.length} tone="amber" onClick={() => setFilter("pending")} active={filter === "pending"} />
-        <StatCard label="Geciken" value={overdue.length} tone="red" onClick={() => setFilter("overdue")} active={filter === "overdue"} />
-        <StatCard label="Tamamlanan" value={completed.length} tone="green" onClick={() => setFilter("completed")} active={filter === "completed"} />
-        <StatCard label="Tamamlanma Oranı" value={completionRate != null ? `%${completionRate}` : "—"} tone="muted" />
-        <StatCard label="Serbest Çalışma" value={studySessions.length} tone="amber" />
+      {/* Altı kutucuk üçe indi: toplam ve oran başlık kartında, serbest çalışma sayısı kendi bölüm başlığında. */}
+      <StatGrid min={90} style={{ marginBottom: 12 }}>
+        <StatCard label="Geciken" value={overdue.length} tone="red" onClick={() => toggleFilter("overdue")} active={filter === "overdue"} />
+        <StatCard label="Bekleyen" value={notOverdue.length} tone="amber" onClick={() => toggleFilter("pending")} active={filter === "pending"} />
+        <StatCard label="Tamamlanan" value={completed.length} tone="green" onClick={() => toggleFilter("completed")} active={filter === "completed"} />
       </StatGrid>
 
+      {/* Ekranın birincil eylemi — eskiden sağa yaslı küçük bir düğmeydi, gözden kaçıyordu. */}
       {onCreateAssignment && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-          <Button small variant="secondary" icon={Plus} onClick={() => onCreateAssignment(studentId)}>Yeni Ödev Ata</Button>
-        </div>
+        <Button full icon={PlusCircle} onClick={() => onCreateAssignment(studentId)} style={{ height: 48 }}>Yeni ödev ata</Button>
       )}
 
       {recipients.length === 0 ? (
@@ -284,70 +301,45 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
       ) : dateFilteredRecipients.length === 0 ? (
         <EmptyState text="Seçilen dönemde ödev yok." />
       ) : (
-        <div style={{ marginBottom: 28 }}>
+        <div style={{ marginBottom: 8 }}>
           {(filter === "all" || filter === "overdue") && (
-            <div style={{ marginBottom: filter === "all" ? 24 : 0 }}>
-              <SectionTitle>Geciken Ödevler ({overdue.length})</SectionTitle>
-              {overdue.length === 0 ? (
-                <EmptyState text="Geciken ödevi yok." />
-              ) : (
-                <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {visibleOverdue.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} coachId={student.teacherId} />)}
-                  </div>
-                  <ShowMoreButton remaining={overdue.length - visibleOverdue.length} onClick={() => setVisibleOverdueCount((n) => n + 5)} />
-                </>
-              )}
-            </div>
+            <RecipientSection
+              title="Geciken" tone="red" section="overdue" items={overdue}
+              visibleCount={visibleOverdueCount} onShowMore={() => setVisibleOverdueCount((n) => n + PAGE_SIZE)}
+              emptyText="Geciken ödevi yok." onClearFilter={clearFilter} onOpen={onOpenAssignment} coachId={student.teacherId}
+            />
           )}
           {(filter === "all" || filter === "pending") && (
-            <div style={{ marginBottom: filter === "all" ? 24 : 0 }}>
-              <SectionTitle>Bekleyen Ödevler ({notOverdue.length})</SectionTitle>
-              {notOverdue.length === 0 ? (
-                <EmptyState text="Bekleyen ödevi yok." />
-              ) : (
-                <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {visiblePending.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} coachId={student.teacherId} />)}
-                  </div>
-                  <ShowMoreButton remaining={notOverdue.length - visiblePending.length} onClick={() => setVisiblePendingCount((n) => n + 5)} />
-                </>
-              )}
-            </div>
+            <RecipientSection
+              title="Bekleyen" tone="amber" section="pending" items={notOverdue}
+              visibleCount={visiblePendingCount} onShowMore={() => setVisiblePendingCount((n) => n + PAGE_SIZE)}
+              emptyText="Bekleyen ödevi yok." onClearFilter={clearFilter} onOpen={onOpenAssignment} coachId={student.teacherId}
+            />
           )}
           {(filter === "all" || filter === "completed") && (
-            <div>
-              <SectionTitle>Tamamlanan Ödevler ({completed.length})</SectionTitle>
-              {completed.length === 0 ? (
-                <EmptyState text="Henüz tamamlanmış ödev yok." />
-              ) : (
-                <>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {visibleCompleted.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} coachId={student.teacherId} />)}
-                  </div>
-                  <ShowMoreButton remaining={completed.length - visibleCompleted.length} onClick={() => setVisibleCompletedCount((n) => n + 5)} />
-                </>
-              )}
-            </div>
+            <RecipientSection
+              title="Tamamlanan" tone="green" section="completed" items={completed}
+              visibleCount={visibleCompletedCount} onShowMore={() => setVisibleCompletedCount((n) => n + PAGE_SIZE)}
+              emptyText="Henüz tamamlanmış ödev yok." onClearFilter={clearFilter} onOpen={onOpenAssignment} coachId={student.teacherId}
+            />
           )}
         </div>
       )}
 
-      <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-        Serbest Çalışmaları ({studySessions.length})
-      </div>
+      <SectionHeader title="Serbest çalışmaları" count={studySessions.length} />
       {studySessions.length === 0 ? (
         <EmptyState text="Bu öğrenci henüz serbest çalışma kaydı girmemiş." />
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {studySessions.map((s) => (
-            <Card key={s.id} style={{ padding: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text }}>{s.subject} — {s.topic}</span>
+            <Card key={s.id} style={{ padding: "13px 16px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                <span style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{s.subject} — {s.topic}</span>
                 <Pill>{s.examType}</Pill>
               </div>
-              <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.muted, marginTop: 4 }}>
-                {formatDate(s.studyDate)} · D:{s.correctCount} Y:{s.wrongCount} B:{s.blankCount}
+              {/* Tarih ve D/Y/B rakamları mono — sayılar alt alta kartlarda hizalı dursun. */}
+              <div style={{ fontFamily: monoFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, marginTop: 5 }}>
+                {formatDate(s.studyDate)} · D {s.correctCount} · Y {s.wrongCount} · B {s.blankCount}
               </div>
             </Card>
           ))}

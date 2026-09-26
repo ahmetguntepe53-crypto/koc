@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Pill, EmptyState, Avatar, Modal, LoadingState, confirmDialog } from "../../components/common.jsx";
+import { Card, Button, Pill, EmptyState, Avatar, Modal, LoadingState, confirmDialog, SectionHeader } from "../../components/common.jsx";
 import { api, photoUrl } from "../../api.js";
 import { PERIOD_LABELS, SEND_MODE_LABELS, STATUS_LABELS } from "../../subjects.js";
 import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
@@ -38,11 +38,8 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, backLabel
     try { await api.deleteAssignment(assignmentId); onBack(); } catch (e) { setActionError(e.message); setBusy(false); }
   };
 
-  const backButton = (
-    <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
-      <ArrowLeft size={16} /> {backLabel}
-    </button>
-  );
+  // Geri düğmesi artık başlıkta (bkz. App.jsx > headerBack); onBack/backLabel eski çağrılarla uyum için duruyor.
+  const backButton = null;
 
   if (loading) return <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}><LoadingState /></div>;
   // Hata ekranında da geri düğmesi — önceden yalnızca metin gösteriliyor, kullanıcı ekranda kalıyordu.
@@ -83,12 +80,10 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, backLabel
         {actionError && <div style={{ color: C.red, fontSize: 12.5, marginTop: 10 }}>{actionError}</div>}
       </Card>
 
-      <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
-        Öğrenciler ({assignment.recipients.length})
-      </div>
+      <SectionHeader title="Öğrenciler" count={assignment.recipients.length} />
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {assignment.recipients.map((r) => (
-          <Card key={r.id} style={{ padding: 14 }}>
+          <Card key={r.id} status={r.submission ? "green" : assignment.status === "SENT" ? (daysUntil(assignment.endDate) < 0 ? "red" : "amber") : undefined} style={{ padding: "14px 14px 14px 17px" }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <Avatar name={r.student.name} size={30} />

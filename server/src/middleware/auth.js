@@ -10,6 +10,14 @@ import { prisma } from "../db.js";
 // kapatır, BANNED gelince askıya alındı ekranını gösterir. Bunların DIŞINDAKİ her hata (ör. DB'ye
 // geçici olarak ulaşılamaması) 500 döner — eskiden her istisna 401 sayıldığı için kısa bir DB
 // kesintisi herkesi uygulamadan attırıyordu.
+const PASSWORD_CHANGE_ALLOWED = new Set([
+  "GET /api/auth/me",
+  "POST /api/auth/set-password",
+  "DELETE /api/auth/me",
+  "POST /api/push/subscribe",
+  "POST /api/push/unsubscribe",
+]);
+
 function sessionInvalid(res, error) {
   return res.status(401).json({ error, code: "SESSION_INVALID" });
 }
@@ -32,7 +40,7 @@ export async function requireAuth(req, res, next) {
   try {
     user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { banned: true, tokenVersion: true, role: true },
+      select: { banned: true, tokenVersion: true, role: true, mustChangePassword: true },
     });
   } catch (e) {
     console.error("[auth] kullanıcı doğrulanamadı:", e);
@@ -42,6 +50,12 @@ export async function requireAuth(req, res, next) {
   if (user.banned) return res.status(403).json({ error: "Hesabın askıya alınmış — daha fazla bilgi için okul yöneticinle iletişime geç.", code: "BANNED" });
   if ((payload.tokenVersion || 0) !== user.tokenVersion) {
     return sessionInvalid(res, "Oturumun geçersiz kılınmış, lütfen tekrar giriş yap");
+  }
+  // İlk şifresi tahmin edilebilir hesap (okul no / admin geçici şifresi) kendi şifresini belirleyene kadar
+  // yalnızca oturum bilgisini alabilir ve şifresini değiştirebilir — istemci bu kodu görünce şifre
+  // belirleme ekranını gösterir. Sunucuda da zorlanır: aksi halde istemci atlatılarak veriye erişilebilirdi.
+  if (user.mustChangePassword && !PASSWORD_CHANGE_ALLOWED.has(`${req.method} ${req.baseUrl}${req.path}`)) {
+    return res.status(403).json({ error: "Devam etmeden önce kendi şifreni belirlemelisin.", code: "PASSWORD_CHANGE_REQUIRED" });
   }
   req.userId = payload.userId;
   req.userRole = user.role;

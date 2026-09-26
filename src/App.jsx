@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange, NotebookPen, BarChart3 } from "lucide-react";
+import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange } from "lucide-react";
 import { C, THEMES, bodyFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
-import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost } from "./components/common.jsx";
+import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID } from "./components/common.jsx";
 import { api } from "./api.js";
 import { registerPush, unregisterPush } from "./native/push.js";
 import { onBackButton, exitApp, setStatusBarTheme } from "./native/index.js";
 import LoginScreen from "./screens/LoginScreen.jsx";
+import ForcePasswordScreen from "./screens/ForcePasswordScreen.jsx";
 import ProfileScreen from "./screens/ProfileScreen.jsx";
 import NotificationsScreen from "./screens/NotificationsScreen.jsx";
 import AdminUsersScreen from "./screens/admin/AdminUsersScreen.jsx";
@@ -23,25 +24,6 @@ import StudyLogScreen from "./screens/student/StudyLogScreen.jsx";
 import ReportScreen from "./screens/ReportScreen.jsx";
 
 const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments" };
-
-// Başlık çubuğundaki ikon+etiket düğmeleri (ör. "Notlar", "Rapor") — BottomNav'daki ikon+etiket
-// deseniyle tutarlı, ama küçük ve yatay sırada durabilecek şekilde.
-function HeaderActionButton({ icon: Icon, label, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      aria-label={label}
-      style={{
-        background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 12,
-        padding: "5px 10px 6px", display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
-        cursor: "pointer", flexShrink: 0, minWidth: 46,
-      }}
-    >
-      <Icon size={17} color={C.muted} />
-      <span style={{ fontFamily: bodyFont, fontSize: 9, fontWeight: 700, color: C.muted, letterSpacing: 0.2 }}>{label}</span>
-    </button>
-  );
-}
 
 // Kompozisyon kökü: router yok, `screen` string state'i hangi ekranın render edileceğini belirler
 // (PP'deki HalisahaApp.jsx ile aynı desen). Düzen: sol kenar çubuğu (rol'e göre sekmeler) + sağda
@@ -161,7 +143,7 @@ export default function App() {
 
   // Bildirimler ekranı okunmamışları okundu işaretler — o ekrandan her ayrılışta rozet sayısı tazelenir.
   useEffect(() => {
-    if (!authUser) return;
+    if (!authUser || authUser.mustChangePassword) return;
     api.listNotifications().then(({ unreadCount }) => setUnreadCount(unreadCount)).catch(() => {});
   }, [authUser, screen, notificationsRefreshKey]);
 
@@ -209,6 +191,9 @@ export default function App() {
       // ekrana düşüyordu — bildirimden açılan ödev her zaman ödev listesine döner.
       setAssignmentDetailReturnTo("assignments");
       setScreen("assignmentDetail");
+    } else if (data?.screen === "home") {
+      // Gruplanmış bildirim (ör. "Ayşe Yılmaz sana 6 ödev gönderdi") tek bir ödeve değil listeye gider.
+      setScreen(DEFAULT_SCREEN_BY_ROLE[authUser?.role] || "profile");
     } else {
       setScreen("notifications");
     }
@@ -282,6 +267,12 @@ export default function App() {
     return <LoginScreen onLogin={login} onForgotPassword={forgotPassword} notice={sessionNotice} />;
   }
 
+  // İlk şifresi tahmin edilebilir hesap (okul no / geçici şifre) önce kendi şifresini belirler —
+  // sunucu da bu hesaba başka hiçbir isteği yanıtlamıyor (PASSWORD_CHANGE_REQUIRED).
+  if (authUser.mustChangePassword) {
+    return <ForcePasswordScreen user={authUser} onDone={setAuthUser} onLogout={logout} />;
+  }
+
   if (!screen) {
     return <div style={{ minHeight: "100vh", background: C.bg }} />;
   }
@@ -325,6 +316,18 @@ export default function App() {
   };
 
   const tabs = [...(TABS_BY_ROLE[authUser.role] || []), { id: "profile", label: "Profilim", icon: UserCircle2 }];
+  // Başlıktaki geri düğmesi — detay ekranlarında (sayfa içindeki "← … dön" bağlantılarının yerine).
+  const backToOverviewFromCreate = () => {
+    setAssignmentCreateInitialStudentId(null);
+    setAssignmentCreateReturnTo("assignments");
+    setScreen("studentOverview");
+  };
+  const headerBack = screen === "assignmentSubmit" ? backToMyAssignments
+    : screen === "assignmentDetail" ? backToAssignments
+    : screen === "studentOverview" ? backToStudents
+    : screen === "reports" ? backFromReport
+    : screen === "assignmentCreate" && assignmentCreateReturnTo === "studentOverview" && selectedStudentId ? backToOverviewFromCreate
+    : undefined;
   // Detay ekranlarındayken de ait olduğu liste sekmesi kenar çubuğunda aktif görünsün diye.
   const activeTabId = screen === "assignmentDetail" ? (assignmentDetailReturnTo === "studentOverview" ? "students" : "assignments")
     : screen === "assignmentSubmit" ? "myAssignments"
@@ -337,39 +340,34 @@ export default function App() {
       <Sidebar user={authUser} tabs={tabs} activeId={activeTabId} onSelect={selectTab} onLogout={logout} />
       <div className="k-content-col" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <PageHeader
-          title={screenTitle(screen, authUser.role)}
+          title={screenTitle(screen, authUser.role, { selectedStudentName, reportReturnTo })}
           subtitle={screenSubtitle(screen, authUser)}
+          onBack={headerBack}
           right={
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {/* Yalnızca bir öğrencinin profilindeyken görünür — Rapor doğrudan o öğrencinin raporunu
-                  açar, Notlar StudentOverviewScreen.jsx > CoachNoteModal'ı açar (sayfada artık sürekli
-                  yer kaplamıyor). */}
+            <>
+              {/* Öğrenci özetinde başlığın sağında Rapor ve Notlar (zil yerine) — Rapor o öğrencinin
+                  raporunu açar, Notlar StudentOverviewScreen.jsx > CoachNoteModal'ı açar. */}
               {screen === "studentOverview" && selectedStudentId && (
-                <HeaderActionButton icon={BarChart3} label="Rapor" onClick={() => openReport("studentOverview", selectedStudentId, selectedStudentName)} />
+                <HeaderTextButton label="Rapor" onClick={() => openReport("studentOverview", selectedStudentId, selectedStudentName)} />
               )}
               {screen === "studentOverview" && (
-                <HeaderActionButton icon={NotebookPen} label="Notlar" onClick={() => setCoachNoteOpen(true)} />
+                <HeaderTextButton label="Notlar" onClick={() => setCoachNoteOpen(true)} />
               )}
-              {screen !== "notifications" && (
-                <button
-                  onClick={() => setScreen("notifications")}
-                  aria-label="Bildirimler"
-                  style={{
-                    position: "relative", background: C.surface2, border: `1px solid ${C.border}`, borderRadius: 999,
-                    width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
-                    cursor: "pointer", flexShrink: 0,
-                  }}
-                >
-                  <Bell size={17} color={C.muted} />
+              {/* Ekranın kendi başlık düğmeleri için yuva — ör. ReportScreen PDF düğmesini buraya
+                  createPortal ile yerleştirir (düğmenin durumu/işlevi ekranın içinde kalır). */}
+              <div id={HEADER_SLOT_ID} style={{ display: "contents" }} />
+              {!["notifications", "studentOverview", "reports"].includes(screen) && (
+                <HeaderIconButton icon={Bell} label="Bildirimler" onClick={() => setScreen("notifications")}>
                   {unreadCount > 0 && (
                     <span style={{
-                      position: "absolute", top: -3, right: -3, background: C.red, color: "#fff", fontSize: 9.5, fontWeight: 800,
-                      borderRadius: 999, minWidth: 16, height: 16, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px",
+                      position: "absolute", top: -5, right: -5, background: C.red, color: "#fff", fontSize: 10, fontWeight: 800,
+                      borderRadius: 999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px",
+                      boxShadow: `0 0 0 2px ${C.bg}`,
                     }}>{unreadCount}</span>
                   )}
-                </button>
+                </HeaderIconButton>
               )}
-            </div>
+            </>
           }
         />
         {/* key={screen}: ekran değişince hafif belirme animasyonu (index.html > .k-screen). */}
@@ -391,10 +389,12 @@ export default function App() {
   );
 }
 
-function screenTitle(screen, role) {
+function screenTitle(screen, role, { selectedStudentName } = {}) {
+  if (screen === "studentOverview" && selectedStudentName) return selectedStudentName;
+  if (screen === "reports" && role === "TEACHER" && selectedStudentName) return `${selectedStudentName} — Rapor`;
   const titles = {
     profile: "Profilim", notifications: "Bildirimler", users: "Kullanıcı Yönetimi", photos: "Kanıt Fotoğrafları",
-    students: "Öğrencilerim", assignmentCreate: "Ödev Ekle / Atama Yap", assignments: "Ödevlerim",
+    students: "Öğrencilerim", assignmentCreate: "Ödev oluştur", assignments: "Ödevlerim",
     assignmentDetail: "Ödev Detayı", myAssignments: "Ödevlerim", assignmentSubmit: "Ödev",
     studyLog: "Serbest Çalışma", plan: "Takvim", studentOverview: "Öğrenci Özeti",
     reports: role === "STUDENT" ? "Raporlarım" : "Raporlar",

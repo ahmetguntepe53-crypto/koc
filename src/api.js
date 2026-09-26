@@ -100,7 +100,7 @@ export const api = {
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
   me: () => request("/auth/me"),
   forgotPassword: (email) => request("/auth/forgot-password", { method: "POST", body: { email } }),
-  setPassword: (currentPassword, newPassword) => request("/auth/set-password", { method: "POST", body: { currentPassword, newPassword } }),
+  setPassword: (currentPassword, newPassword, acceptedTerms) => request("/auth/set-password", { method: "POST", body: { currentPassword, newPassword, acceptedTerms } }),
 
   // --- admin: kullanıcı yönetimi ---
   adminStats: () => request("/admin/stats"),

@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Send, Trash2, Clock } from "lucide-react";
-import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Select, Textarea, Pill, EmptyState, Modal, LoadingState, confirmDialog } from "../../components/common.jsx";
+import { C, displayFont, bodyFont, monoFont } from "../../theme.js";
+import { Card, Button, Input, Select, Textarea, Pill, Chip, SectionHeader, EmptyState, Modal, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { SUBJECTS_BY_EXAM, trackForGrade } from "../../subjects.js";
 import TopicField from "../../components/TopicField.jsx";
 
-// 7 sütunluk tam ay ızgarası telefon genişliğinde (~390px) hücre başına ~40px bırakıyor — ders adı
-// yazan tam genişlikte satırlar bu genişlikte hiç sığmıyordu ("çok kötü" görünüm). Telefonda hücreler
-// küçülüp içerik yalnızca renkli noktalara iner, dokunma da tek bir hedefe (tüm hücre → günün
-// kayıtlarını listeleyen alt sayfa) toplanır — 6px'lik bir noktaya isabet ettirmeye çalışmak yerine.
+// Telefonda bir güne dokunmak o günün kayıtlarını listeleyen alt sayfayı (DayAgendaModal) açar —
+// masaüstünde doğrudan yeni kayıt penceresi. Hücreler her genişlikte aynı kompakt düzende (gün + en
+// fazla 3 durum noktası); kayıtların kendisi takvimin altındaki "Bu ayın kayıtları" listesinde okunur.
 function useIsMobile() {
   const [isMobile, setIsMobile] = useState(() => window.matchMedia("(max-width: 640px)").matches);
   useEffect(() => {
@@ -22,16 +21,34 @@ function useIsMobile() {
 }
 
 const MAX_QUESTION_COUNT = 30;
-const KIND_LABELS = { TOPIC: "Konu Anlatımı", PRACTICE_TEST: "Deneme", HOLIDAY: "Tatil Ödevi" };
+const KIND_LABELS = { TOPIC: "Konu anlatımı", PRACTICE_TEST: "Deneme", HOLIDAY: "Tatil ödevi" };
 const KIND_TONES = { TOPIC: "accent", PRACTICE_TEST: "amber", HOLIDAY: "muted" };
+const AUTO_SEND_LABELS = { ON_DATE: "Tarihi gelince otomatik", DAY_BEFORE: "Bir gün önceden otomatik" };
+const WEEKDAY_LABELS = ["PZT", "SAL", "ÇAR", "PER", "CUM", "CMT", "PAZ"];
+
+// Kaydın durumu — takvim noktası, açıklama ve satır rozeti aynı üç durumu gösterir:
+// gönderildi (ödeve dönüştü), planlı (otomatik gönderim açık, zamanı gelince kendisi gidecek),
+// taslak (otomatik gönderim kapalı, koçun elle "Yayınla" demesini bekliyor).
+function entryStatus(entry) {
+  if (entry.assignmentId) return "sent";
+  if (entry.autoSend && entry.autoSend !== "OFF") return "planned";
+  return "draft";
+}
+const STATUS_META = {
+  sent: { label: "Gönderildi", tone: "green" },
+  planned: { label: "Planlı", tone: "accent" },
+  draft: { label: "Taslak", tone: "amber" },
+};
 // Fonksiyon olarak tanımlanır (sabit bir nesne DEĞİL) — C.* değerleri tema değişince YERİNDE
 // güncellendiği için (bkz. theme.js), modül yüklenirken BİR KEZ hesaplanan bir nesne o anki temayı
 // donmuş halde tutar; koyu temaya geçilince noktalar hâlâ eski (açık tema) renklerinde kalırdı.
-function kindDot(kind) {
-  return { TOPIC: C.accent, PRACTICE_TEST: C.amber, HOLIDAY: C.mutedLight }[kind];
+function statusColor(status) {
+  return { sent: C.green, planned: C.accent, draft: C.amber }[status];
 }
-const AUTO_SEND_LABELS = { ON_DATE: "Tarihi gelince otomatik", DAY_BEFORE: "Bir gün önceden otomatik" };
-const WEEKDAY_LABELS = ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"];
+
+function entryTitle(entry) {
+  return entry.subject ? `${entry.subject} — ${entry.topic}` : entry.topic || KIND_LABELS[entry.kind];
+}
 
 function ymd(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -104,12 +121,15 @@ export default function PlanScreen({ user }) {
 
   const grid = useMemo(() => buildMonthGrid(viewDate), [viewDate]);
   const currentMonth = viewDate.getMonth();
+  const today = new Date();
+  const todayKey = ymd(today);
+  const viewingTodayMonth = viewDate.getFullYear() === today.getFullYear() && currentMonth === today.getMonth();
 
   const openNew = (dateKey) => setModalState({ date: dateKey, entry: null });
   const openExisting = (dateKey, entry) => setModalState({ date: dateKey, entry });
   // Telefonda bir güne dokunmak (kayıt olsun ya da olmasın) küçük bir noktaya isabet ettirmeye
   // çalışmak yerine önce o günün kayıtlarını listeleyen bir ajanda açar — yeni kayıt eklemek de
-  // oradaki "Yeni Kayıt Ekle" düğmesiyle olur.
+  // oradaki "Yeni kayıt ekle" düğmesiyle olur.
   const openDayCell = (dateKey) => {
     if (isMobile) setDayAgendaDate(dateKey);
     else openNew(dateKey);
@@ -122,115 +142,107 @@ export default function PlanScreen({ user }) {
     return <EmptyState text="Yıllık plan oluşturmak için önce öğrencilerine sınıf düzeyi girilmiş olmalı." />;
   }
 
+  const monthEntries = entries.filter((e) => {
+    const d = new Date(`${e.date.slice(0, 10)}T00:00:00`);
+    return d.getFullYear() === viewDate.getFullYear() && d.getMonth() === currentMonth;
+  });
+
   return (
-    <div style={{ padding: isMobile ? "14px 10px" : 28, maxWidth: 980, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
       {toast && (
-        <div style={{ marginBottom: 16, padding: "11px 15px", borderRadius: C.radiusSm, background: toast.type === "error" ? C.redSoft : C.greenSoft, color: toast.type === "error" ? C.red : C.green, fontSize: 13, fontWeight: 600, fontFamily: bodyFont }}>
+        <div role={toast.type === "error" ? "alert" : "status"} style={{ marginBottom: 14, padding: "11px 14px", borderRadius: 12, background: toast.type === "error" ? C.redSoft : C.greenSoft, color: toast.type === "error" ? C.red : C.green, fontSize: 12.5, fontWeight: 600, fontFamily: bodyFont }}>
           {toast.text}
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
-        <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
+        <div className="k-chip-row" role="group" aria-label="Sınav türü">
           {tracksPresent.includes("YKS") && (
             <>
-              <Button small variant={examType === "TYT" ? "primary" : "secondary"} onClick={() => setExamType("TYT")}>TYT</Button>
-              <Button small variant={examType === "AYT" ? "primary" : "secondary"} onClick={() => setExamType("AYT")}>AYT</Button>
+              <Chip active={examType === "TYT"} onClick={() => setExamType("TYT")}>TYT</Chip>
+              <Chip active={examType === "AYT"} onClick={() => setExamType("AYT")}>AYT</Chip>
             </>
           )}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button type="button" aria-label="Önceki ay" onClick={() => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))} className="k-icon-btn" style={{ width: 36, height: 36, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <ChevronLeft size={16} color={C.text} />
-          </button>
-          <span style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, color: C.text, minWidth: isMobile ? 100 : 150, textAlign: "center", textTransform: "capitalize" }}>{monthLabel(viewDate)}</span>
-          <button type="button" aria-label="Sonraki ay" onClick={() => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))} className="k-icon-btn" style={{ width: 36, height: 36, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <ChevronRight size={16} color={C.text} />
-          </button>
-          <Button small variant="secondary" onClick={() => setViewDate(new Date())}>Bugün</Button>
-        </div>
+        {/* Başka bir aya geçildiyse bugüne tek dokunuşla dönüş — içinde bulunulan ay açıkken gereksiz, gizli. */}
+        {!viewingTodayMonth && <Button small variant="ghost" onClick={() => setViewDate(new Date())}>Bugün</Button>}
       </div>
 
       {loading ? (
         <LoadingState />
       ) : (
-        <Card style={{ padding: isMobile ? 5 : 10 }}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: isMobile ? 3 : 6, marginBottom: 6 }}>
-            {WEEKDAY_LABELS.map((w) => (
-              <div key={w} style={{ textAlign: "center", fontFamily: bodyFont, fontSize: isMobile ? 9.5 : 11, fontWeight: 800, color: C.muted, textTransform: "uppercase", padding: "4px 0" }}>{w}</div>
-            ))}
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: isMobile ? 3 : 6 }}>
-            {grid.map((d) => {
-              const key = ymd(d);
-              const dayEntries = entriesByDate.get(key) || [];
-              const inMonth = d.getMonth() === currentMonth;
-              const isToday = key === ymd(new Date());
-              return (
-                <div
-                  key={key}
-                  data-date={key}
-                  onClick={() => openDayCell(key)}
-                  style={{
-                    minHeight: isMobile ? 46 : 92, borderRadius: C.radiusSm, padding: isMobile ? 3 : 6, cursor: "pointer",
-                    background: inMonth ? C.surface : C.surface2, border: `1px solid ${isToday ? C.accent : C.border}`,
-                    opacity: inMonth ? 1 : 0.55, display: "flex", flexDirection: "column", gap: isMobile ? 2 : 4,
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <span style={{ fontFamily: bodyFont, fontSize: isMobile ? 10 : 11.5, fontWeight: isToday ? 800 : 600, color: isToday ? C.accent : C.muted }}>{d.getDate()}</span>
-                    {!isMobile && <Plus size={12} color={C.mutedLight} />}
-                  </div>
-                  {isMobile ? (
-                    dayEntries.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 2, justifyContent: "center" }}>
-                        {dayEntries.slice(0, 4).map((entry) => (
-                          <span key={entry.id} style={{ width: 6, height: 6, borderRadius: 999, background: entry.assignmentId ? C.green : kindDot(entry.kind), flexShrink: 0 }} />
-                        ))}
-                      </div>
-                    )
-                  ) : (
-                    dayEntries.map((entry) => (
-                      <button
-                        key={entry.id}
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); openExisting(key, entry); }}
-                        title={`${entry.subject || ""} ${entry.topic || ""}`.trim()}
-                        style={{
-                          display: "flex", alignItems: "center", gap: 4, width: "100%", textAlign: "left",
-                          background: entry.assignmentId ? C.greenSoft : C.accentSoft, border: "none", borderRadius: 6,
-                          padding: "3px 5px", cursor: "pointer", overflow: "hidden",
-                        }}
-                      >
-                        <span style={{ width: 6, height: 6, borderRadius: 999, background: entry.assignmentId ? C.green : kindDot(entry.kind), flexShrink: 0 }} />
-                        <span style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, color: entry.assignmentId ? C.green : C.accent, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                          {entry.subject || KIND_LABELS[entry.kind]}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
+        <>
+          <Card style={{ padding: "14px 12px 14px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "0 2px" }}>
+              <MonthNavButton label="Önceki ay" icon={ChevronLeft} onClick={() => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))} />
+              <div aria-live="polite" style={{ fontFamily: displayFont, fontSize: 16, fontWeight: 700, letterSpacing: -0.1, color: C.text, textTransform: "capitalize", textAlign: "center", minWidth: 0 }}>
+                {monthLabel(viewDate)}
+              </div>
+              <MonthNavButton label="Sonraki ay" icon={ChevronRight} onClick={() => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))} />
+            </div>
 
-      {/* Telefonda hücreler yalnızca nokta gösterdiği için ayın kayıtları takvimin altında okunur bir
-          liste olarak da verilir — hangi gün ne var, tek tek güne dokunmadan görülsün. */}
-      {isMobile && !loading && (
-        <MonthAgenda
-          entries={entries.filter((e) => { const d = new Date(`${e.date.slice(0, 10)}T00:00:00`); return d.getFullYear() === viewDate.getFullYear() && d.getMonth() === currentMonth; })}
-          onOpenEntry={(entry) => openExisting(entry.date.slice(0, 10), entry)}
-        />
-      )}
+            <div aria-hidden="true" style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", marginTop: 12, marginBottom: 2 }}>
+              {WEEKDAY_LABELS.map((w) => (
+                <div key={w} style={{ textAlign: "center", fontFamily: bodyFont, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.2, color: C.mutedLight, padding: "6px 0" }}>{w}</div>
+              ))}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", rowGap: 2 }}>
+              {grid.map((d) => {
+                const key = ymd(d);
+                const dayEntries = entriesByDate.get(key) || [];
+                const inMonth = d.getMonth() === currentMonth;
+                const isToday = key === todayKey;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    data-date={key}
+                    onClick={() => openDayCell(key)}
+                    aria-current={isToday ? "date" : undefined}
+                    aria-label={`${d.getDate()} ${d.toLocaleDateString("tr-TR", { month: "long" })}${dayEntries.length ? `, ${dayEntries.length} kayıt` : ""}`}
+                    className="k-icon-btn"
+                    style={{
+                      height: 44, minWidth: 0, padding: 0, border: "none", borderRadius: 10, background: "transparent", cursor: "pointer",
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+                    }}
+                  >
+                    <span style={{
+                      width: 26, height: 26, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center",
+                      background: isToday ? C.accent : "transparent",
+                      // Diğer ayın günleri soluk ama okunur (mutedLight, 4.5:1) — tıklanabilir düğmeler oldukları
+                      // için dokümandaki en soluk ton (#BAC1D4, 1.8:1) yerine; bu ayın günleri koyu kalır.
+                      color: isToday ? C.onAccent : inMonth ? C.text : C.mutedLight,
+                      fontFamily: monoFont, fontSize: 12.5, fontWeight: isToday ? 700 : 500,
+                    }}>
+                      {d.getDate()}
+                    </span>
+                    <span aria-hidden="true" style={{ height: 5, display: "flex", alignItems: "center", justifyContent: "center", gap: 3 }}>
+                      {dayEntries.slice(0, 3).map((entry) => (
+                        <span key={entry.id} style={{ width: 5, height: 5, borderRadius: 999, background: statusColor(entryStatus(entry)), flexShrink: 0 }} />
+                      ))}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
 
-      <div style={{ display: "flex", gap: 14, marginTop: 14, flexWrap: "wrap" }}>
-        <Legend color={kindDot("TOPIC")} label="Konu Anlatımı" />
-        <Legend color={kindDot("PRACTICE_TEST")} label="Deneme" />
-        <Legend color={kindDot("HOLIDAY")} label="Tatil Ödevi" />
-        <Legend color={C.green} label="Gönderildi" />
-      </div>
+            {/* Noktaların ne anlama geldiği — önceden üç renk vardı ama hiçbir yerde açıklanmıyordu. */}
+            <div style={{ height: 1, background: C.divider, margin: "10px 2px 12px" }} />
+            <div style={{ display: "flex", gap: 16, flexWrap: "wrap", padding: "0 4px" }}>
+              <Legend color={statusColor("planned")} label={STATUS_META.planned.label} />
+              <Legend color={statusColor("sent")} label={STATUS_META.sent.label} />
+              <Legend color={statusColor("draft")} label={STATUS_META.draft.label} />
+            </div>
+          </Card>
+
+          {/* Hücreler yalnızca nokta gösterdiği için ayın kayıtları takvimin altında okunur bir liste olarak
+              da verilir — hangi gün ne var, tek tek güne dokunmadan görülsün. */}
+          <MonthEntries
+            entries={monthEntries}
+            onOpenEntry={(entry) => openExisting(entry.date.slice(0, 10), entry)}
+          />
+        </>
+      )}
 
       {modalState && (
         <PlanEntryModal
@@ -256,87 +268,116 @@ export default function PlanScreen({ user }) {
   );
 }
 
+function MonthNavButton({ label, icon: Icon, onClick }) {
+  return (
+    <button
+      type="button" aria-label={label} onClick={onClick} className="k-icon-btn"
+      style={{ width: 36, height: 36, flexShrink: 0, borderRadius: C.radiusSm, border: "none", background: C.surface2, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: C.text2 }}
+    >
+      <Icon size={17} />
+    </button>
+  );
+}
+
 // Telefonda bir güne dokunulunca açılan liste — o günün kayıtları (varsa) düzenlenebilir satırlar
-// olarak, altında da her zaman "Yeni Kayıt Ekle" düğmesi olarak gösterilir.
+// olarak, altında da her zaman "Yeni kayıt ekle" düğmesi olarak gösterilir.
 function DayAgendaModal({ dateKey, entries, onClose, onOpenEntry, onAddNew }) {
   const dateLabel = new Date(`${dateKey}T00:00:00`).toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric", weekday: "long" });
   return (
     <Modal title={dateLabel} onClose={onClose}>
       {entries.length === 0 ? (
-        <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted, marginBottom: 16 }}>Bu gün için henüz bir kayıt yok.</div>
+        <div style={{ fontFamily: bodyFont, fontSize: 13.5, color: C.muted, marginBottom: 16 }}>Bu gün için henüz bir kayıt yok.</div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
-          {entries.map((entry) => (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => onOpenEntry(entry)}
-              style={{
-                display: "flex", alignItems: "center", gap: 8, width: "100%", textAlign: "left",
-                background: C.surface2, border: `1px solid ${C.border}`, borderRadius: C.radiusSm,
-                padding: "10px 12px", cursor: "pointer",
-              }}
-            >
-              <span style={{ width: 8, height: 8, borderRadius: 999, background: entry.assignmentId ? C.green : kindDot(entry.kind), flexShrink: 0 }} />
-              <span style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                {entry.subject ? `${entry.subject} — ${entry.topic}` : entry.topic || KIND_LABELS[entry.kind]}
-              </span>
-              {entry.schoolWide && <Pill tone="accent">Okul Çapında</Pill>}
-              {entry.assignmentId && <Pill tone="green">Gönderildi</Pill>}
-            </button>
-          ))}
+          {entries.map((entry) => {
+            const status = entryStatus(entry);
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                onClick={() => onOpenEntry(entry)}
+                className="k-icon-btn"
+                style={{
+                  display: "flex", alignItems: "center", gap: 10, width: "100%", minHeight: 52, textAlign: "left",
+                  background: C.fieldBg, border: `1px solid ${C.border}`, borderRadius: 12,
+                  padding: "8px 12px", cursor: "pointer",
+                }}
+              >
+                <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: statusColor(status), flexShrink: 0 }} />
+                <span style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {entryTitle(entry)}
+                </span>
+                {entry.schoolWide && <Pill tone="blue">Okul çapında</Pill>}
+                <Pill tone={STATUS_META[status].tone}>{STATUS_META[status].label}</Pill>
+              </button>
+            );
+          })}
         </div>
       )}
-      <Button full icon={Plus} onClick={onAddNew}>Yeni Kayıt Ekle</Button>
+      <Button full icon={Plus} onClick={onAddNew}>Yeni kayıt ekle</Button>
     </Modal>
   );
 }
 
-function MonthAgenda({ entries, onOpenEntry }) {
-  if (entries.length === 0) {
-    return <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, textAlign: "center", padding: "14px 0 0" }}>Bu ay için henüz kayıt yok — bir güne dokunup ekleyebilirsin.</div>;
-  }
+function MonthEntries({ entries, onOpenEntry }) {
   const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
   return (
-    <div style={{ marginTop: 16 }}>
-      <h2 style={{ margin: "0 0 10px", fontFamily: displayFont, fontSize: 13, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Bu Ayın Kayıtları ({sorted.length})</h2>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {sorted.map((entry) => {
-          const d = new Date(`${entry.date.slice(0, 10)}T00:00:00`);
-          return (
-            <button
-              key={entry.id}
-              type="button"
-              onClick={() => onOpenEntry(entry)}
-              style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, padding: "10px 12px", cursor: "pointer", boxShadow: C.shadowSm }}
-            >
-              <span style={{ width: 40, flexShrink: 0, textAlign: "center", fontFamily: bodyFont }}>
-                <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: C.text, lineHeight: 1.1 }}>{d.getDate()}</span>
-                <span style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase" }}>{WEEKDAY_LABELS[(d.getDay() + 6) % 7]}</span>
-              </span>
-              <span style={{ width: 3, alignSelf: "stretch", borderRadius: 999, background: entry.assignmentId ? C.green : kindDot(entry.kind), flexShrink: 0 }} />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: "block", fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {entry.subject ? `${entry.subject} — ${entry.topic}` : entry.topic || KIND_LABELS[entry.kind]}
-                </span>
-                <span style={{ display: "block", fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
-                  {KIND_LABELS[entry.kind]}{entry.questionCount ? ` · ${entry.questionCount} soru` : ""}{entry.autoSend !== "OFF" && !entry.assignmentId ? " · otomatik" : ""}
-                </span>
-              </span>
-              {entry.assignmentId ? <Pill tone="green">Gönderildi</Pill> : entry.schoolWide ? <Pill tone="accent">Okul</Pill> : null}
-            </button>
-          );
-        })}
-      </div>
-    </div>
+    <section>
+      <SectionHeader title="Bu ayın kayıtları" count={sorted.length} />
+      {sorted.length === 0 ? (
+        <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, textAlign: "center", padding: "10px 0" }}>
+          Bu ay için henüz kayıt yok — takvimden bir gün seçip ekleyebilirsin.
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {sorted.map((entry) => <EntryRow key={entry.id} entry={entry} onClick={() => onOpenEntry(entry)} />)}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// Kayıt satırı (62px): solda gün + haftanın günü, ince dikey ayırıcı, başlık ve tür/soru sayısı,
+// sağda durum rozeti. Ders ikonu bilerek yok — satırı günü öne çıkaran bir ajanda satırı gibi tutar.
+function EntryRow({ entry, onClick }) {
+  const d = new Date(`${entry.date.slice(0, 10)}T00:00:00`);
+  const status = entryStatus(entry);
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="k-card-hover"
+      style={{
+        display: "flex", alignItems: "center", gap: 12, width: "100%", minHeight: 62, boxSizing: "border-box",
+        padding: "8px 14px 8px 12px", textAlign: "left", cursor: "pointer",
+        background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusMd, boxShadow: C.shadowMd,
+      }}
+    >
+      <span style={{ width: 34, flexShrink: 0, textAlign: "center" }}>
+        <span style={{ display: "block", fontFamily: monoFont, fontSize: 16, fontWeight: 700, color: C.text, lineHeight: 1.15 }}>{d.getDate()}</span>
+        <span style={{ display: "block", fontFamily: bodyFont, fontSize: 9, fontWeight: 800, letterSpacing: 0.6, color: C.mutedLight, marginTop: 2 }}>{WEEKDAY_LABELS[(d.getDay() + 6) % 7]}</span>
+      </span>
+      <span aria-hidden="true" style={{ width: 1, height: 30, background: C.divider, flexShrink: 0 }} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {entryTitle(entry)}
+        </span>
+        <span style={{ display: "block", fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {KIND_LABELS[entry.kind]}
+          {entry.questionCount ? <> · <span style={{ fontFamily: monoFont }}>{entry.questionCount}</span> soru</> : null}
+          {entry.schoolWide ? " · okul çapında" : ""}
+        </span>
+      </span>
+      <Pill tone={STATUS_META[status].tone}>{STATUS_META[status].label}</Pill>
+    </button>
   );
 }
 
 function Legend({ color, label }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-      <span style={{ width: 8, height: 8, borderRadius: 999, background: color }} />
-      <span style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted }}>{label}</span>
+    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <span aria-hidden="true" style={{ width: 7, height: 7, borderRadius: 999, background: color }} />
+      <span style={{ fontFamily: bodyFont, fontSize: 11.5, fontWeight: 600, color: C.muted }}>{label}</span>
     </div>
   );
 }
@@ -436,22 +477,26 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
   if (published) {
     return (
       <Modal title={dateLabel} onClose={onClose}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
           <Pill tone="green">Gönderildi</Pill>
           <Pill tone={KIND_TONES[existing.kind]}>{KIND_LABELS[existing.kind]}</Pill>
-          {existing.schoolWide && <Pill tone="accent">Okul Çapında</Pill>}
+          {existing.schoolWide && <Pill tone="blue">Okul çapında</Pill>}
         </div>
-        <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, color: C.text, marginBottom: 4 }}>
+        <div style={{ fontFamily: displayFont, fontSize: 16, fontWeight: 700, letterSpacing: -0.1, color: C.text, marginBottom: 4 }}>
           {existing.subject ? `${existing.subject} — ` : ""}{existing.topic}
         </div>
-        {existing.questionCount && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted }}>{existing.questionCount} soru</div>}
+        {existing.questionCount && (
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted }}>
+            <span style={{ fontFamily: monoFont }}>{existing.questionCount}</span> soru
+          </div>
+        )}
         {existing.endDate && existing.endDate.slice(0, 10) !== existing.date.slice(0, 10) && (
           <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted }}>
             Bitiş: {new Date(`${existing.endDate.slice(0, 10)}T00:00:00`).toLocaleDateString("tr-TR", { day: "2-digit", month: "long" })}
           </div>
         )}
-        {existing.note && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.text, marginTop: 6, whiteSpace: "pre-wrap" }}>{existing.note}</div>}
-        <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.mutedLight, marginTop: 12 }}>
+        {existing.note && <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.text2, marginTop: 8, whiteSpace: "pre-wrap" }}>{existing.note}</div>}
+        <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.mutedLight, marginTop: 14, lineHeight: 1.45 }}>
           Bu kayıt zaten yayınlandı, buradan değiştirilemez — ödevin kendisi "Ödevlerim" sekmesinden yönetilir.
         </div>
       </Modal>
@@ -468,9 +513,9 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
           if (k === "TOPIC") { if (topic === "Deneme Sınavı" || topic === "Tatil Ödevi") setTopic(""); }
           else if (!topic) setTopic(k === "PRACTICE_TEST" ? "Deneme Sınavı" : "Tatil Ödevi");
         }}>
-          <option value="TOPIC">Konu Anlatımı</option>
-          <option value="PRACTICE_TEST">Deneme Çözümü</option>
-          <option value="HOLIDAY">Tatil Ödevi</option>
+          <option value="TOPIC">Konu anlatımı</option>
+          <option value="PRACTICE_TEST">Deneme çözümü</option>
+          <option value="HOLIDAY">Tatil ödevi</option>
         </Select>
 
         {kind === "TOPIC" ? (
@@ -478,11 +523,11 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
             <Select label="Ders" value={subject} onChange={(e) => setSubject(e.target.value)}>
               {SUBJECTS_BY_EXAM[examType].map((s) => <option key={s} value={s}>{s}</option>)}
             </Select>
-            <TopicField label="Konu" examType={examType} subject={subject} value={topic} onChange={setTopic} placeholder="ör. Çarpanlara Ayırma" required />
-            <Input label="Kaynak Kitap (opsiyonel)" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} placeholder="ör. 3D Yayınları" />
-            <Input label="Sayfa / Soru Aralığı (opsiyonel)" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="ör. 45-60" />
+            <TopicField label="Konu" examType={examType} subject={subject} value={topic} onChange={setTopic} placeholder="ör. Çarpanlara ayırma" required />
+            <Input label="Kaynak kitap (opsiyonel)" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} placeholder="ör. 3D Yayınları" />
+            <Input label="Sayfa / soru aralığı (opsiyonel)" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="ör. 45-60" />
             <Input
-              label={`Soru Sayısı (opsiyonel, önerilen 20-${MAX_QUESTION_COUNT})`} type="number" inputMode="numeric" pattern="[0-9]*" min="1" max={MAX_QUESTION_COUNT}
+              label={`Soru sayısı (opsiyonel, önerilen 20-${MAX_QUESTION_COUNT})`} type="number" inputMode="numeric" pattern="[0-9]*" min="1" max={MAX_QUESTION_COUNT}
               value={questionCount} onChange={(e) => setQuestionCount(e.target.value)} placeholder="ör. 25"
             />
           </>
@@ -492,13 +537,13 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
         {/* Not artık yayınlanınca ödevle birlikte öğrenciye de gider (önceden sessizce kayboluyordu). */}
         <Textarea label="Öğrenciye not (opsiyonel)" value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={kind === "TOPIC" ? "ör. Önce konu özetini oku" : "ör. Her gün 1 deneme çöz"} />
 
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 12 }}>
           {/* minWidth:0 — iOS/Chrome tarih alanının kendi asgari genişliği flex çocuğunu pencerenin dışına taşırıyordu. */}
           <div style={{ flex: 1, minWidth: 0 }}><Input label="Tarih" type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></div>
           <div style={{ flex: 1, minWidth: 0 }}><Input label="Bitiş (opsiyonel)" type="date" value={endDate} min={date} onChange={(e) => setEndDate(e.target.value)} /></div>
         </div>
         {endDate && endDate < date && (
-          <div style={{ fontSize: 11.5, color: C.red, marginTop: -10, marginBottom: 16 }}>Bitiş tarihi başlangıçtan önce olamaz.</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.red, marginTop: -10, marginBottom: 16 }}>Bitiş tarihi başlangıçtan önce olamaz.</div>
         )}
 
         <Select label="Gönderim" value={autoSend} onChange={(e) => setAutoSend(e.target.value)}>
@@ -507,28 +552,28 @@ function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTea
           <option value="DAY_BEFORE">Otomatik — bir gün önceden gönder</option>
         </Select>
         {autoSend !== "OFF" && (
-          <div style={{ fontSize: 11.5, color: C.muted, marginTop: -10, marginBottom: 16 }}>
+          <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginTop: -10, marginBottom: 16 }}>
             <Clock size={11} style={{ verticalAlign: -1, marginRight: 3 }} />{AUTO_SEND_LABELS[autoSend]} — istersen aşağıdan yine elle "Yayınla" diyebilirsin.
           </div>
         )}
 
         {isSubjectTeacher && (
-          <label style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 16, padding: 10, borderRadius: C.radiusSm, background: schoolWide ? C.accentSoft : C.surface2, border: `1px solid ${schoolWide ? C.accent : C.border}`, cursor: "pointer" }}>
-            <input type="checkbox" checked={schoolWide} onChange={(e) => setSchoolWide(e.target.checked)} style={{ marginTop: 2 }} />
-            <span style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.text }}>
-              <strong>Okul çapında ortak ödev</strong> — yayınlandığında yalnızca sizin öğrencilerinize değil, okuldaki bu sınav türüne ({examType}) hazırlanan TÜM öğrencilere gönderilir.
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 16, padding: "11px 12px", borderRadius: 12, background: schoolWide ? C.accentSoft : C.fieldBg, border: `1px solid ${schoolWide ? C.accent : C.border}`, cursor: "pointer" }}>
+            <input type="checkbox" checked={schoolWide} onChange={(e) => setSchoolWide(e.target.checked)} style={{ marginTop: 2, accentColor: C.accent }} />
+            <span style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.text2, lineHeight: 1.45 }}>
+              <strong style={{ color: C.text }}>Okul çapında ortak ödev</strong> — yayınlandığında yalnızca sizin öğrencilerinize değil, okuldaki bu sınav türüne ({examType}) hazırlanan TÜM öğrencilere gönderilir.
             </span>
           </label>
         )}
 
-        {error && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{error}</div>}
+        {error && <div role="alert" style={{ color: C.red, fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{error}</div>}
 
         <div style={{ display: "flex", gap: 8 }}>
           <div style={{ flex: 1 }}>
             <Button full type="submit" disabled={saving || busy}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
           </div>
           {existing && (
-            <Button icon={Send} disabled={saving || busy} onClick={publishNow}>Yayınla</Button>
+            <Button icon={Send} disabled={saving || busy} onClick={publishNow} style={{ height: 50 }}>Yayınla</Button>
           )}
         </div>
         {existing && (
