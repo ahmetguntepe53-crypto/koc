@@ -132,7 +132,10 @@ export const api = {
   // --- öğretmen ---
   teacherListStudents: () => request("/teacher/students"),
   teacherStudentOverview: (studentId) => request(`/teacher/students/${studentId}/overview`),
-  teacherUpdateStudentNote: (studentId, note) => request(`/teacher/students/${studentId}/note`, { method: "PUT", body: { note } }),
+  // Koçun tarihli özel notları — yalnızca yazan koç görür.
+  teacherAddNote: (studentId, text) => request(`/teacher/students/${studentId}/notes`, { method: "POST", body: { text } }),
+  teacherEditNote: (noteId, text) => request(`/teacher/notes/${noteId}`, { method: "PATCH", body: { text } }),
+  teacherDeleteNote: (noteId) => request(`/teacher/notes/${noteId}`, { method: "DELETE" }),
 
   // --- ödevler ---
   listAssignments: (params = {}) => {

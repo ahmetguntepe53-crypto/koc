@@ -89,7 +89,7 @@ export default function ForcePasswordScreen({ user, onDone, onLogout }) {
               <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, color: C.mutedLight, marginTop: 30 }}>2. ADIM · KVKK AYDINLATMA METNİ</div>
               <div style={{ position: "relative", marginTop: 12, borderRadius: 16, border: `1px solid ${C.border}`, background: C.surface }}>
                 <div tabIndex={0} aria-label="Aydınlatma metni özeti" style={{ height: 116, overflowY: "auto", padding: "14px 18px 22px", fontFamily: bodyFont, fontSize: 14, color: C.text2, lineHeight: 1.65 }}>
-                  Bu uygulamada adın, okul numaran, sınıfın, çözdüğün ödevlerin sonuçları, serbest çalışma kayıtların ve yüklediğin kanıt fotoğrafları işlenir.
+                  Bu uygulamada adın, okul numaran, sınıfın, çözdüğün ödevlerin sonuçları, pas geçme sebeplerin, serbest çalışma kayıtların, yüklediğin kanıt fotoğrafları ve uygulamayı en son ne zaman kullandığın işlenir.
                   Uygulama içinde verilerine yalnızca sana atanmış koç öğretmen, ödevi veren branş öğretmeni ve okul yönetimi erişebilir.
                   Verilerin ne kadar süre saklandığı, veri sorumlusu ve başvuru hakların metnin tamamında yazılıdır.
                 </div>

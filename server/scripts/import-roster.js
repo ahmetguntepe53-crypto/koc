@@ -196,7 +196,11 @@ async function main() {
     }
     if (Object.keys(data).length === 0) { report.studentsUnchanged++; continue; }
     report.studentsUpdated++;
-    if (APPLY) await prisma.user.update({ where: { id: match.id }, data });
+    if (APPLY) {
+      await prisma.user.update({ where: { id: match.id }, data });
+      // Koçu değiştiyse eski koçun özel notları silinir (bkz. routes/admin.js > reassign-teacher).
+      if (data.teacherId) await prisma.coachNote.deleteMany({ where: { studentId: match.id, teacherId: { not: data.teacherId } } });
+    }
   }
 
   // Listede olmayan öğrenci hesapları — silinmez, yalnızca bilgi için.

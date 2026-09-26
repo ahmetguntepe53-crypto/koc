@@ -68,3 +68,34 @@ export function questionCountOf(pageRange) {
 export function isSchoolWide(assignment) {
   return assignment?.targetMode === "SCHOOL_WIDE";
 }
+
+// --- Son giriş (User.lastSeenAt — sunucu en fazla 10 dakikada bir günceller) ---
+// Bu kadar gün uygulamayı açmayan öğrenci koç panosunda sorunlu sayılır ("4 gündür giriş yok").
+export const INACTIVE_DAYS = 3;
+
+// Gerçek zaman damgası (tarih-yalnız değil) — cihazın yerel takvim günüyle karşılaştırılır.
+function localDaysAgo(iso, now) {
+  const a = new Date(iso);
+  a.setHours(0, 0, 0, 0);
+  const b = new Date(now);
+  b.setHours(0, 0, 0, 0);
+  return Math.round((b - a) / 86400000);
+}
+
+// { label: "bugün" | "dün" | "4 gün önce" | "henüz giriş yapmadı" | "hiç giriş yapmadı", days, never, inactive }
+// Hiç giriş yapmamışsa gün sayısı hesabın açılışından — roster yüklendiği gün herkes kırmızıya dönmesin.
+export function lastSeenInfo(lastSeenAt, createdAt, now = new Date()) {
+  if (lastSeenAt) {
+    const days = localDaysAgo(lastSeenAt, now);
+    return { days, never: false, inactive: days >= INACTIVE_DAYS, label: days <= 0 ? "bugün" : days === 1 ? "dün" : `${days} gün önce` };
+  }
+  const days = createdAt ? localDaysAgo(createdAt, now) : null;
+  const inactive = days != null && days >= INACTIVE_DAYS;
+  return { days, never: true, inactive, label: inactive ? "hiç giriş yapmadı" : "henüz giriş yapmadı" };
+}
+
+// Tarihli notun başlığı: "24 Eylül" (başka yıldansa yıl da).
+export function noteDate(iso, now = new Date()) {
+  const d = new Date(iso);
+  return d.toLocaleDateString("tr-TR", { day: "numeric", month: "long", ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) });
+}

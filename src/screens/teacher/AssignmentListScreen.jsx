@@ -92,8 +92,8 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
             const completedCount = a.recipients.filter((r) => r.completed).length;
             const isOverdue = a.status === "SENT" && completedCount < a.recipients.length && daysUntil(a.endDate) < 0;
             return (
-              <Card key={a.id} hover style={{ padding: 16, cursor: "pointer" }}>
-                <div onClick={() => onOpen(a.id)} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+              <Card key={a.id} hover onClick={() => onOpen(a.id)} style={{ padding: 16, cursor: "pointer" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                   <img src={subjectIconUrl(a.subject)} alt="" width={38} height={38} style={{ borderRadius: 10, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>

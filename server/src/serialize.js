@@ -6,6 +6,6 @@
 // select edilerek koça döndürülür.
 export function safeUser(user) {
   if (!user) return null;
-  const { passwordHash, resetToken, resetTokenExpires, tokenVersion, coachNote, ...rest } = user;
+  const { passwordHash, resetToken, resetTokenExpires, tokenVersion, ...rest } = user;
   return rest;
 }

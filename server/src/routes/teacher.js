@@ -11,7 +11,7 @@ teacherRouter.get("/students", async (req, res) => {
   try {
     const students = await prisma.user.findMany({
       where: { teacherId: req.userId, role: "STUDENT" },
-      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, banned: true },
+      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, banned: true, lastSeenAt: true, createdAt: true },
       orderBy: { name: "asc" },
     });
 
@@ -79,10 +79,10 @@ teacherRouter.get("/students/:id/overview", async (req, res) => {
   try {
     const student = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, banned: true, teacherId: true, role: true, coachNote: true },
+      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, banned: true, teacherId: true, role: true, lastSeenAt: true, createdAt: true },
     });
     assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
-    const [recipients, studySessions] = await Promise.all([
+    const [recipients, studySessions, notes] = await Promise.all([
       // Başka öğretmenlerin TASLAKLARI (öğrenciye henüz gitmemiş) gösterilmez; kendi taslakları ve
       // herkesin gönderilmiş ödevleri gösterilir. assignment.teacher, istemcinin başkasına ait ödevi
       // "X tarafından verildi" diye işaretleyebilmesi için.
@@ -92,23 +92,95 @@ teacherRouter.get("/students/:id/overview", async (req, res) => {
         orderBy: { createdAt: "desc" },
       }),
       prisma.studySession.findMany({ where: { studentId: student.id }, orderBy: { studyDate: "desc" } }),
+      // Yalnızca BU koçun yazdığı notlar (bkz. schema.prisma > CoachNote).
+      prisma.coachNote.findMany({ where: { studentId: student.id, teacherId: req.userId }, orderBy: { createdAt: "desc" }, select: NOTE_SELECT }),
     ]);
-    res.json({ student, recipients, studySessions });
+    // coachNote: eski uygulama sürümleri tek not alanı bekliyor — en son notun metni.
+    res.json({ student: { ...student, coachNote: notes[0]?.text ?? null }, recipients, studySessions, notes });
   } catch (e) {
     handleErr(res, e);
   }
 });
 
-// Koçun bir öğrenci için tuttuğu serbest metin not — öğrenciye asla gösterilmez (bkz. schema.prisma
-// > User.coachNote). Boş string kaydedilirse "not silindi" anlamına gelir, null'a normalize edilir.
+// --- Koçun tarihli özel notları (bkz. schema.prisma > CoachNote) ---
+// Yalnızca yazan koç görür; not eklemek için öğrenci şu an o koça atanmış olmalı. Düzenleme/silme
+// yalnızca notun yazarına açık. Öğrenci başka koça geçince eski koçun notları silinir (routes/admin.js).
+const NOTE_SELECT = { id: true, text: true, createdAt: true, updatedAt: true };
+const MAX_NOTE_LENGTH = 2000;
+
+// maxLength: var olan bir not düzenlenirken eskisinden kısa olmaya zorlanmaz — eski tek not alanında sınır
+// yoktu, taşınan uzun bir not 2000 sınırı yüzünden hiç düzenlenemez hâle gelmesin.
+function cleanNoteText(text, maxLength = MAX_NOTE_LENGTH) {
+  const t = typeof text === "string" ? text.trim() : "";
+  assert(t, "Not boş olamaz");
+  assert(t.length <= maxLength, `Not en fazla ${maxLength} karakter olabilir`);
+  return t;
+}
+
+async function assertMyStudent(req) {
+  const student = await prisma.user.findUnique({ where: { id: req.params.id }, select: { id: true, role: true, teacherId: true } });
+  assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
+  return student;
+}
+
+async function loadMyNote(req) {
+  const note = await prisma.coachNote.findUnique({ where: { id: req.params.noteId } });
+  // Başkasının notunun varlığı bile sızmasın — yazarı değilse "bulunamadı".
+  assert(note && note.teacherId === req.userId, "Not bulunamadı", 404);
+  return note;
+}
+
+teacherRouter.post("/students/:id/notes", async (req, res) => {
+  try {
+    const student = await assertMyStudent(req);
+    const text = cleanNoteText(req.body?.text);
+    const note = await prisma.coachNote.create({ data: { studentId: student.id, teacherId: req.userId, text }, select: NOTE_SELECT });
+    res.status(201).json({ note });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+teacherRouter.patch("/notes/:noteId", async (req, res) => {
+  try {
+    const existing = await loadMyNote(req);
+    const text = cleanNoteText(req.body?.text, Math.max(MAX_NOTE_LENGTH, existing.text.length));
+    // Metin değişmediyse yazılmaz — updatedAt ilerleyip not "düzenlendi" görünmesin.
+    const note = text === existing.text
+      ? await prisma.coachNote.findUnique({ where: { id: existing.id }, select: NOTE_SELECT })
+      : await prisma.coachNote.update({ where: { id: existing.id }, data: { text }, select: NOTE_SELECT });
+    res.json({ note });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+teacherRouter.delete("/notes/:noteId", async (req, res) => {
+  try {
+    const existing = await loadMyNote(req);
+    await prisma.coachNote.delete({ where: { id: existing.id } });
+    res.json({ ok: true });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Eski uygulama sürümleri (tek not alanı) için uyumluluk: gönderilen metin koçun EN SON notunu günceller
+// (yoksa yeni not açılır); boş metin en son notu siler. Yanıt eskisi gibi { coachNote }.
 teacherRouter.put("/students/:id/note", async (req, res) => {
   try {
-    const { note } = req.body || {};
-    const student = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true, teacherId: true } });
-    assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
-    const cleanNote = note && String(note).trim() ? String(note).trim() : null;
-    await prisma.user.update({ where: { id: req.params.id }, data: { coachNote: cleanNote } });
-    res.json({ coachNote: cleanNote });
+    const student = await assertMyStudent(req);
+    const raw = typeof req.body?.note === "string" ? req.body.note.trim() : "";
+    const latest = await prisma.coachNote.findFirst({ where: { studentId: student.id, teacherId: req.userId }, orderBy: { createdAt: "desc" } });
+    if (!raw) {
+      if (latest) await prisma.coachNote.delete({ where: { id: latest.id } });
+      const next = await prisma.coachNote.findFirst({ where: { studentId: student.id, teacherId: req.userId }, orderBy: { createdAt: "desc" }, select: { text: true } });
+      return res.json({ coachNote: next?.text ?? null });
+    }
+    const text = cleanNoteText(raw, Math.max(MAX_NOTE_LENGTH, latest?.text.length || 0));
+    if (latest && latest.text !== text) await prisma.coachNote.update({ where: { id: latest.id }, data: { text } });
+    else await prisma.coachNote.create({ data: { studentId: student.id, teacherId: req.userId, text } });
+    res.json({ coachNote: text });
   } catch (e) {
     handleErr(res, e);
   }

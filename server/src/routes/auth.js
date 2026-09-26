@@ -23,7 +23,8 @@ async function meResponse(user) {
 export const authRouter = Router();
 
 const RESET_TOKEN_TTL_MS = 60 * 60 * 1000;
-const TERMS_VERSION = "1.0";
+// 1.1 (26 Eylül 2026): kanıt fotoğrafları, pas geçme sebepleri, koç notları ve son kullanım zamanı eklendi.
+const TERMS_VERSION = "1.1";
 
 // tokenVersion token'ın içine gömülür — requireAuth bunu User.tokenVersion ile karşılaştırır. Şifre
 // sıfırlanınca/eski şifre geçersiz kılınınca tokenVersion artırılır, bu da o ana kadar üretilmiş

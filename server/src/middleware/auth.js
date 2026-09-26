@@ -18,6 +18,8 @@ const PASSWORD_CHANGE_ALLOWED = new Set([
   "POST /api/push/unsubscribe",
 ]);
 
+const LAST_SEEN_THROTTLE_MS = 10 * 60 * 1000;
+
 function sessionInvalid(res, error) {
   return res.status(401).json({ error, code: "SESSION_INVALID" });
 }
@@ -40,7 +42,7 @@ export async function requireAuth(req, res, next) {
   try {
     user = await prisma.user.findUnique({
       where: { id: payload.userId },
-      select: { banned: true, tokenVersion: true, role: true, mustChangePassword: true },
+      select: { banned: true, tokenVersion: true, role: true, mustChangePassword: true, lastSeenAt: true },
     });
   } catch (e) {
     console.error("[auth] kullanıcı doğrulanamadı:", e);
@@ -59,6 +61,12 @@ export async function requireAuth(req, res, next) {
   }
   req.userId = payload.userId;
   req.userRole = user.role;
+  // Son kullanım zamanı (koç panosundaki "4 gündür giriş yok") — her istekte değil, en fazla 10 dakikada
+  // bir yazılır; isteği bekletmez, yazılamazsa isteği bozmaz.
+  const now = Date.now();
+  if (!user.lastSeenAt || now - user.lastSeenAt.getTime() > LAST_SEEN_THROTTLE_MS) {
+    prisma.user.update({ where: { id: payload.userId }, data: { lastSeenAt: new Date(now) } }).catch(() => {});
+  }
   next();
 }
 

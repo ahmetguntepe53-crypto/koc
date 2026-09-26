@@ -13,3 +13,9 @@ server/uploads/
 
 # macOS Finder
 .DS_Store
+
+# Golden testleri: derleme, sonuç ve rapor klasörleri; kayıt sırasında geçici oturum anahtarları
+golden/.dist/
+golden/.results/
+golden/.report/
+golden/recordings/.tokens.json

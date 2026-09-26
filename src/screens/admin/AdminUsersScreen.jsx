@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { UserPlus, Upload, Trash2, Search, X } from "lucide-react";
 import { C, bodyFont, monoFont } from "../../theme.js";
+import { lastSeenInfo } from "../../work.js";
 import { Card, Button, Input, Select, Pill, Chip, Modal, EmptyState, Avatar, roleLabel, LoadingState, confirmDialog, StatCard, StatGrid, SectionHeader, AlertBox, ListRow, ListGroup } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { GRADE_OPTIONS, GRADE_LEVELS, BRANCHES, BOARD_BRANCHES, boardBranchOf, trackForGrade } from "../../subjects.js";
@@ -80,7 +81,18 @@ export default function AdminUsersScreen() {
     }
   };
 
-  const reassignTeacher = withAction((studentId, teacherId) => api.adminReassignTeacher(studentId, teacherId || null));
+  const reassignTeacher = withAction(async (studentId, teacherId) => {
+    const student = users.find((u) => u.id === studentId);
+    if (student?.teacherId && student.teacherId !== teacherId) {
+      const ok = await confirmDialog({
+        title: "Koç değiştirilsin mi?",
+        message: `${student.name} ${teacherId ? "yeni koça geçecek" : "koçsuz kalacak"}. Eski koçunun bu öğrenci hakkında tuttuğu özel notlar silinir (notları yalnızca o koç görebiliyordu).`,
+        confirmLabel: "Değiştir",
+      });
+      if (!ok) return;
+    }
+    await api.adminReassignTeacher(studentId, teacherId || null);
+  });
   const changeGradeLevel = withAction((studentId, gradeLevel) => api.adminUpdateUser(studentId, { gradeLevel }));
   const resendActivation = withAction(async (id) => { await api.adminResendActivation(id); setToast({ type: "ok", text: "Aktivasyon bağlantısı tekrar gönderildi." }); });
   const toggleBan = withAction(async (u) => {
@@ -111,7 +123,7 @@ export default function AdminUsersScreen() {
 
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 1040, margin: "0 auto" }}>
-      <div className="k-chip-row" role="tablist" aria-label="Kurulum bölümleri" style={{ marginBottom: 16 }}>
+      <div className="k-chip-row" role="group" aria-label="Kurulum bölümleri" style={{ marginBottom: 16 }}>
         {TABS.map((t) => (
           <Chip key={t.id} active={tab === t.id} onClick={() => { setTab(t.id); if (t.id !== "accounts") setCoachFilter(""); }}>{t.label}</Chip>
         ))}
@@ -389,6 +401,9 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onRese
           </div>
           <div style={{ fontFamily: monoFont, fontSize: 12, color: C.mutedLight, marginTop: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {[user.username && (isStudent ? `no ${user.username}` : user.username), user.email, teacherName].filter(Boolean).join(" · ")}
+          </div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12, color: user.role !== "ADMIN" && lastSeenInfo(user.lastSeenAt, user.createdAt).inactive ? C.amber : C.mutedLight, marginTop: 3 }}>
+            {lastSeenInfo(user.lastSeenAt, user.createdAt).never ? lastSeenInfo(user.lastSeenAt, user.createdAt).label : `son giriş: ${lastSeenInfo(user.lastSeenAt, user.createdAt).label}`}
           </div>
         </div>
       </div>

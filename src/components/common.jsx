@@ -64,7 +64,8 @@ export function Card({ children, style, hover, onClick, status, stripe }) {
   // Tıklanabilir kart klavyeyle de kullanılabilsin (Tab ile odak, Enter/Boşluk ile aç).
   const interactive = onClick ? {
     role: "button", tabIndex: 0,
-    onKeyDown: (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(e); } },
+    // Yalnızca kartın kendisi odaktayken — içindeki bir düğmede Enter'a basmak kartı da açmasın.
+    onKeyDown: (e) => { if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onClick(e); } },
   } : {};
   return (
     <div
@@ -394,9 +395,9 @@ export function HeaderTextButton({ icon: Icon, label, onClick, disabled }) {
       disabled={disabled}
       className="k-icon-btn"
       style={{
-        height: 44, padding: "0 16px", borderRadius: 13, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 7,
+        height: 44, padding: "0 12px", borderRadius: 13, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 7,
         background: C.surface, border: `1px solid ${C.border}`, cursor: disabled ? "default" : "pointer",
-        fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text2, opacity: disabled ? 0.5 : 1,
+        fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text2, opacity: disabled ? 0.5 : 1,
       }}
     >
       {Icon && <Icon size={16} strokeWidth={2.2} />}
@@ -417,8 +418,8 @@ export function PageHeader({ title, subtitle, right, onBack }) {
       <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12 }}>
         {onBack && <HeaderIconButton icon={ChevronLeft} label="Geri" onClick={onBack} />}
         <div style={{ minWidth: 0 }}>
-          {subtitle && <div className="k-page-subtitle" style={{ fontFamily: bodyFont, fontSize: 13, fontWeight: 500, color: C.mutedLight, marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</div>}
-          <h1 className="k-page-title" style={{ margin: 0, fontFamily: displayFont, fontSize: 25, fontWeight: 700, letterSpacing: -0.9, lineHeight: 1.15, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>
+          {subtitle && <div className="k-page-subtitle" style={{ fontFamily: bodyFont, fontSize: 13, fontWeight: 500, color: C.mutedLight, marginBottom: 3, lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{subtitle}</div>}
+          <h1 className="k-page-title" style={{ margin: 0, fontFamily: displayFont, fontSize: right ? 23 : 25, fontWeight: 700, letterSpacing: -0.9, lineHeight: 1.15, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>
         </div>
       </div>
       {right && <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>{right}</div>}

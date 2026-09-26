@@ -373,7 +373,7 @@ export default function App() {
           right={
             <>
               {/* Öğrenci özetinde başlığın sağında Rapor ve Notlar (zil yerine) — Rapor o öğrencinin
-                  raporunu açar, Notlar StudentOverviewScreen.jsx > CoachNoteModal'ı açar. */}
+                  raporunu açar, Notlar StudentOverviewScreen.jsx'te "Özel notlarım" bölümüne kaydırır. */}
               {screen === "studentOverview" && selectedStudentId && (
                 <HeaderTextButton label="Rapor" onClick={() => openReport("studentOverview", selectedStudentId, selectedStudentName)} />
               )}

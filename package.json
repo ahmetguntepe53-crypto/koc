@@ -12,7 +12,13 @@
     "ios:sync": "vite build && cap sync ios",
     "ios:open": "cap open ios",
     "ios:run": "vite build && cap sync ios && cap run ios",
-    "ios:assets": "capacitor-assets generate --ios"
+    "ios:assets": "capacitor-assets generate --ios",
+    "golden": "playwright test -c golden/playwright.config.js",
+    "golden:update": "playwright test -c golden/playwright.config.js --update-snapshots",
+    "golden:record": "node golden/record.mjs",
+    "golden:report": "playwright show-report golden/.report",
+    "a11y": "GOLDEN_A11Y=1 playwright test -c golden/playwright.config.js",
+    "a11y:update": "GOLDEN_A11Y=1 A11Y_UPDATE=1 playwright test -c golden/playwright.config.js --workers 1 --retries 0"
   },
   "dependencies": {
     "@capacitor-firebase/messaging": "^7.5.0",
@@ -34,8 +40,10 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^7.6.8",
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^7.0.0",
     "@testing-library/react": "^16.3.2",
     "@vitejs/plugin-react": "^4.3.1",

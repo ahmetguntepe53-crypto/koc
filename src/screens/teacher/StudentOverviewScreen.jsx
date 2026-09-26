@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { C, bodyFont, monoFont, formatNet, netOf, recipientStatus, SKIP_REASONS } from "../../theme.js";
-import { Card, Button, Input, Textarea, Chip, EmptyState, Modal, ShowMoreButton, LoadingState, SectionHeader, StatusSquare, ListRow, ListGroup, MiniBars, AlertBox, BottomActionBar, Pill } from "../../components/common.jsx";
+import { Card, Button, Input, Textarea, Chip, EmptyState, Modal, ShowMoreButton, LoadingState, SectionHeader, StatusSquare, ListRow, ListGroup, MiniBars, AlertBox, BottomActionBar, Pill, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { BOARD_BRANCHES, boardBranchOf, gradeLabel, GRADE_LEVELS } from "../../subjects.js";
 import { formatDate } from "../../dates.js";
-import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, shortDate, isSchoolWide } from "../../work.js";
+import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, shortDate, isSchoolWide, lastSeenInfo, noteDate } from "../../work.js";
 
 // Koç — öğrenci detayı (şartname Z4): koçun asıl ekranı. Haftalık net + 6 haftalık seri, düşüş uyarısı,
 // BRANŞ ÖDEVLERİ ile BENİM VERDİĞİM ayrı başlıklarda (sorumluluk farklı: branş ödevi gecikince koç
@@ -90,42 +90,60 @@ function RecipientGroup({ title, right, items, onOpen, emptyText }) {
   );
 }
 
-// Koçun bu öğrenci için tuttuğu özel not — yalnızca koç görür (bkz. server/src/serialize.js > safeUser).
-// onSaved: kaydedilen not üst bileşenin verisine yazılır — modal tekrar açılınca eski not görünmesin.
-function CoachNoteModal({ studentId, initialNote, onClose, onSaved }) {
-  const [note, setNote] = useState(initialNote || "");
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState(null);
+// Eski tek not alanından taşınan not (migration 20260926220000, kimliği "mig" ile başlar) — ne zaman
+// yazıldığı bilinmiyor; canlıya alma günü yazılmış gibi tarihlenmesin, "Önceki not" olarak gösterilir.
+function isMigrated(note) {
+  return String(note.id).startsWith("mig");
+}
 
-  useEffect(() => {
-    if (!msg) return;
-    const t = setTimeout(() => setMsg(null), 3000);
-    return () => clearTimeout(t);
-  }, [msg]);
+// Koçun tarihli özel notu — yalnızca yazan koç görür (bkz. server > schema.prisma > CoachNote).
+// note verilirse düzenleme (ve silme), verilmezse yeni not. onSaved(note) / onDeleted(id) üst bileşenin
+// listesini günceller — sayfa yeniden yüklenmeden.
+function NoteModal({ studentId, note, onClose, onSaved, onDeleted }) {
+  const [text, setText] = useState(note?.text || "");
+  const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  // Eski tek not alanında sınır yoktu — taşınan uzun not kısaltmaya zorlanmadan düzenlenebilsin (sunucu da aynı kural).
+  const maxLength = Math.max(2000, note?.text.length || 0);
 
   const save = async () => {
+    if (!text.trim()) { setError("Not boş olamaz"); return; }
+    // Değişmediyse istek atılmaz — not "düzenlendi" görünmesin.
+    if (note && text.trim() === note.text) { onClose(); return; }
     setSaving(true);
-    setMsg(null);
+    setError("");
     try {
-      const { coachNote } = await api.teacherUpdateStudentNote(studentId, note);
-      onSaved?.(coachNote);
-      setMsg({ type: "ok", text: "Kaydedildi." });
+      const res = note ? await api.teacherEditNote(note.id, text) : await api.teacherAddNote(studentId, text);
+      onSaved(res.note);
     } catch (e) {
-      setMsg({ type: "error", text: e.message || "Kaydedilemedi" });
-    } finally {
+      setError(e.message || "Kaydedilemedi");
       setSaving(false);
     }
   };
 
+  const remove = async () => {
+    if (!(await confirmDialog({ title: "Not silinsin mi?", message: "Bu not kalıcı olarak silinecek.", confirmLabel: "Sil", danger: true }))) return;
+    setDeleting(true);
+    try {
+      await api.teacherDeleteNote(note.id);
+      onDeleted(note.id);
+    } catch (e) {
+      setError(e.message || "Silinemedi");
+      setDeleting(false);
+    }
+  };
+
   return (
-    <Modal title="Özel notum" onClose={onClose}>
+    <Modal title={note ? (isMigrated(note) ? "Önceki not" : `${noteDate(note.createdAt)} notu`) : "Yeni not"} onClose={onClose}>
       <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, marginBottom: 10 }}>
-        Bu öğrenci hakkında yalnızca sen görürsün — öğrenciye hiçbir zaman gösterilmez.
+        Yalnızca sen görürsün — öğrenciye ve branş öğretmenlerine gösterilmez. Öğrenci başka bir koça geçerse notların silinir.
       </div>
-      <Textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} rows={6} placeholder="ör. Matematik'te tıkanıyor, ailesiyle görüştüm..." />
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
-        {msg && <span style={{ fontSize: 12.5, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</span>}
+      <Textarea autoFocus value={text} maxLength={maxLength} onChange={(e) => setText(e.target.value)} rows={6} placeholder="ör. Matematik'te tıkanıyor, ailesiyle görüştüm..." />
+      {error && <div role="alert" style={{ color: C.red, fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 12 }}>{error}</div>}
+      <div style={{ display: "flex", gap: 8 }}>
+        {note && <Button variant="danger" disabled={saving || deleting} onClick={remove}>{deleting ? "Siliniyor..." : "Sil"}</Button>}
+        <div style={{ flex: 1 }}><Button full disabled={saving || deleting} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button></div>
       </div>
     </Modal>
   );
@@ -160,7 +178,10 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
   const [dateFilter, setDateFilter] = useState("today"); // varsayılan "Bugün" (kullanıcı isteği)
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
-  const [noteModal, setNoteModal] = useState(false);
+  // null | { note: null } (yeni) | { note } (düzenle)
+  const [noteModal, setNoteModal] = useState(null);
+  const notesRef = useRef(null);
+  const [notesVisible, setNotesVisible] = useState(3);
   const [sessionsVisible, setSessionsVisible] = useState(3);
 
   useEffect(() => {
@@ -170,11 +191,19 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
         setData(overview);
         const s = overview.student;
         const yks = exam?.yksExamDate ? Math.ceil((new Date(exam.yksExamDate).getTime() + TYT_START_UTC_OFFSET_MS - Date.now()) / 86400000) : null;
-        setHeader?.({ title: s.name, subtitle: [s.className, "koçu sensin", yks > 0 && `YKS'ye ${yks} gün`].filter(Boolean).join(" · ") });
+        const seen = lastSeenInfo(s.lastSeenAt, s.createdAt);
+        setHeader?.({ title: s.name, subtitle: [s.className, seen.never ? seen.label : `son giriş ${seen.label}`, "koçu sensin", yks > 0 && `YKS'ye ${yks} gün`].filter(Boolean).join(" · ") });
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [studentId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Başlıktaki "Notlar": not bölümüne kaydırır (eskiden tek notu açıyordu; notlar artık sayfada listeli).
+  useEffect(() => {
+    if (!noteOpen || !data) return;
+    notesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    onCloseNote?.();
+  }, [noteOpen, data]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const computed = useMemo(() => {
     if (!data) return null;
@@ -203,7 +232,19 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
 
   const { student, recipients, studySessions } = data;
   const coachId = student.teacherId;
-  const updateCoachNote = (coachNote) => setData((d) => ({ ...d, student: { ...d.student, coachNote } }));
+  const notes = data.notes || [];
+  const noteSaved = (note) => {
+    setData((d) => {
+      const list = d.notes || [];
+      const exists = list.some((n) => n.id === note.id);
+      return { ...d, notes: exists ? list.map((n) => (n.id === note.id ? note : n)) : [note, ...list] };
+    });
+    setNoteModal(null);
+  };
+  const noteDeleted = (id) => {
+    setData((d) => ({ ...d, notes: (d.notes || []).filter((n) => n.id !== id) }));
+    setNoteModal(null);
+  };
   const range = dateRangeFor(dateFilter, rangeStart, rangeEnd);
   const visible = recipients.filter((r) => overlaps(r, range))
     .sort((a, b) => dayKey(a.assignment.endDate).localeCompare(dayKey(b.assignment.endDate)));
@@ -223,12 +264,19 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
     untouched.length > 0 && `${untouched.join(", ")} dersine kendi isteğiyle bu hafta hiç dokunmadı.`,
   ].filter(Boolean).join(" ");
 
-  const openNote = () => setNoteModal(true);
+  const openNote = () => setNoteModal({ note: null });
 
   return (
     <div className="k-page k-page-form" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-      {(noteOpen || noteModal) && (
-        <CoachNoteModal key={studentId} studentId={studentId} initialNote={student.coachNote} onClose={() => { setNoteModal(false); onCloseNote?.(); }} onSaved={updateCoachNote} />
+      {noteModal && (
+        <NoteModal
+          key={noteModal?.note?.id || "new"}
+          studentId={studentId}
+          note={noteModal?.note || null}
+          onClose={() => setNoteModal(null)}
+          onSaved={noteSaved}
+          onDeleted={noteDeleted}
+        />
       )}
       {!gradeOk && <AlertBox style={{ marginBottom: 12 }}>{gradeLabel(student.gradeLevel)} — bu öğrenci ödev listelerinde görünmüyor, okul yöneticisi düzeltmeli.</AlertBox>}
       {student.banned && <div style={{ marginBottom: 12 }}><Pill tone="red">Hesap askıda</Pill></div>}
@@ -297,7 +345,7 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
                   title={b.label}
                   right={
                     <span style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-                      <MiniBars values={b.series.map((s) => (s ? s.net : null))} height={24} barWidth={5} gap={3} colorFor={(v, i) => (down ? (i === WEEKS - 1 ? C.red : `${C.red}77`) : (i === WEEKS - 1 ? C.green : `${C.green}66`))} />
+                      <MiniBars values={b.series.map((s) => (s ? s.pct : null))} height={24} barWidth={5} gap={3} colorFor={(v, i) => (down ? (i === WEEKS - 1 ? C.red : `${C.red}77`) : (i === WEEKS - 1 ? C.green : `${C.green}66`))} />
                       <span style={{ textAlign: "right", minWidth: 58 }}>
                         <span style={{ display: "block", fontFamily: monoFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{last ? formatNet(last.net, 2) : "—"}</span>
                         {d != null && <span style={{ display: "block", fontFamily: monoFont, fontSize: 11.5, fontWeight: 600, color: d >= 0 ? C.green : C.red }}>{d >= 0 ? "+" : "−"}{Math.abs(d)} puan</span>}
@@ -332,13 +380,33 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
         )}
       </Card>
 
-      <SectionHeader title="Özel notum" action={{ label: student.coachNote ? "Düzenle" : "Not ekle", onClick: openNote }} />
-      <Card>
-        <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, color: C.mutedLight, marginBottom: 8 }}>SADECE SEN GÖRÜRSÜN</div>
-        <div style={{ fontFamily: bodyFont, fontSize: 14, color: student.coachNote ? C.text2 : C.mutedLight, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
-          {student.coachNote || "Bu öğrenci hakkında henüz not almadın."}
+      <div ref={notesRef} style={{ scrollMarginTop: 80 }}>
+        <SectionHeader title="Özel notlarım" count={notes.length || null} />
+      </div>
+      {notes.length === 0 ? (
+        <Card style={{ fontFamily: bodyFont, fontSize: 14, color: C.mutedLight, lineHeight: 1.55 }}>
+          Bu öğrenci hakkında henüz not almadın. Notlar tarihli tutulur ve yalnızca sen görürsün.
+        </Card>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {notes.slice(0, notesVisible).map((n) => {
+            const edited = new Date(n.updatedAt) - new Date(n.createdAt) > 60000;
+            return (
+              <Card key={n.id} hover onClick={() => setNoteModal({ note: n })} style={{ padding: "14px 18px", cursor: "pointer" }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+                  {isMigrated(n)
+                    ? <span style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, color: C.text2 }}>Önceki not</span>
+                    : <span style={{ fontFamily: monoFont, fontSize: 12.5, fontWeight: 600, color: C.text2 }}>{noteDate(n.createdAt)}</span>}
+                  <span style={{ fontFamily: bodyFont, fontSize: 10, fontWeight: 700, letterSpacing: 1.1, color: C.mutedLight }}>SADECE SEN GÖRÜRSÜN</span>
+                  {edited && <span style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.mutedLight }}>· düzenlendi</span>}
+                </div>
+                <div style={{ fontFamily: bodyFont, fontSize: 14, color: C.text, lineHeight: 1.55, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{n.text}</div>
+              </Card>
+            );
+          })}
+          <ShowMoreButton remaining={notes.length - Math.min(notesVisible, notes.length)} onClick={() => setNotesVisible((v) => v + 5)} />
         </div>
-      </Card>
+      )}
 
       <BottomActionBar>
         {onCreateAssignment && <div style={{ flex: 1.6 }}><Button full onClick={() => onCreateAssignment(studentId)}>Kişisel ödev ver</Button></div>}

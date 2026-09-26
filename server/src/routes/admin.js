@@ -221,7 +221,12 @@ adminRouter.post("/users/:id/reassign-teacher", async (req, res) => {
       const teacher = await prisma.user.findUnique({ where: { id: teacherId } });
       assert(teacher && teacher.role === "TEACHER", "Geçersiz koç seçimi");
     }
-    const updated = await prisma.user.update({ where: { id: req.params.id }, data: { teacherId: teacherId || null } });
+    // Koç değişince eski koçun bu öğrenci hakkındaki özel notları silinir: notu yalnızca yazarı görebiliyordu,
+    // öğrenci artık onun değil — kimsenin göremediği ve silemediği veri tutulmaz (bkz. schema.prisma > CoachNote).
+    const [updated] = await prisma.$transaction([
+      prisma.user.update({ where: { id: req.params.id }, data: { teacherId: teacherId || null } }),
+      prisma.coachNote.deleteMany({ where: { studentId: req.params.id, ...(teacherId ? { teacherId: { not: teacherId } } : {}) } }),
+    ]);
     res.json({ user: safeUser(updated) });
   } catch (e) {
     handleErr(res, e);
@@ -236,10 +241,11 @@ adminRouter.post("/users/bulk-reassign-teacher", async (req, res) => {
       const teacher = await prisma.user.findUnique({ where: { id: teacherId } });
       assert(teacher && teacher.role === "TEACHER", "Geçersiz koç seçimi");
     }
-    const result = await prisma.user.updateMany({
-      where: { id: { in: studentIds }, role: "STUDENT" },
-      data: { teacherId: teacherId || null },
-    });
+    const [result] = await prisma.$transaction([
+      prisma.user.updateMany({ where: { id: { in: studentIds }, role: "STUDENT" }, data: { teacherId: teacherId || null } }),
+      // Eski koçların notları silinir (bkz. tekil reassign-teacher).
+      prisma.coachNote.deleteMany({ where: { studentId: { in: studentIds }, ...(teacherId ? { teacherId: { not: teacherId } } : {}) } }),
+    ]);
     res.json({ ok: true, updatedCount: result.count });
   } catch (e) {
     handleErr(res, e);

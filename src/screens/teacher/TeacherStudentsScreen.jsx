@@ -3,7 +3,7 @@ import { C, bodyFont, monoFont, formatNet, SKIP_REASONS, STATUS_LABEL } from "..
 import { EmptyState, Avatar, LoadingState, StatCard, StatGrid, SectionHeader, StatusSquare, Legend, Pill } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { BOARD_BRANCHES, boardBranchOf, GRADE_LEVELS, gradeLabel } from "../../subjects.js";
-import { weekBounds, shortDate } from "../../work.js";
+import { weekBounds, shortDate, lastSeenInfo } from "../../work.js";
 import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
 // Koç — Öğrencilerim (şartname Z3). Her satırda 7 kare: 7 branş dersinin bu haftaki ödevi, sıra her
@@ -19,17 +19,25 @@ function branchStatus(items) {
   return "done";
 }
 
+// Uygulamayı açmadığı gün sayısı (giriş yoksa sıralamada öne çıkar); aktifse 0.
+function inactiveDays(s) {
+  const info = lastSeenInfo(s.lastSeenAt, s.createdAt);
+  return info.inactive ? info.days : 0;
+}
+
 function compareBehind(a, b) {
   const skippedA = a.week.filter((w) => w.status === "skipped").length;
   const skippedB = b.week.filter((w) => w.status === "skipped").length;
   const netA = a.weekNet == null ? -Infinity : a.weekNet;
   const netB = b.weekNet == null ? -Infinity : b.weekNet;
-  return (b.overdueCount || 0) - (a.overdueCount || 0) || skippedB - skippedA || netA - netB || (a.name || "").localeCompare(b.name || "", "tr");
+  return (b.overdueCount || 0) - (a.overdueCount || 0) || inactiveDays(b) - inactiveDays(a) || skippedB - skippedA || netA - netB || (a.name || "").localeCompare(b.name || "", "tr");
 }
 
-// Sorunluysa kırmızı tek satır: "3 ödev gecikti · 4 ödevi pas geçti · hepsi “zaman yetmedi”".
+// Sorunluysa kırmızı tek satır: "4 gündür giriş yok · 3 ödev gecikti · 4 ödevi pas geçti · hepsi “zaman yetmedi”".
 function problemLine(s) {
   const parts = [];
+  const seen = lastSeenInfo(s.lastSeenAt, s.createdAt);
+  if (seen.inactive) parts.push(seen.never ? "hiç giriş yapmadı" : `${seen.days} gündür giriş yok`);
   if (s.overdueCount) parts.push(`${s.overdueCount} ödev gecikti`);
   const skipped = s.week.filter((w) => w.status === "skipped");
   if (skipped.length) {
@@ -51,19 +59,19 @@ function StudentRow({ s, onOpen }) {
       className="k-list-row"
       style={{ display: "flex", alignItems: "flex-start", gap: 14, width: "100%", boxSizing: "border-box", padding: "16px 0", background: "none", border: "none", borderTop: `1px solid ${C.divider}`, textAlign: "left", cursor: "pointer", fontFamily: bodyFont }}
     >
-      <Avatar name={s.name} size={46} />
+      <Avatar name={s.name} size={40} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "flex", alignItems: "baseline", columnGap: 10, rowGap: 2, flexWrap: "wrap" }}>
           <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3, color: C.text }}>{s.name}</span>
           {s.mine.total > 0 && <span style={{ fontSize: 12.5, color: C.mutedLight }}>benim ödevim <span style={{ fontFamily: monoFont }}>{s.mine.done}/{s.mine.total}</span></span>}
           {s.banned && <Pill tone="red">Askıda</Pill>}
         </span>
-        <span style={{ display: "flex", gap: 5, marginTop: 10, flexWrap: "wrap" }}>
+        <span style={{ display: "flex", gap: 4, marginTop: 10, flexWrap: "wrap" }}>
           {BOARD_BRANCHES.map((b) => {
             const status = branchStatus(s.week.filter((w) => w.schoolWide && boardBranchOf(w.subject) === b.key));
             return (
               <span key={b.key} style={{ opacity: status ? 1 : 0.35, display: "inline-flex" }}>
-                <StatusSquare subject={b.icon} status={status || "open"} size={30} title={`${b.label}: ${status ? STATUS_LABEL[status] : "bu hafta ödev yok"}`} />
+                <StatusSquare subject={b.icon} status={status || "open"} size={26} title={`${b.label}: ${status ? STATUS_LABEL[status] : "bu hafta ödev yok"}`} />
               </span>
             );
           })}
