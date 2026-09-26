@@ -64,8 +64,8 @@ export async function initNative() {
 // Style.Light = "açık zeminler için koyu metin", Style.Dark = "koyu zeminler için açık metin"
 // (isimler yanıltıcı, eklentinin kendi tanımı böyle).
 // Başlık artık beyaz bir çubuk değil, sayfa zemininde duruyor — şerit de zeminle aynı renk olmalı.
-const STATUS_STRIP_LIGHT = "#F4F5FA"; // theme.js > THEMES.light.bg ile senkron tutulmalı
-const STATUS_STRIP_DARK = "#0A1A1E"; // theme.js > THEMES.dark.bg ile senkron tutulmalı
+const STATUS_STRIP_LIGHT = "#F4F5F7"; // theme.js > THEMES.light.bg ile senkron tutulmalı
+const STATUS_STRIP_DARK = "#0D1014"; // theme.js > THEMES.dark.bg ile senkron tutulmalı
 export async function setStatusBarTheme(isDark) {
   document.documentElement.style.setProperty("--status-strip-bg", isDark ? STATUS_STRIP_DARK : STATUS_STRIP_LIGHT);
   if (!isNative) return;

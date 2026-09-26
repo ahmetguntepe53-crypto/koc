@@ -1,128 +1,104 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronRight, AlertTriangle, Search } from "lucide-react";
-import { C, bodyFont, monoFont, completionTone } from "../../theme.js";
-import { Card, Pill, Chip, EmptyState, Avatar, LoadingState, ProgressBar } from "../../components/common.jsx";
+import { C, bodyFont, monoFont, formatNet, SKIP_REASONS, STATUS_LABEL } from "../../theme.js";
+import { EmptyState, Avatar, LoadingState, StatCard, StatGrid, SectionHeader, StatusSquare, Legend, Pill } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { GRADE_LEVELS, gradeLabel } from "../../subjects.js";
+import { BOARD_BRANCHES, boardBranchOf, GRADE_LEVELS, gradeLabel } from "../../subjects.js";
+import { weekBounds, shortDate } from "../../work.js";
 import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
-// Filtre çipleri — varsayılan "Tümü". "Geciken var" başta: koçun listeye bakınca ilk sorduğu soru.
-const FILTERS = [
-  { value: "overdue", label: "Geciken var" },
-  { value: "all", label: "Tümü" },
-  { value: "11", label: "11. Sınıf" },
-  { value: "12", label: "12. Sınıf" },
-];
+// Koç — Öğrencilerim (şartname Z3). Her satırda 7 kare: 7 branş dersinin bu haftaki ödevi, sıra her
+// öğrencide aynı. Sıralama alfabetik değil, EN GERİDEN — koç ekranı açıp ilk iki satıra bakıp kapatabilmeli.
 
-// Büyük/küçük harfe duyarsız arama için tr-TR yerel ayarı şart: varsayılan toLowerCase "I"yı "i"ye,
-// "İ"yi noktalı birleşik "i̇"ye çeviriyor — "IŞIK" / "İlayda" aramaları eşleşmiyordu.
-function lower(value) {
-  return String(value || "").toLocaleLowerCase("tr-TR");
+// Bir branşın bu haftaki ödev(ler)inin toplam durumu (TYT ve AYT ayrı ödev olabilir): biri yapılmadıysa
+// kırmızı, pas varsa sarı, açık varsa nötr, hepsi çözüldüyse yeşil. O hafta ödevi yoksa null (soluk kare).
+function branchStatus(items) {
+  if (!items.length) return null;
+  if (items.some((i) => i.status === "missed")) return "missed";
+  if (items.some((i) => i.status === "skipped")) return "skipped";
+  if (items.some((i) => i.status === "open")) return "open";
+  return "done";
 }
 
-// En çok ilgi isteyen en üstte: tamamlama oranı artan. Ödevi hiç olmayan (null) en sonda — "hiç ödevi
-// yok" ile "başarısız" aynı şey değil. Eşitlikte önce gecikeni çok olan, sonra ada göre.
-function compareStudents(a, b) {
-  const ar = a.completionRate, br = b.completionRate;
-  if (ar == null && br != null) return 1;
-  if (br == null && ar != null) return -1;
-  if (ar != null && br != null && ar !== br) return ar - br;
-  const od = (b.overdueCount || 0) - (a.overdueCount || 0);
-  if (od !== 0) return od;
-  return (a.name || "").localeCompare(b.name || "", "tr");
+function compareBehind(a, b) {
+  const skippedA = a.week.filter((w) => w.status === "skipped").length;
+  const skippedB = b.week.filter((w) => w.status === "skipped").length;
+  const netA = a.weekNet == null ? -Infinity : a.weekNet;
+  const netB = b.weekNet == null ? -Infinity : b.weekNet;
+  return (b.overdueCount || 0) - (a.overdueCount || 0) || skippedB - skippedA || netA - netB || (a.name || "").localeCompare(b.name || "", "tr");
 }
 
-// Arama alanı — başında büyüteç ikonu. Input bileşeni etiket/alt boşluk taşıdığı için burada sade
-// bir <input> (k-field: odakta mor çerçeve).
-function SearchField({ value, onChange }) {
-  return (
-    <div style={{ position: "relative", marginBottom: 12 }}>
-      <Search size={17} color={C.mutedLight} strokeWidth={2.2} aria-hidden="true" style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
-      <input
-        type="search"
-        enterKeyHint="search"
-        className="k-field"
-        aria-label="Ad veya okul numarasıyla öğrenci ara"
-        placeholder="Öğrenci ara"
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        style={{
-          width: "100%", boxSizing: "border-box", height: 46, padding: "0 14px 0 40px",
-          background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusMd, boxShadow: C.shadowSm,
-          fontFamily: bodyFont, fontSize: 15, fontWeight: 500, color: C.text, outline: "none",
-        }}
-      />
-    </div>
-  );
+// Sorunluysa kırmızı tek satır: "3 ödev gecikti · 4 ödevi pas geçti · hepsi “zaman yetmedi”".
+function problemLine(s) {
+  const parts = [];
+  if (s.overdueCount) parts.push(`${s.overdueCount} ödev gecikti`);
+  const skipped = s.week.filter((w) => w.status === "skipped");
+  if (skipped.length) {
+    const reasons = [...new Set(skipped.map((w) => w.skipReason))];
+    const same = skipped.length > 1 && reasons.length === 1 && SKIP_REASONS[reasons[0]];
+    parts.push(`${skipped.length} ödevi pas geçti${same ? ` · hepsi “${SKIP_REASONS[reasons[0]].toLocaleLowerCase("tr-TR")}”` : ""}`);
+  }
+  if (!GRADE_LEVELS.includes(s.gradeLevel)) parts.push(`${gradeLabel(s.gradeLevel)} — yöneticiye bildir`);
+  return parts.join(" · ");
 }
 
-// Öğrenci satırı (72px): avatar 42, ad + "11-A · 11. Sınıf" (+ geciken sayısı), sağda tamamlama
-// yüzdesi ve 54px ilerleme çubuğu eşik renginde. Eskiden sınıf ve sınıf düzeyi iki ayrı rozetti —
-// aynı bilgiyi veriyorlardı, tek metne indi.
 function StudentRow({ s, onOpen }) {
-  // Düzeyi eksik/eski (11-12 dışı) olan öğrenci ödev listelerinde görünmüyor — admin düzeltmeli,
-  // bu yüzden kırmızı.
-  const gradeOk = GRADE_LEVELS.includes(s.gradeLevel);
-  const tone = completionTone(s.completionRate);
+  const problem = problemLine(s);
+  const delta = s.weekNet != null && s.prevWeekNet != null ? s.weekNet - s.prevWeekNet : null;
   return (
-    <Card hover={!!onOpen} onClick={onOpen ? () => onOpen(s.id, s.name) : undefined} style={{ padding: 0, cursor: onOpen ? "pointer" : "default" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 72, padding: "0 13px 0 14px" }}>
-        <Avatar name={s.name} size={42} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{s.name}</span>
-            {s.banned && <Pill tone="red">Askıda</Pill>}
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4, minWidth: 0, fontFamily: bodyFont, fontSize: 11.5 }}>
-            <span style={{ fontWeight: 500, color: C.mutedLight, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>
-              {s.className ? `${s.className} · ` : ""}
-              <span style={gradeOk ? undefined : { color: C.red, fontWeight: 700 }}>{gradeLabel(s.gradeLevel)}</span>
-            </span>
-            {s.overdueCount > 0 && (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontWeight: 700, color: C.red, whiteSpace: "nowrap", flexShrink: 0 }}>
-                <AlertTriangle size={12} strokeWidth={2.4} aria-hidden="true" />
-                <span><span style={{ fontFamily: monoFont }}>{s.overdueCount}</span> geciken</span>
+    <button
+      type="button"
+      onClick={() => onOpen(s.id, s.name)}
+      className="k-list-row"
+      style={{ display: "flex", alignItems: "flex-start", gap: 14, width: "100%", boxSizing: "border-box", padding: "16px 0", background: "none", border: "none", borderTop: `1px solid ${C.divider}`, textAlign: "left", cursor: "pointer", fontFamily: bodyFont }}
+    >
+      <Avatar name={s.name} size={46} />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "flex", alignItems: "baseline", columnGap: 10, rowGap: 2, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3, color: C.text }}>{s.name}</span>
+          {s.mine.total > 0 && <span style={{ fontSize: 12.5, color: C.mutedLight }}>benim ödevim <span style={{ fontFamily: monoFont }}>{s.mine.done}/{s.mine.total}</span></span>}
+          {s.banned && <Pill tone="red">Askıda</Pill>}
+        </span>
+        <span style={{ display: "flex", gap: 5, marginTop: 10, flexWrap: "wrap" }}>
+          {BOARD_BRANCHES.map((b) => {
+            const status = branchStatus(s.week.filter((w) => w.schoolWide && boardBranchOf(w.subject) === b.key));
+            return (
+              <span key={b.key} style={{ opacity: status ? 1 : 0.35, display: "inline-flex" }}>
+                <StatusSquare subject={b.icon} status={status || "open"} size={30} title={`${b.label}: ${status ? STATUS_LABEL[status] : "bu hafta ödev yok"}`} />
               </span>
-            )}
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
-          <span style={{ fontFamily: monoFont, fontSize: 16, fontWeight: 700, color: tone.fg, lineHeight: 1 }}>
-            {s.completionRate != null ? `%${s.completionRate}` : "—"}
-          </span>
-          <ProgressBar value={s.completionRate} color={tone.fg} width={54} height={5} />
-        </div>
-        {onOpen && <ChevronRight size={15} color={C.faintest} style={{ flexShrink: 0 }} />}
-      </div>
-    </Card>
+            );
+          })}
+        </span>
+        {problem && <span style={{ display: "block", fontSize: 13, fontWeight: 500, color: C.red, marginTop: 10, lineHeight: 1.4 }}>{problem}</span>}
+      </span>
+      <span style={{ textAlign: "right", flexShrink: 0, paddingTop: 2 }}>
+        <span style={{ display: "block", fontFamily: monoFont, fontSize: 17, fontWeight: 700, color: s.weekNet != null ? C.text : C.faintest }}>{s.weekNet != null ? formatNet(s.weekNet, 2) : "—"}</span>
+        {delta != null && <span style={{ display: "block", fontFamily: monoFont, fontSize: 12.5, fontWeight: 600, color: delta >= 0 ? C.green : C.red, marginTop: 2 }}>{delta >= 0 ? "+" : "−"}{formatNet(Math.abs(delta), 2)}</span>}
+        <span style={{ display: "block", fontSize: 11.5, color: C.mutedLight, marginTop: 2 }}>net</span>
+      </span>
+    </button>
   );
 }
 
-export default function TeacherStudentsScreen({ onOpen }) {
+export default function TeacherStudentsScreen({ user, onOpen, setHeader }) {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState("all");
 
   useEffect(() => {
     api.teacherListStudents().then(({ students }) => setStudents(students)).catch((e) => setLoadError(e.message || "Öğrenci listesi yüklenemedi")).finally(() => setLoading(false));
   }, []);
 
-  // Özet şeridi filtreden/aramadan bağımsız: koçun tüm öğrencileri için geçerli bir uyarı.
-  const overdueStudentCount = useMemo(() => students.filter((s) => s.overdueCount > 0).length, [students]);
+  const week = weekBounds();
+  useEffect(() => {
+    if (loading) return;
+    setHeader?.({ title: "Öğrencilerim", subtitle: [user?.name, `${students.length} öğrenci`, `${shortDate(week.mon)} – ${shortDate(week.sun)}`].filter(Boolean).join(" · ") });
+  }, [loading, students.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const visibleStudents = useMemo(() => {
-    const q = lower(query.trim());
-    return students
-      .filter((s) => {
-        if (filter === "overdue" && !(s.overdueCount > 0)) return false;
-        if ((filter === "11" || filter === "12") && s.gradeLevel !== Number(filter)) return false;
-        if (q && !lower(s.name).includes(q) && !lower(s.username).includes(q)) return false;
-        return true;
-      })
-      .sort(compareStudents);
-  }, [students, query, filter]);
+  const sorted = useMemo(() => [...students].sort(compareBehind), [students]);
+  const behind = students.filter((s) => s.overdueCount > 0).length;
+  const skippedWeek = students.reduce((n, s) => n + s.week.filter((w) => w.status === "skipped").length, 0);
+  const nets = students.map((s) => s.weekNet).filter((n) => n != null);
+  const avgNet = nets.length ? nets.reduce((a, b) => a + b, 0) / nets.length : null;
 
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
@@ -135,30 +111,26 @@ export default function TeacherStudentsScreen({ onOpen }) {
         <EmptyState text="Henüz sana atanmış bir öğrenci yok — okul yöneticinden öğrenci ataması istemen gerekebilir." />
       ) : (
         <>
-          <SearchField value={query} onChange={setQuery} />
-          <div className="k-chip-row" role="group" aria-label="Öğrenci filtresi" style={{ marginBottom: 14, paddingBottom: 2 }}>
-            {FILTERS.map((f) => (
-              <Chip key={f.value} active={filter === f.value} onClick={() => setFilter(f.value)}>{f.label}</Chip>
-            ))}
+          <StatGrid min={96}>
+            <StatCard label="öğrenci geride" value={behind} tone={behind ? "red" : "muted"} />
+            <StatCard label="ödev pas geçildi" value={skippedWeek} tone={skippedWeek ? "amber" : "muted"} />
+            <StatCard label="ortalama net" value={avgNet != null ? formatNet(avgNet, 1) : "—"} />
+          </StatGrid>
+
+          <div style={{ marginTop: 12, padding: "14px 16px", borderRadius: 16, background: C.surface, border: `1px solid ${C.border}`, fontFamily: bodyFont }}>
+            <div style={{ fontSize: 13.5, color: C.text2, lineHeight: 1.5 }}>Her satırdaki 7 kare, 7 branş dersinin bu haftaki ödevi. Sıra her öğrencide aynı.</div>
+            <Legend square style={{ marginTop: 10 }} items={[
+              { label: "çözüldü", color: C.green },
+              { label: "pas geçti", color: C.amber },
+              { label: "yapılmadı", color: C.red },
+              { label: "süresi dolmadı", color: C.faintest },
+            ]} />
           </div>
 
-          {overdueStudentCount > 0 && (
-            <div role="status" style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", borderRadius: 13, background: C.redSoft, color: C.red, marginBottom: 14, fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600 }}>
-              <AlertTriangle size={16} strokeWidth={2.3} aria-hidden="true" style={{ flexShrink: 0 }} />
-              <span><span style={{ fontFamily: monoFont, fontWeight: 700 }}>{overdueStudentCount}</span> öğrencinin geciken ödevi var</span>
-            </div>
-          )}
-
-          {visibleStudents.length === 0 ? (
-            <EmptyState
-              icon={query.trim() ? Search : undefined}
-              text={query.trim() ? "Aramana uyan öğrenci yok." : filter === "overdue" ? "Geciken ödevi olan öğrenci yok." : "Bu sınıf düzeyinde öğrencin yok."}
-            />
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {visibleStudents.map((s) => <StudentRow key={s.id} s={s} onOpen={onOpen} />)}
-            </div>
-          )}
+          <SectionHeader title="En geriden başlayarak" />
+          <div className="k-bleed" style={{ borderBottom: `1px solid ${C.divider}` }}>
+            {sorted.map((s) => <StudentRow key={s.id} s={s} onOpen={onOpen} />)}
+          </div>
         </>
       )}
     </div>

@@ -1,19 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { PlusCircle } from "lucide-react";
-import { C, displayFont, bodyFont, monoFont, completionTone, formatNet } from "../../theme.js";
-import { Card, Button, Input, Textarea, Pill, Chip, EmptyState, StatCard, StatGrid, Avatar, Modal, ShowMoreButton, LoadingState, SectionHeader, AssignmentRow, Num } from "../../components/common.jsx";
+import { C, bodyFont, monoFont, formatNet, netOf, recipientStatus, SKIP_REASONS } from "../../theme.js";
+import { Card, Button, Input, Textarea, Chip, EmptyState, Modal, ShowMoreButton, LoadingState, SectionHeader, StatusSquare, ListRow, ListGroup, MiniBars, AlertBox, BottomActionBar, Pill } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { subjectIconUrl, gradeLabel, GRADE_LEVELS } from "../../subjects.js";
-import { formatDate, daysUntil } from "../../dates.js";
+import { BOARD_BRANCHES, boardBranchOf, gradeLabel, GRADE_LEVELS } from "../../subjects.js";
+import { formatDate } from "../../dates.js";
+import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, shortDate, isSchoolWide } from "../../work.js";
 
-// TYT/AYT'nin standart net hesaplama formülü — server/src/routes/stats.js'deki net()'in
-// birebir aynısı, burada yalnızca tamamlanan satırlardaki "Net" rozeti için ayrıca hesaplanıyor.
-function net(correctCount, wrongCount) {
-  return Math.round((correctCount - wrongCount / 4) * 100) / 100;
-}
-
-// KULLANICI İSTEĞİ: "Tümü" en başta aktif haldeydi — öğretmen ekranı açar açmaz önce BUGÜNÜ görmeli,
-// "Tümü" daha az kullanılan bir seçenek olduğu için listenin sonuna alındı.
+// Koç — öğrenci detayı (şartname Z4): koçun asıl ekranı. Haftalık net + 6 haftalık seri, düşüş uyarısı,
+// BRANŞ ÖDEVLERİ ile BENİM VERDİĞİM ayrı başlıklarda (sorumluluk farklı: branş ödevi gecikince koç
+// hatırlatır, kendi ödevi gecikince kendi planını gözden geçirir), ders ders net, serbest çalışma, özel not.
+//
+// KULLANICI İSTEĞİ (korunuyor): tarih çiplerinde "Bugün" ilk ve varsayılan — öğretmen ekranı açınca önce
+// bugünü görmeli; "Tümü" en sonda. Çipler iki ödev bölümünü süzer. Rapor ve Notlar başlıkta (App.jsx).
 const DATE_FILTERS = [
   { value: "today", label: "Bugün" },
   { value: "week", label: "Bu hafta" },
@@ -21,105 +19,79 @@ const DATE_FILTERS = [
   { value: "range", label: "Aralık" },
   { value: "all", label: "Tümü" },
 ];
+const INITIAL_COUNT = 7;
+const PAGE_SIZE = 7;
+const WEEKS = 6;
+const TYT_START_UTC_OFFSET_MS = (7 * 60 + 15) * 60 * 1000;
 
-// Her bölümde başta en fazla 2 satır; "N tane daha" her basışta 5 tane daha açar.
-const INITIAL_COUNT = 2;
-const PAGE_SIZE = 5;
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
-function startOfDay(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x; }
-function endOfDay(d) { const x = new Date(d); x.setHours(23, 59, 59, 999); return x; }
-// Pazartesi başlangıçlı hafta — PlanScreen'deki takvim ızgarasıyla aynı kural (bkz. WEEKDAY_LABELS).
-function startOfWeek(d) { const x = startOfDay(d); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
-function endOfWeek(d) { const x = startOfWeek(d); x.setDate(x.getDate() + 6); return endOfDay(x); }
-function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
-function endOfMonth(d) { return endOfDay(new Date(d.getFullYear(), d.getMonth() + 1, 0)); }
-
-// Bir ödevin [scheduledDate, endDate] aralığı seçilen dönemle KESİŞİYORSA eşleşir — böylece birden
-// çok günü kapsayan bir ödev, o aralığa denk gelen her dönem filtresinde de (ör. hem "Bu hafta" hem
-// başladığı günün "Bugün"ünde) görünür, yalnızca tek bir güne sabitlenmiş gibi kaybolmaz.
-function overlapsRange(r, range) {
+// Bir ödevin [scheduledDate, endDate] aralığı seçilen dönemle KESİŞİYORSA eşleşir — haftalık branş ödevi
+// o haftanın her gününün "Bugün"ünde görünür.
+function dateRangeFor(filter, rangeStart, rangeEnd) {
+  const now = new Date();
+  if (filter === "today") return [ymd(now), ymd(now)];
+  if (filter === "week") { const w = weekBounds(); return [w.mon, w.sun]; }
+  if (filter === "month") return [ymd(new Date(now.getFullYear(), now.getMonth(), 1)), ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0))];
+  if (filter === "range" && rangeStart && rangeEnd) return [rangeStart, rangeEnd];
+  return null;
+}
+function overlaps(r, range) {
   if (!range) return true;
-  const [from, to] = range;
-  return new Date(r.assignment.endDate) >= from && new Date(r.assignment.scheduledDate) <= to;
+  return dayKey(r.assignment.endDate) >= range[0] && dayKey(r.assignment.scheduledDate) <= range[1];
 }
 
-// Satırın durum rozeti — bölüme göre: geciken kırmızı gün sayısı, bekleyen amber kalan süre, taslak
-// nötr, tamamlanan yeşil net (tamamlanan bir ödevin en değerli bilgisi sonucudur).
-function rowStatus(r, section) {
-  if (section === "overdue") {
-    return { status: "overdue", badge: <Pill tone="red"><Num>{Math.abs(daysUntil(r.assignment.endDate))}</Num>gün gecikti</Pill> };
+// Satırın durum metni: "süresi dün doldu" (kırmızı), "Perşembe girdi" (yeşil), "Pazar 23:59" (soluk),
+// "“konuyu bilmiyorum”" (sarı), taslak (soluk).
+function statusText(r) {
+  if (r.assignment.status !== "SENT") return { text: "taslak · gönderilmedi", color: C.mutedLight };
+  const status = recipientStatus(r);
+  if (status === "done") {
+    const at = r.completedAt || r.submission?.createdAt;
+    const label = at && inWeek(at, weekBounds()) ? new Date(at).toLocaleDateString("tr-TR", { weekday: "long" }) : at ? shortDate(at) : "";
+    return { text: `${label} girdi`.trim(), color: C.green };
   }
-  if (section === "completed") {
-    return {
-      status: "done",
-      badge: r.submission
-        ? <Pill tone="green" mono>Net {formatNet(net(r.submission.correctCount, r.submission.wrongCount))}</Pill>
-        : <Pill tone="green">Tamamlandı</Pill>,
-    };
-  }
-  // Taslak — öğrenciye henüz gönderilmedi, bu yüzden "gecikti"/"kaldı" rozeti burada ASLA
-  // gösterilmemeli (öğrenci ödevi hiç görmedi ki geciksin).
-  if (r.assignment.status !== "SENT") return { status: "draft", badge: <Pill tone="muted">Taslak</Pill> };
-  const diff = daysUntil(r.assignment.endDate);
-  return {
-    status: "pending",
-    badge: diff <= 0 ? <Pill tone="amber">Bugün son gün</Pill>
-      : diff === 1 ? <Pill tone="amber">Yarın</Pill>
-      : <Pill tone="amber"><Num>{diff}</Num>gün kaldı</Pill>,
-  };
+  if (status === "skipped") return { text: `“${(SKIP_REASONS[r.skipReason] || "başka sebep").toLocaleLowerCase("tr-TR")}”`, color: C.amber };
+  if (status === "missed") return { text: `süresi ${endedLabel(r.assignment.endDate).replace(" bitti", "")} doldu`, color: C.red };
+  return { text: deadlineLabel(r.assignment.endDate), color: C.mutedLight };
 }
 
-// coachId: öğrencinin koçu (bu ekranı açan öğretmen) — ödevi başka bir öğretmen (ör. ders öğretmeninin
-// okul çapındaki ödevi ya da önceki koç) verdiyse meta satırında kimin verdiği gösterilir; detay salt okunur açılır.
-function RecipientRow({ r, section, onOpen, coachId }) {
-  const { status, badge } = rowStatus(r, section);
-  const byOtherTeacher = r.assignment.teacherId !== coachId && r.assignment.teacher?.name;
-  const meta = [r.assignment.examType, r.assignment.pageRange, byOtherTeacher ? `${r.assignment.teacher.name} verdi` : null].filter(Boolean).join(" · ");
+function RecipientRow({ r, onOpen }) {
+  const { text, color } = statusText(r);
+  const net = netOf(r.submission);
+  const status = r.assignment.status !== "SENT" ? "open" : recipientStatus(r);
   return (
-    <AssignmentRow
-      iconSrc={subjectIconUrl(r.assignment.subject)}
-      title={`${r.assignment.subject} — ${r.assignment.topic}`}
-      status={status}
-      badge={badge}
-      meta={meta}
+    <ListRow
+      left={<StatusSquare subject={r.assignment.subject} status={status} size={34} />}
+      title={r.assignment.topic}
+      subtitle={<span style={{ color }}>{r.assignment.subject} · {text}</span>}
+      right={<span style={{ fontFamily: monoFont, fontSize: 15, fontWeight: 700, color: net != null ? C.text : C.faintest, flexShrink: 0 }}>{net != null ? formatNet(net, 2) : "—"}</span>}
       onClick={() => onOpen(r.assignmentId, "studentOverview")}
     />
   );
 }
 
-// Geciken / Bekleyen / Tamamlanan bölümlerinden biri. Kutucuğa tıklanıp tek bir bölüme süzülmüşken
-// başlıkta adet yerine "Tümünü göster" bağlantısı çıkar — eskiden "Toplam Ödev" kutucuğu bu işi
-// görüyordu, kutucuk sayısı üçe inince geri dönüş yolu buraya taşındı.
-function RecipientSection({ title, tone, section, items, visibleCount, onShowMore, emptyText, onClearFilter, onOpen, coachId }) {
+function RecipientGroup({ title, right, items, onOpen, emptyText }) {
+  const [visible, setVisible] = useState(INITIAL_COUNT);
   return (
-    <div>
-      <SectionHeader
-        title={title}
-        count={items.length}
-        tone={tone}
-        action={onClearFilter ? { label: "Tümünü göster", onClick: onClearFilter } : undefined}
-      />
+    <>
+      <SectionHeader title={`${title} (${items.length})`} right={right} />
       {items.length === 0 ? (
         <EmptyState compact text={emptyText} />
       ) : (
         <>
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {items.slice(0, visibleCount).map((r) => <RecipientRow key={r.id} r={r} section={section} onOpen={onOpen} coachId={coachId} />)}
-          </div>
-          <ShowMoreButton remaining={items.length - Math.min(visibleCount, items.length)} onClick={onShowMore} />
+          <ListGroup>{items.slice(0, visible).map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpen} />)}</ListGroup>
+          <ShowMoreButton remaining={items.length - Math.min(visible, items.length)} onClick={() => setVisible((n) => n + PAGE_SIZE)} />
         </>
       )}
-    </div>
+    </>
   );
 }
 
-// Koçun bu öğrenci için tuttuğu özel not — yalnızca koç görür, öğrenciye hiç gösterilmez (bkz.
-// server/src/serialize.js > safeUser, coachNote orada bilerek süzülüyor). Artık sayfada sürekli yer
-// kaplamıyor — App.jsx'teki başlık çubuğundaki not defteri ikonu bunu bir modal olarak açıyor
-// (bkz. App.jsx > coachNoteOpen). key={studentId} ile öğrenci değişince sıfırdan mount edilir.
-// onSaved: kaydedilen not üst bileşenin verisine geri yazılır — modal kapanınca unmount olup bir
-// sonraki açılışta initialNote'tan (ilk yüklemedeki eski not) yeniden başladığı için, aksi halde
-// tekrar açınca eski not görünüyor, o haliyle kaydedilirse yeni not siliniyordu.
+// Koçun bu öğrenci için tuttuğu özel not — yalnızca koç görür (bkz. server/src/serialize.js > safeUser).
+// onSaved: kaydedilen not üst bileşenin verisine yazılır — modal tekrar açılınca eski not görünmesin.
 function CoachNoteModal({ studentId, initialNote, onClose, onSaved }) {
   const [note, setNote] = useState(initialNote || "");
   const [saving, setSaving] = useState(false);
@@ -146,205 +118,232 @@ function CoachNoteModal({ studentId, initialNote, onClose, onSaved }) {
   };
 
   return (
-    <Modal title="Notlarım" onClose={onClose}>
-      <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginBottom: 10 }}>
+    <Modal title="Özel notum" onClose={onClose}>
+      <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, marginBottom: 10 }}>
         Bu öğrenci hakkında yalnızca sen görürsün — öğrenciye hiçbir zaman gösterilmez.
       </div>
-      <Textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} rows={5} placeholder="ör. Matematik konularında tekrar gerekiyor, sınav kaygısı yüksek..." />
+      <Textarea autoFocus value={note} onChange={(e) => setNote(e.target.value)} rows={6} placeholder="ör. Matematik'te tıkanıyor, ailesiyle görüştüm..." />
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
         <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
-        {msg && <span style={{ fontSize: 12, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</span>}
+        {msg && <span style={{ fontSize: 12.5, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</span>}
       </div>
     </Modal>
   );
 }
 
-// Öğrenci başlık kartı — eskiden ayrı kutucuklarda duran "Toplam Ödev" ve "Tamamlanma Oranı" buraya
-// taşındı: altı sayıyı aynı anda kimse okumuyordu. Durumu olmayan kart → sol şerit yok.
-function StudentHeaderCard({ student, assignmentCount, completionRate }) {
-  const gradeOk = GRADE_LEVELS.includes(student.gradeLevel);
-  const tone = completionTone(completionRate);
-  return (
-    <Card style={{ padding: 16, marginBottom: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
-        <Avatar name={student.name} size={48} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-            <span style={{ fontFamily: displayFont, fontSize: 16, fontWeight: 700, letterSpacing: -0.1, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{student.name}</span>
-            {student.banned && <Pill tone="red">Askıda</Pill>}
-          </div>
-          <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 500, color: C.muted, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {student.className ? `${student.className} · ` : ""}
-            {/* Düzeyi eksik/eski (11-12 dışı) olan öğrenci ödev listelerinde görünmüyor — admin düzeltmeli. */}
-            <span style={gradeOk ? undefined : { color: C.red, fontWeight: 700 }}>{gradeLabel(student.gradeLevel)}</span>
-            {" · "}<span style={{ fontFamily: monoFont }}>{assignmentCount}</span> ödev
-          </div>
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
-          <span style={{ fontFamily: monoFont, fontSize: 20, fontWeight: 700, letterSpacing: -0.4, color: tone.fg, lineHeight: 1.1 }}>
-            {completionRate != null ? `%${completionRate}` : "—"}
-          </span>
-          <span style={{ fontFamily: bodyFont, fontSize: 10, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", color: C.mutedLight, marginTop: 4 }}>
-            Tamamlama
-          </span>
-        </div>
-      </div>
-    </Card>
-  );
+// Haftalık net ve başarı yüzdesi serileri (son 6 hafta, en eski → bu hafta). Başarı yüzdesi = toplam net /
+// toplam soru — ödevlerin soru sayıları farklı olduğu için düşüş/gelişim yüzdeyle değerlendirilir.
+function weeklySeries(recipients, predicate = () => true) {
+  return Array.from({ length: WEEKS }, (_, i) => {
+    const bounds = weekBounds(i - (WEEKS - 1));
+    let net = 0, total = 0, n = 0;
+    for (const r of recipients) {
+      if (!r.submission || !predicate(r) || !inWeek(r.assignment.endDate, bounds)) continue;
+      net += netOf(r.submission);
+      total += r.submission.correctCount + r.submission.wrongCount + r.submission.blankCount;
+      n += 1;
+    }
+    return n ? { net, pct: total ? Math.round((net / total) * 100) : null } : null;
+  });
 }
 
-// onBack: geri düğmesi artık App başlığında (App.jsx > headerBack) — sayfada ayrı bir "dön" bağlantısı yok.
-export default function StudentOverviewScreen({ studentId, onOpenAssignment, onCreateAssignment, noteOpen, onCloseNote }) {
+// Düşüyor mu: en az 3 haftalık veri, son değer ilkinden 15 puandan fazla düşük ve bir önceki haftadan da düşük.
+function declining(series) {
+  const pts = series.filter((s) => s?.pct != null).map((s) => s.pct);
+  return pts.length >= 3 && pts[pts.length - 1] < pts[0] - 15 && pts[pts.length - 1] <= pts[pts.length - 2];
+}
+
+export default function StudentOverviewScreen({ studentId, onOpenAssignment, onCreateAssignment, noteOpen, onCloseNote, setHeader }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  // Geciken/Bekleyen/Tamamlanan kutucuklarına tıklayınca aşağıdaki liste o bölüme süzülür; aynı
-  // kutucuğa tekrar basmak (ya da başlıktaki "Tümünü göster") süzmeyi kaldırır.
-  const [filter, setFilter] = useState("all"); // "all" | "overdue" | "pending" | "completed"
-  const toggleFilter = (value) => setFilter((f) => (f === value ? "all" : value));
-  const [dateFilter, setDateFilter] = useState("today"); // bkz. DATE_FILTERS — varsayılan "Bugün"
+  const [dateFilter, setDateFilter] = useState("today"); // varsayılan "Bugün" (kullanıcı isteği)
   const [rangeStart, setRangeStart] = useState("");
   const [rangeEnd, setRangeEnd] = useState("");
-  // Her bölümde başta INITIAL_COUNT satır; öğrenci ya da tarih aralığı değişince baştan başlar.
-  const [visibleOverdueCount, setVisibleOverdueCount] = useState(INITIAL_COUNT);
-  const [visiblePendingCount, setVisiblePendingCount] = useState(INITIAL_COUNT);
-  const [visibleCompletedCount, setVisibleCompletedCount] = useState(INITIAL_COUNT);
-  useEffect(() => {
-    setVisibleOverdueCount(INITIAL_COUNT);
-    setVisiblePendingCount(INITIAL_COUNT);
-    setVisibleCompletedCount(INITIAL_COUNT);
-  }, [studentId, dateFilter, rangeStart, rangeEnd]);
+  const [noteModal, setNoteModal] = useState(false);
+  const [sessionsVisible, setSessionsVisible] = useState(3);
 
   useEffect(() => {
     setLoading(true);
-    api.teacherStudentOverview(studentId)
-      .then(setData)
+    Promise.all([api.teacherStudentOverview(studentId), api.getExamDates().catch(() => null)])
+      .then(([overview, exam]) => {
+        setData(overview);
+        const s = overview.student;
+        const yks = exam?.yksExamDate ? Math.ceil((new Date(exam.yksExamDate).getTime() + TYT_START_UTC_OFFSET_MS - Date.now()) / 86400000) : null;
+        setHeader?.({ title: s.name, subtitle: [s.className, "koçu sensin", yks > 0 && `YKS'ye ${yks} gün`].filter(Boolean).join(" · ") });
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, [studentId]);
+  }, [studentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // React Hook kuralları gereği erken return'lerden (aşağıdaki loading/error/!data kontrolleri)
-  // ÖNCE çağrılmalı — aksi halde ilk (loading) render'da hiç çağrılmayıp veri gelince çağrılmaya
-  // başlar, hook sayısı render'lar arası değişir ve React "Rendered more hooks than during the
-  // previous render" hatasıyla çöker (ErrorBoundary'de "bir şeyler ters gitti" olarak görünür).
-  const dateRange = useMemo(() => {
-    const now = new Date();
-    if (dateFilter === "today") return [startOfDay(now), endOfDay(now)];
-    if (dateFilter === "week") return [startOfWeek(now), endOfWeek(now)];
-    if (dateFilter === "month") return [startOfMonth(now), endOfMonth(now)];
-    if (dateFilter === "range" && rangeStart && rangeEnd) return [startOfDay(new Date(rangeStart)), endOfDay(new Date(rangeEnd))];
-    return null;
-  }, [dateFilter, rangeStart, rangeEnd]);
+  const computed = useMemo(() => {
+    if (!data) return null;
+    const sent = data.recipients.filter((r) => r.assignment.status === "SENT");
+    const thisWeek = weekBounds();
+    const lastWeek = weekBounds(-1);
+    const weekItems = sent.filter((r) => inWeek(r.assignment.endDate, thisWeek));
+    const sumNet = (items) => items.reduce((s, r) => s + (netOf(r.submission) ?? 0), 0);
+    const hasNet = (items) => items.some((r) => r.submission);
+    const weekNet = hasNet(weekItems) ? sumNet(weekItems) : null;
+    const lastItems = sent.filter((r) => inWeek(r.assignment.endDate, lastWeek));
+    const lastNet = hasNet(lastItems) ? sumNet(lastItems) : null;
+    const counts = { done: 0, missed: 0, skipped: 0, open: 0 };
+    weekItems.forEach((r) => { counts[recipientStatus(r)] += 1; });
+    const overall = weeklySeries(sent);
+    const branches = BOARD_BRANCHES.map((b) => ({ ...b, series: weeklySeries(sent, (r) => boardBranchOf(r.assignment.subject) === b.key) }))
+      .filter((b) => b.series.some(Boolean));
+    const falling = branches.filter((b) => declining(b.series));
+    return { weekItems, weekNet, lastNet, counts, overall, branches, falling };
+  }, [data]);
 
   const page = (children) => <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>{children}</div>;
   if (loading) return page(<LoadingState />);
   if (error) return page(<EmptyState text={error} />);
-  if (!data) return null;
+  if (!data || !computed) return null;
 
   const { student, recipients, studySessions } = data;
+  const coachId = student.teacherId;
   const updateCoachNote = (coachNote) => setData((d) => ({ ...d, student: { ...d.student, coachNote } }));
-  const dateFilteredRecipients = recipients.filter((r) => overlapsRange(r, dateRange));
+  const range = dateRangeFor(dateFilter, rangeStart, rangeEnd);
+  const visible = recipients.filter((r) => overlaps(r, range))
+    .sort((a, b) => dayKey(a.assignment.endDate).localeCompare(dayKey(b.assignment.endDate)));
+  const branchItems = visible.filter((r) => isSchoolWide(r.assignment));
+  const mineItems = visible.filter((r) => !isSchoolWide(r.assignment) && r.assignment.teacherId === coachId);
+  const otherItems = visible.filter((r) => !isSchoolWide(r.assignment) && r.assignment.teacherId !== coachId);
 
-  // Tamamlanma oranı yalnızca GÖNDERİLMİŞ (SENT) ödevler üzerinden hesaplanır — taslaklar (DRAFT)
-  // öğrenciye hiç ulaşmadığı için paydaya girerse oran yapay olarak düşer, ayrıca /teacher/students
-  // listesindeki orandan (o da yalnızca SENT sayar) tutarsız çıkar. Başlıktaki ödev sayısı ve aşağıdaki
-  // liste yine tüm recipients'ı (taslaklar dahil) gösterir — koç planladığı her şeyi görebilsin diye.
-  // Hepsi seçili tarih dönemine göre (dateFilteredRecipients) hesaplanır — "Bu ay" seçiliyken
-  // başlığın ve kutucukların o ayki durumu yansıtması için.
-  const sentRecipients = dateFilteredRecipients.filter((r) => r.assignment.status === "SENT");
-  const completionRate = sentRecipients.length ? Math.round((sentRecipients.filter((r) => r.completed).length / sentRecipients.length) * 100) : null;
-  // Taslaklar (henüz öğrenciye gönderilmemiş) "tamamlanmış" olamayacağı için doğal olarak
-  // bekleyenler tarafına düşer — koç onları da burada (ayrı "Taslak" rozetiyle) görsün ister.
-  const pending = dateFilteredRecipients.filter((r) => !r.completed);
-  // Geciken ödevler kendi ayrı bölümünde (en üstte) gösteriliyor — "Bekleyen" bölümüyle çakışıp aynı
-  // ödevin iki kez listelenmemesi için buradan çıkarılıyor.
-  const isOverdue = (r) => r.assignment.status === "SENT" && daysUntil(r.assignment.endDate) < 0;
-  const overdue = pending.filter(isOverdue);
-  const notOverdue = pending.filter((r) => !isOverdue(r));
-  const completed = dateFilteredRecipients.filter((r) => r.completed);
-  const clearFilter = filter !== "all" ? () => setFilter("all") : undefined;
+  const { weekItems, weekNet, lastNet, counts, overall, branches, falling } = computed;
+  const delta = weekNet != null && lastNet != null ? weekNet - lastNet : null;
+  const gradeOk = GRADE_LEVELS.includes(student.gradeLevel);
+
+  const weekSessions = studySessions.filter((s) => inWeek(s.studyDate, weekBounds()));
+  const sessionSubjects = [...new Set(weekSessions.map((s) => s.subject))];
+  const untouched = falling.filter((b) => !weekSessions.some((s) => boardBranchOf(s.subject) === b.key)).map((b) => b.label);
+  const sessionComment = [
+    weekSessions.length > 1 && sessionSubjects.length === 1 && `Hepsi ${sessionSubjects[0]}.`,
+    untouched.length > 0 && `${untouched.join(", ")} dersine kendi isteğiyle bu hafta hiç dokunmadı.`,
+  ].filter(Boolean).join(" ");
+
+  const openNote = () => setNoteModal(true);
 
   return (
-    <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-      <StudentHeaderCard student={student} assignmentCount={dateFilteredRecipients.length} completionRate={completionRate} />
+    <div className="k-page k-page-form" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+      {(noteOpen || noteModal) && (
+        <CoachNoteModal key={studentId} studentId={studentId} initialNote={student.coachNote} onClose={() => { setNoteModal(false); onCloseNote?.(); }} onSaved={updateCoachNote} />
+      )}
+      {!gradeOk && <AlertBox style={{ marginBottom: 12 }}>{gradeLabel(student.gradeLevel)} — bu öğrenci ödev listelerinde görünmüyor, okul yöneticisi düzeltmeli.</AlertBox>}
+      {student.banned && <div style={{ marginBottom: 12 }}><Pill tone="red">Hesap askıda</Pill></div>}
 
-      {noteOpen && <CoachNoteModal key={studentId} studentId={studentId} initialNote={student.coachNote} onClose={onCloseNote} onSaved={updateCoachNote} />}
+      {/* Bu haftanın neti + 6 haftalık seri */}
+      <Card style={{ padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 14 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, color: C.mutedLight }}>BU HAFTANIN NETİ</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8 }}>
+            <span style={{ fontFamily: monoFont, fontSize: 34, fontWeight: 700, letterSpacing: -1.4, color: weekNet != null ? C.text : C.faintest }}>{weekNet != null ? formatNet(weekNet, 2) : "—"}</span>
+            {delta != null && <span style={{ fontFamily: monoFont, fontSize: 15, fontWeight: 700, color: delta >= 0 ? C.green : C.red }}>{delta >= 0 ? "+" : "−"}{formatNet(Math.abs(delta), 2)}</span>}
+          </div>
+          <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, marginTop: 6 }}>
+            {weekItems.length
+              ? <><span style={{ fontFamily: monoFont }}>{weekItems.length}</span> ödev · <span style={{ fontFamily: monoFont }}>{counts.done}</span> girildi{counts.missed ? <> · <span style={{ fontFamily: monoFont }}>{counts.missed}</span> gecikti</> : null}{counts.skipped ? <> · <span style={{ fontFamily: monoFont }}>{counts.skipped}</span> pas</> : null}</>
+              : "Bu hafta ödevi yok"}
+          </div>
+        </div>
+        <MiniBars values={overall.map((w) => (w ? w.net : null))} height={40} barWidth={8} colorFor={(v, i) => (i === WEEKS - 1 ? C.green : `${C.green}66`)} />
+      </Card>
 
-      {/* Tarih filtreleri tek satırda yatay kayar — telefonda "Tümü" tek başına alt satıra düşüyordu. */}
-      <div className="k-chip-row" role="group" aria-label="Tarih aralığı" style={{ marginBottom: dateFilter === "range" ? 10 : 14, paddingBottom: 2 }}>
-        {DATE_FILTERS.map((f) => (
-          <Chip key={f.value} active={dateFilter === f.value} onClick={() => setDateFilter(f.value)}>{f.label}</Chip>
-        ))}
+      {falling.length > 0 && (
+        <AlertBox style={{ marginTop: 12 }}>
+          {(() => {
+            const b = falling[0];
+            const pts = b.series.filter((s) => s?.pct != null).map((s) => s.pct);
+            return <>{b.label} başarısı {WEEKS} haftada <span style={{ fontFamily: monoFont }}>%{pts[0]}</span> → <span style={{ fontFamily: monoFont }}>%{pts[pts.length - 1]}</span> düştü{falling.length > 1 ? ` · ${falling.slice(1).map((x) => x.label).join(", ")} da düşüyor` : ""}</>;
+          })()}
+        </AlertBox>
+      )}
+
+      <div className="k-chip-row" role="group" aria-label="Tarih aralığı" style={{ marginTop: 18, paddingBottom: 2 }}>
+        {DATE_FILTERS.map((f) => <Chip key={f.value} active={dateFilter === f.value} onClick={() => setDateFilter(f.value)}>{f.label}</Chip>)}
       </div>
       {dateFilter === "range" && (
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
           <div style={{ flex: 1, minWidth: 0 }}><Input aria-label="Başlangıç" type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} /></div>
-          <span style={{ color: C.muted, fontSize: 12.5, marginBottom: 16 }}>—</span>
+          <span style={{ color: C.mutedLight, fontSize: 13, marginBottom: 16 }}>—</span>
           <div style={{ flex: 1, minWidth: 0 }}><Input aria-label="Bitiş" type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} /></div>
         </div>
       )}
 
-      {/* Altı kutucuk üçe indi: toplam ve oran başlık kartında, serbest çalışma sayısı kendi bölüm başlığında. */}
-      <StatGrid min={90} style={{ marginBottom: 12 }}>
-        <StatCard label="Geciken" value={overdue.length} tone="red" onClick={() => toggleFilter("overdue")} active={filter === "overdue"} />
-        <StatCard label="Bekleyen" value={notOverdue.length} tone="amber" onClick={() => toggleFilter("pending")} active={filter === "pending"} />
-        <StatCard label="Tamamlanan" value={completed.length} tone="green" onClick={() => toggleFilter("completed")} active={filter === "completed"} />
-      </StatGrid>
-
-      {/* Ekranın birincil eylemi — eskiden sağa yaslı küçük bir düğmeydi, gözden kaçıyordu. */}
-      {onCreateAssignment && (
-        <Button full icon={PlusCircle} onClick={() => onCreateAssignment(studentId)} style={{ height: 48 }}>Yeni ödev ata</Button>
-      )}
-
       {recipients.length === 0 ? (
         <EmptyState text="Bu öğrenciye henüz ödev gönderilmemiş." />
-      ) : dateFilteredRecipients.length === 0 ? (
-        <EmptyState text="Seçilen dönemde ödev yok." />
       ) : (
-        <div style={{ marginBottom: 8 }}>
-          {(filter === "all" || filter === "overdue") && (
-            <RecipientSection
-              title="Geciken" tone="red" section="overdue" items={overdue}
-              visibleCount={visibleOverdueCount} onShowMore={() => setVisibleOverdueCount((n) => n + PAGE_SIZE)}
-              emptyText="Geciken ödevi yok." onClearFilter={clearFilter} onOpen={onOpenAssignment} coachId={student.teacherId}
-            />
-          )}
-          {(filter === "all" || filter === "pending") && (
-            <RecipientSection
-              title="Bekleyen" tone="amber" section="pending" items={notOverdue}
-              visibleCount={visiblePendingCount} onShowMore={() => setVisiblePendingCount((n) => n + PAGE_SIZE)}
-              emptyText="Bekleyen ödevi yok." onClearFilter={clearFilter} onOpen={onOpenAssignment} coachId={student.teacherId}
-            />
-          )}
-          {(filter === "all" || filter === "completed") && (
-            <RecipientSection
-              title="Tamamlanan" tone="green" section="completed" items={completed}
-              visibleCount={visibleCompletedCount} onShowMore={() => setVisibleCompletedCount((n) => n + PAGE_SIZE)}
-              emptyText="Henüz tamamlanmış ödev yok." onClearFilter={clearFilter} onOpen={onOpenAssignment} coachId={student.teacherId}
-            />
-          )}
-        </div>
+        <>
+          <RecipientGroup title="Branş ödevleri" right="okul çapında" items={branchItems} onOpen={onOpenAssignment} emptyText="Bu dönemde branş ödevi yok." />
+          <RecipientGroup title="Benim verdiğim" right="kişisel" items={mineItems} onOpen={onOpenAssignment} emptyText="Bu dönemde senin verdiğin ödev yok." />
+          {otherItems.length > 0 && <RecipientGroup title="Diğer öğretmenler" items={otherItems} onOpen={onOpenAssignment} emptyText="" />}
+        </>
       )}
 
-      <SectionHeader title="Serbest çalışmaları" count={studySessions.length} />
-      {studySessions.length === 0 ? (
-        <EmptyState text="Bu öğrenci henüz serbest çalışma kaydı girmemiş." />
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {studySessions.map((s) => (
-            <Card key={s.id} style={{ padding: "13px 16px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                <span style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{s.subject} — {s.topic}</span>
-                <Pill>{s.examType}</Pill>
-              </div>
-              {/* Tarih ve D/Y/B rakamları mono — sayılar alt alta kartlarda hizalı dursun. */}
-              <div style={{ fontFamily: monoFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, marginTop: 5 }}>
-                {formatDate(s.studyDate)} · D {s.correctCount} · Y {s.wrongCount} · B {s.blankCount}
-              </div>
-            </Card>
-          ))}
-        </div>
+      {branches.length > 0 && (
+        <>
+          <SectionHeader title="Ders ders net" right={`${WEEKS} hafta`} />
+          <ListGroup>
+            {branches.map((b) => {
+              const last = [...b.series].reverse().find(Boolean);
+              const pts = b.series.filter((s) => s?.pct != null).map((s) => s.pct);
+              const d = pts.length >= 2 ? pts[pts.length - 1] - pts[pts.length - 2] : null;
+              const down = declining(b.series);
+              return (
+                <ListRow
+                  key={b.key}
+                  left={<StatusSquare subject={b.icon} status="open" size={30} title={b.label} />}
+                  title={b.label}
+                  right={
+                    <span style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+                      <MiniBars values={b.series.map((s) => (s ? s.net : null))} height={24} barWidth={5} gap={3} colorFor={(v, i) => (down ? (i === WEEKS - 1 ? C.red : `${C.red}77`) : (i === WEEKS - 1 ? C.green : `${C.green}66`))} />
+                      <span style={{ textAlign: "right", minWidth: 58 }}>
+                        <span style={{ display: "block", fontFamily: monoFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{last ? formatNet(last.net, 2) : "—"}</span>
+                        {d != null && <span style={{ display: "block", fontFamily: monoFont, fontSize: 11.5, fontWeight: 600, color: d >= 0 ? C.green : C.red }}>{d >= 0 ? "+" : "−"}{Math.abs(d)} puan</span>}
+                      </span>
+                    </span>
+                  }
+                />
+              );
+            })}
+          </ListGroup>
+        </>
       )}
+
+      <SectionHeader title="Serbest çalışması" count={studySessions.length || null} />
+      <Card>
+        <div style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 600, color: C.text }}>
+          {weekSessions.length
+            ? <>Bu hafta <span style={{ fontFamily: monoFont }}>{weekSessions.length}</span> kayıt · <span style={{ fontFamily: monoFont }}>{weekSessions.reduce((s, x) => s + x.correctCount + x.wrongCount + x.blankCount, 0)}</span> soru · <span style={{ fontFamily: monoFont }}>{formatNet(weekSessions.reduce((s, x) => s + netOf(x), 0), 1)}</span> net</>
+            : "Bu hafta serbest çalışma kaydı yok"}
+        </div>
+        {sessionComment && <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, marginTop: 4 }}>{sessionComment}</div>}
+        {studySessions.length > 0 && (
+          <div style={{ marginTop: 12, borderTop: `1px solid ${C.divider}` }}>
+            {studySessions.slice(0, sessionsVisible).map((s) => (
+              <div key={s.id} style={{ padding: "10px 0", borderBottom: `1px solid ${C.divider}` }}>
+                <div style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 600, color: C.text2 }}>{s.subject} — {s.topic}</div>
+                <div style={{ fontFamily: monoFont, fontSize: 11.5, color: C.mutedLight, marginTop: 3 }}>{formatDate(s.studyDate)} · D {s.correctCount} · Y {s.wrongCount} · B {s.blankCount}</div>
+              </div>
+            ))}
+            <ShowMoreButton remaining={studySessions.length - Math.min(sessionsVisible, studySessions.length)} onClick={() => setSessionsVisible((n) => n + 5)} />
+          </div>
+        )}
+      </Card>
+
+      <SectionHeader title="Özel notum" action={{ label: student.coachNote ? "Düzenle" : "Not ekle", onClick: openNote }} />
+      <Card>
+        <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.2, color: C.mutedLight, marginBottom: 8 }}>SADECE SEN GÖRÜRSÜN</div>
+        <div style={{ fontFamily: bodyFont, fontSize: 14, color: student.coachNote ? C.text2 : C.mutedLight, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+          {student.coachNote || "Bu öğrenci hakkında henüz not almadın."}
+        </div>
+      </Card>
+
+      <BottomActionBar>
+        {onCreateAssignment && <div style={{ flex: 1.6 }}><Button full onClick={() => onCreateAssignment(studentId)}>Kişisel ödev ver</Button></div>}
+        <div style={{ flex: 1 }}><Button full variant="secondary" onClick={openNote}>Not ekle</Button></div>
+      </BottomActionBar>
     </div>
   );
 }

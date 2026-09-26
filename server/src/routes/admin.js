@@ -76,10 +76,10 @@ adminRouter.get("/teachers", async (req, res) => {
   try {
     const teachers = await prisma.user.findMany({
       where: { role: "TEACHER", banned: false },
-      select: { id: true, name: true, _count: { select: { students: true } } },
+      select: { id: true, name: true, isSubjectTeacher: true, teachingSubjects: true, _count: { select: { students: true } } },
       orderBy: { name: "asc" },
     });
-    res.json({ teachers: teachers.map((t) => ({ id: t.id, name: t.name, studentCount: t._count.students })) });
+    res.json({ teachers: teachers.map((t) => ({ id: t.id, name: t.name, studentCount: t._count.students, isSubjectTeacher: t.isSubjectTeacher, teachingSubjects: t.teachingSubjects })) });
   } catch (e) {
     handleErr(res, e);
   }

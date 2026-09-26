@@ -1,7 +1,8 @@
-import { Component, useEffect, useRef, useState } from "react";
+import { Component, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { X, LogOut, ChevronLeft, ChevronRight } from "lucide-react";
-import { C, displayFont, bodyFont, monoFont } from "../theme.js";
+import { X, LogOut, ChevronLeft, ChevronRight, Minus, Plus, AlertTriangle } from "lucide-react";
+import { C, displayFont, bodyFont, monoFont, statusTone, STATUS_LABEL } from "../theme.js";
+import { subjectGlyphUrl } from "../subjects.js";
 
 // Herhangi bir ekranın render sırasında beklenmedik bir hata fırlatması (ör. eksik/tutarsız bir
 // alan üzerinden yapılan güvencesiz bir erişim) React'i tüm uygulamayı bembeyaz bir sayfaya
@@ -55,13 +56,11 @@ export function LogoMark({ width = 34, radius, style }) {
   );
 }
 
-// Kart: beyaz zemin, 1px kenarlık, yumuşak gölge. Eskiden HER kartın tepesinde mor bir şerit vardı —
-// her yerde olan vurgu hiçbir yeri vurgulamıyordu. Artık yalnızca DURUMU olan satırlarda sol kenarda
-// 3px durum şeridi var (status: "red" geciken, "amber" bekleyen, "green" tamamlanan); durumu olmayan
-// kartta (form, özet, başlık) şerit yok. `stripe` eski çağrılarla uyumluluk için kabul edilip yok sayılır.
+// Kart: --k1 zemin, 1px --bd kenarlık, gölge yok (derinlik kenarlıktan). Tepesinde ya da yanında renkli
+// şerit YOK — her yerde olan vurgu hiçbir yeri vurgulamaz; durum, satırdaki durum karesiyle anlatılır.
+// `status`/`stripe` eski çağrılarla uyumluluk için kabul edilip yok sayılır.
 // eslint-disable-next-line no-unused-vars
 export function Card({ children, style, hover, onClick, status, stripe }) {
-  const statusColor = status ? { red: C.red, amber: C.amber, green: C.green, accent: C.accent }[status] : null;
   // Tıklanabilir kart klavyeyle de kullanılabilsin (Tab ile odak, Enter/Boşluk ile aç).
   const interactive = onClick ? {
     role: "button", tabIndex: 0,
@@ -73,31 +72,29 @@ export function Card({ children, style, hover, onClick, status, stripe }) {
       {...interactive}
       className={hover ? "k-card-hover" : undefined}
       style={{
-        position: "relative", overflow: statusColor ? "hidden" : undefined,
-        background: C.surface, border: `1px solid ${C.border}`,
-        borderRadius: C.radiusMd, padding: 18,
-        boxShadow: C.shadowMd,
+        position: "relative", background: C.surface, border: `1px solid ${C.border}`,
+        borderRadius: 16, padding: 18,
         ...style,
       }}
     >
-      {statusColor && <span aria-hidden="true" style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: statusColor }} />}
       {children}
     </div>
   );
 }
 
+// Birincil düğme fildişi zemin + koyu yazı (vurgu rengi yok); ikincil kenarlıklı; yıkıcı işlem kırmızı.
 export function Button({ children, onClick, variant = "primary", full, disabled, icon: Icon, small, type = "button", style }) {
   const base = {
     display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 8,
-    fontFamily: bodyFont, fontWeight: 700, borderRadius: small ? 10 : 14, cursor: disabled ? "not-allowed" : "pointer",
-    border: "none", padding: small ? "0 13px" : "0 20px", height: small ? 34 : full ? 50 : 44, fontSize: small ? 12.5 : 15,
+    fontFamily: bodyFont, fontWeight: 700, letterSpacing: -0.2, borderRadius: small ? 11 : 14, cursor: disabled ? "not-allowed" : "pointer",
+    border: "1px solid transparent", padding: small ? "0 14px" : "0 20px", minHeight: small ? 36 : full ? 52 : 46, fontSize: small ? 13 : 15.5,
     width: full ? "100%" : "auto", opacity: disabled ? 0.45 : 1, whiteSpace: "nowrap",
   };
   const variants = {
     primary: { background: C.accent, color: C.onAccent },
-    secondary: { background: C.surface, color: C.text2, border: `1px solid ${C.border}` },
-    ghost: { background: "transparent", color: C.accent },
-    danger: { background: C.redSoft, color: C.red },
+    secondary: { background: "transparent", color: C.text, borderColor: C.borderStrong },
+    ghost: { background: "transparent", color: C.text2 },
+    danger: { background: C.redSoft, color: C.red, borderColor: `${C.red}55` },
     // Geri alınamaz işlemin onay düğmesi (bkz. DialogHost) — yumuşak "danger"dan daha belirgin.
     dangerSolid: { background: C.red, color: C.onRed },
   };
@@ -113,7 +110,7 @@ export function Button({ children, onClick, variant = "primary", full, disabled,
 function FieldLabel({ children }) {
   if (!children) return null;
   return (
-    <div style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, color: C.muted, marginBottom: 7 }}>
+    <div style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 600, color: C.muted, marginBottom: 8 }}>
       {children}
     </div>
   );
@@ -128,8 +125,8 @@ function fieldBaseStyle() {
     // simgesi için bir asgari genişlik dayatıyor ve bunu CSS width'i yok sayarak taşırabiliyor —
     // minWidth:0 + maxWidth:100% bu asgari genişliği geçersiz kılıp kabına sıkıştırıyor.
     width: "100%", minWidth: 0, maxWidth: "100%", boxSizing: "border-box", background: C.fieldBg,
-    border: `1px solid ${C.border}`, borderRadius: 12, minHeight: 48,
-    padding: "11px 14px", fontSize: 15, fontWeight: 500, fontFamily: bodyFont, color: C.text, outline: "none",
+    border: `1px solid ${C.border}`, borderRadius: 14, minHeight: 52,
+    padding: "12px 16px", fontSize: 15.5, fontWeight: 500, fontFamily: bodyFont, color: C.text, outline: "none",
   };
 }
 
@@ -176,8 +173,9 @@ export function Num({ children, size = 11 }) {
 // (ör. "Net 16,25", "D 92") rakamları eşit genişlikte yazsın diye.
 export function Pill({ children, tone = "muted", mono = false }) {
   const tones = {
-    muted: { bg: C.surface2, color: C.muted },
-    accent: { bg: C.accentSoft, color: C.accent },
+    muted: { bg: C.surface2, color: C.mutedLight },
+    accent: { bg: C.surface2, color: C.text },
+    koc: { bg: C.kocSoft, color: C.koc },
     green: { bg: C.greenSoft, color: C.green },
     amber: { bg: C.amberSoft, color: C.amber },
     red: { bg: C.redSoft, color: C.red },
@@ -195,25 +193,19 @@ export function Pill({ children, tone = "muted", mono = false }) {
   );
 }
 
-// Ad-soyaddan baş harfleri + tutarlı bir vurgu rengi türeten yuvarlak avatar — fotoğraf yükleme
-// desteklenmiyor (MVP kapsamı dışı), bu yüzden her yerde aynı biçimde kullanılan tek görsel kimlik.
-const AVATAR_PALETTE = ["#4338CA", "#0F766E", "#B45309", "#BE185D", "#1D4ED8", "#15803D"];
-function colorForName(name) {
-  let hash = 0;
-  for (let i = 0; i < (name || "").length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
-}
+// Baş harfli yuvarlak avatar — nötr (--k3 zemin, --t2 harf): renkli avatarlar marka rengi gibi
+// davranıp durum renkleriyle yarışıyordu. Fotoğraf yükleme desteklenmiyor (MVP kapsamı dışı).
 function initialsOf(name) {
-  return (name || "?").trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toUpperCase() || "").join("") || "?";
+  return (name || "?").trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toLocaleUpperCase("tr-TR") || "").join("") || "?";
 }
+// eslint-disable-next-line no-unused-vars
 export function Avatar({ name, size = 36, dark }) {
   return (
-    <div style={{
+    <div aria-hidden="true" style={{
       width: size, height: size, borderRadius: 999, flexShrink: 0,
-      background: colorForName(name), color: "#fff",
+      background: C.surfaceHover, color: C.text2, border: `1px solid ${C.borderStrong}`,
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: displayFont, fontWeight: 700, fontSize: size * 0.4,
-      boxShadow: dark ? "0 0 0 2px rgba(255,255,255,0.12)" : "0 0 0 2px rgba(255,255,255,0.7)",
+      fontFamily: bodyFont, fontWeight: 600, fontSize: Math.round(size * 0.36), letterSpacing: 0.3,
     }}>
       {initialsOf(name)}
     </div>
@@ -254,10 +246,10 @@ export function Modal({ children, onClose, title }) {
   // render edilir — bir üst öğe kendi yığın bağlamını (stacking context) oluşturduğunda (animasyon,
   // transform, opacity) z-index'i o bağlamla sınırlı kalıp alt menünün ALTINDA kalmasın diye.
   return createPortal(
-    <div className="k-modal-backdrop" role="presentation" style={{ position: "fixed", inset: 0, background: "rgba(10,12,28,0.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 55, padding: "max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))" }} onClick={handleBackdropClick}>
-      <div className="k-modal-panel" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} onClick={(e) => e.stopPropagation()} style={{ background: C.surface, borderRadius: C.radiusLg, padding: 24, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", boxShadow: C.shadowLg }}>
+    <div className="k-modal-backdrop" role="presentation" style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.62)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 55, padding: "max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))" }} onClick={handleBackdropClick}>
+      <div className="k-modal-panel" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} onClick={(e) => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusLg, padding: 24, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", boxShadow: C.shadowLg }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18 }}>
-          <span style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text, minWidth: 0 }}>{title}</span>
+          <span style={{ fontFamily: displayFont, fontSize: 19, fontWeight: 700, letterSpacing: -0.5, color: C.text, minWidth: 0 }}>{title}</span>
           <button className="k-icon-btn" onClick={onClose} aria-label="Kapat" style={{ background: C.surface2, border: "none", borderRadius: 999, width: 36, height: 36, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <X size={17} color={C.text} />
           </button>
@@ -279,13 +271,13 @@ export function roleLabel(role) {
 export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
   return (
     <div className="k-sidebar" style={{
-      width: 240, flexShrink: 0, background: C.sidebarBg, display: "flex", flexDirection: "column",
+      width: 240, flexShrink: 0, background: C.sidebarBg, borderRight: `1px solid ${C.sidebarBorder}`, display: "flex", flexDirection: "column",
       height: "100vh", position: "sticky", top: 0,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "22px 20px 18px" }}>
         <LogoMark width={38} />
         <div className="k-sidebar-brand-text" style={{ minWidth: 0 }}>
-          <div style={{ fontFamily: displayFont, fontSize: 12.5, fontWeight: 800, color: "#fff", lineHeight: 1.3 }}>Mehmet Akif İnan Hafız</div>
+          <div style={{ fontFamily: displayFont, fontSize: 12.5, fontWeight: 700, color: C.sidebarTextActive, lineHeight: 1.3 }}>Mehmet Akif İnan Hafız</div>
           <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: C.sidebarText, lineHeight: 1.3 }}>Anadolu İmam Hatip Lisesi</div>
         </div>
       </div>
@@ -312,7 +304,7 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
               <span className="k-sidebar-label" style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: active ? 700 : 600, whiteSpace: "nowrap" }}>{t.label}</span>
               {t.badge > 0 && (
                 <span className="k-sidebar-badge" style={{
-                  marginLeft: "auto", background: C.sidebarAccent, color: "#fff", fontSize: 10.5, fontWeight: 800,
+                  marginLeft: "auto", background: C.red, color: C.onRed, fontSize: 10.5, fontWeight: 800,
                   borderRadius: 999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px",
                 }}>{t.badge}</span>
               )}
@@ -324,7 +316,7 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
       <div className="k-sidebar-user" style={{ borderTop: `1px solid ${C.sidebarBorder}`, padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
         <Avatar name={user.name} size={34} dark />
         <div className="k-sidebar-user-text" style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.name}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 700, color: C.sidebarTextActive, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.name}</div>
           <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: C.sidebarText }}>{roleLabel(user.role)}</div>
         </div>
         <button
@@ -340,39 +332,32 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
 }
 
 // Telefon genişliğinde (bkz. index.html > @media max-width:640px) kenar çubuğunun yerini alan alt
-// menü — 68px, beyaz, üstte 1px kenarlık. Aktif sekmenin ikonu arkasında 46×26 mor hap. Görünürlüğü
-// CSS medya sorgusu belirler; burada her zaman render edilir.
+// menü — 66px, --k1 zemin, üstte --ciz çizgisi. İkon yok, yalnızca yazı; aktif sekme --t1 ve altında
+// 18×2px çizgi. Görünürlüğü CSS medya sorgusu belirler; burada her zaman render edilir.
 export function BottomNav({ tabs, activeId, onSelect }) {
   return (
     <nav className="k-bottom-nav" aria-label="Ana menü" style={{
-      display: "none", background: C.surface, borderTop: `1px solid ${C.border}`,
-      minHeight: 68, boxSizing: "border-box", padding: "7px 4px calc(env(safe-area-inset-bottom, 0px) + 7px)",
+      display: "none", background: C.surface, borderTop: `1px solid ${C.divider}`,
+      boxSizing: "border-box", padding: "0 6px env(safe-area-inset-bottom, 0px)",
     }}>
       {tabs.map((t) => {
         const active = t.id === activeId;
-        const Icon = t.icon;
         return (
           <button
             key={t.id}
             onClick={() => onSelect(t.id)}
-            aria-label={t.label}
             aria-current={active ? "page" : undefined}
             style={{
-              flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
-              background: "none", border: "none", cursor: "pointer", padding: "2px", position: "relative",
-              color: active ? C.accent : C.mutedLight, minWidth: 0,
+              flex: 1, height: 66, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+              background: "none", border: "none", cursor: "pointer", padding: "0 2px", minWidth: 0,
+              color: active ? C.text : C.mutedLight,
             }}
           >
-            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 46, height: 26, borderRadius: 9, background: active ? C.accentSoft : "transparent", position: "relative" }}>
-              {Icon && <Icon size={18} strokeWidth={2} />}
-              {t.badge > 0 && (
-                <span style={{
-                  position: "absolute", top: -3, right: 4, background: C.red, color: "#fff", fontSize: 9.5, fontWeight: 800,
-                  borderRadius: 999, minWidth: 15, height: 15, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 4px",
-                }}>{t.badge}</span>
-              )}
+            <span style={{ position: "relative", fontFamily: bodyFont, fontSize: 14, fontWeight: active ? 700 : 500, letterSpacing: -0.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+              {t.label}
             </span>
-            <span style={{ fontFamily: bodyFont, fontSize: 9.5, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>{t.label}</span>
+            {t.badge > 0 && <span className="k-sr-only">, {t.badge} okunmamış</span>}
+            <span aria-hidden="true" style={{ width: 18, height: 2, borderRadius: 2, background: active ? C.text : "transparent" }} />
           </button>
         );
       })}
@@ -389,8 +374,8 @@ export function HeaderIconButton({ icon: Icon, label, onClick, children }) {
       aria-label={label}
       className="k-icon-btn"
       style={{
-        position: "relative", width: 44, height: 44, borderRadius: 14, flexShrink: 0,
-        background: C.surface, border: `1px solid ${C.border}`, boxShadow: C.shadowSm,
+        position: "relative", width: 44, height: 44, borderRadius: 13, flexShrink: 0,
+        background: C.surface, border: `1px solid ${C.border}`,
         display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.text2,
       }}
     >
@@ -409,8 +394,8 @@ export function HeaderTextButton({ icon: Icon, label, onClick, disabled }) {
       disabled={disabled}
       className="k-icon-btn"
       style={{
-        height: 44, padding: "0 16px", borderRadius: 14, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 7,
-        background: C.surface, border: `1px solid ${C.border}`, boxShadow: C.shadowSm, cursor: disabled ? "default" : "pointer",
+        height: 44, padding: "0 16px", borderRadius: 13, flexShrink: 0, display: "inline-flex", alignItems: "center", gap: 7,
+        background: C.surface, border: `1px solid ${C.border}`, cursor: disabled ? "default" : "pointer",
         fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text2, opacity: disabled ? 0.5 : 1,
       }}
     >
@@ -423,17 +408,17 @@ export function HeaderTextButton({ icon: Icon, label, onClick, disabled }) {
 // Başlığın sağındaki, ekranların kendi düğmelerini createPortal ile koyduğu yuvanın id'si (bkz. App.jsx).
 export const HEADER_SLOT_ID = "k-header-slot";
 
-// İçerik sütununun üst şeridi — sayfa zemininde (ayrı beyaz bir çubuk değil), ekran başlığı 22/700.
-// onBack verilirse başlığın solunda geri düğmesi. Sol taraf flex:1+minWidth:0 ile küçülür — sağdaki
-// düğmeler (zil, Rapor/Notlar, PDF) her zaman sağ üstte sabit kalır.
+// İçerik sütununun üst şeridi — sayfa zemininde. Üstte bağlam satırı (ör. "Zeynep Kaya · 12-A · Koçun:
+// Ali Hoca", 13/--t3), altında sayfa başlığı 25/700/−0.9px. onBack verilirse solda geri düğmesi. Sol
+// taraf flex:1+minWidth:0 ile küçülür — sağdaki düğmeler (zil, Rapor/Notlar, PDF) sağ üstte sabit.
 export function PageHeader({ title, subtitle, right, onBack }) {
   return (
-    <div className="k-page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "20px 28px 12px", background: C.bg }}>
+    <div className="k-page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "22px 28px 8px", background: C.bg }}>
       <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12 }}>
         {onBack && <HeaderIconButton icon={ChevronLeft} label="Geri" onClick={onBack} />}
         <div style={{ minWidth: 0 }}>
-          <h1 className="k-page-title" style={{ margin: 0, fontFamily: displayFont, fontSize: 22, fontWeight: 700, letterSpacing: -0.5, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>
-          {subtitle && <div className="k-page-subtitle" style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+          {subtitle && <div className="k-page-subtitle" style={{ fontFamily: bodyFont, fontSize: 13, fontWeight: 500, color: C.mutedLight, marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</div>}
+          <h1 className="k-page-title" style={{ margin: 0, fontFamily: displayFont, fontSize: 25, fontWeight: 700, letterSpacing: -0.9, lineHeight: 1.15, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>
         </div>
       </div>
       {right && <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>{right}</div>}
@@ -441,12 +426,11 @@ export function PageHeader({ title, subtitle, right, onBack }) {
   );
 }
 
-// Kutucuk (sayı + etiket): zemin durumun açık tonu, sayı mono 21/700 durumun koyu tonunda, etiket
-// 10.5/600 aynı renkte. onClick verilirse <button> (altındaki listeyi filtreler); active = seçili filtre,
-// kenarlık tonun güçlü rengine döner. Bir ekranda en fazla 4 kutucuk (doküman: "YAPMA").
+// Sayaç kutusu: --k1 kart, büyük mono sayı (renk yalnızca veri anlamı taşıyorsa: kırmızı geride,
+// sarı pas, yeşil iyi; nötr --t1), altında --t3 etiket. onClick verilirse <button> (listeyi filtreler);
+// active = seçili filtre. Bir ekranda en fazla 3-4 sayaç.
 export function StatCard({ label, value, tone = "muted", onClick, active }) {
-  const strong = { muted: C.muted, accent: C.accent, green: C.green, amber: C.amber, red: C.red, blue: C.blue };
-  const soft = { muted: C.surface2, accent: C.accentSoft, green: C.greenSoft, amber: C.amberSoft, red: C.redSoft, blue: C.blueSoft };
+  const strong = { muted: C.text, accent: C.text, green: C.green, amber: C.amber, red: C.red, blue: C.text };
   const Comp = onClick ? "button" : "div";
   return (
     <Comp
@@ -454,13 +438,13 @@ export function StatCard({ label, value, tone = "muted", onClick, active }) {
       onClick={onClick}
       aria-pressed={onClick ? !!active : undefined}
       style={{
-        background: soft[tone], border: `1.5px solid ${active ? strong[tone] : "transparent"}`,
-        borderRadius: C.radiusMd, padding: "11px 12px", minWidth: 0,
+        background: C.surface, border: `1px solid ${active ? C.borderStrong : C.border}`, boxShadow: active ? `inset 0 0 0 1px ${C.borderStrong}` : "none",
+        borderRadius: 16, padding: "14px 15px 13px", minWidth: 0,
         textAlign: "left", cursor: onClick ? "pointer" : "default", fontFamily: "inherit",
       }}
     >
-      <div style={{ fontFamily: monoFont, fontSize: 21, fontWeight: 700, letterSpacing: -0.6, color: strong[tone], lineHeight: 1.15 }}>{value}</div>
-      <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 600, color: strong[tone], marginTop: 3, lineHeight: 1.25 }}>{label}</div>
+      <div style={{ fontFamily: monoFont, fontSize: 27, fontWeight: 700, letterSpacing: -1.1, color: strong[tone] || C.text, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 500, color: C.mutedLight, marginTop: 5, lineHeight: 1.3 }}>{label}</div>
     </Comp>
   );
 }
@@ -474,22 +458,32 @@ export function StatGrid({ children, min = 90, style }) {
   );
 }
 
-// Bölüm başlığı: 14.5/700, sağda adet rozeti (tone) ya da bir bağlantı (action: { label, onClick }).
-export function SectionHeader({ title, count, tone = "muted", action, style }) {
+// Bölüm etiketi: 10.5/700/1.4px VERSAL --t3, yanında ince çizgi, sağda adet (mono) ya da kısa bilgi
+// (right) ya da bir bağlantı (action: { label, onClick }). Etiket tek satır ve kısa tutulur.
+// eslint-disable-next-line no-unused-vars
+export function SectionHeader({ title, count, tone, action, right, style }) {
+  const label = typeof title === "string" ? title.toLocaleUpperCase("tr-TR") : title;
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", minHeight: 22, margin: "22px 0 10px", ...style }}>
-      <h2 style={{ margin: 0, fontFamily: displayFont, fontSize: 14.5, fontWeight: 700, letterSpacing: -0.1, color: C.text2 }}>{title}</h2>
+    <div style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 22, margin: "26px 0 10px", ...style }}>
+      <h2 style={{ margin: 0, fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, color: C.mutedLight, whiteSpace: "nowrap" }}>{label}</h2>
+      <span aria-hidden="true" style={{ flex: 1, height: 1, background: C.divider, minWidth: 12 }} />
       {action ? (
-        <button type="button" onClick={action.onClick} className="k-link-btn" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: bodyFont, fontSize: 12, fontWeight: 700, color: C.accent }}>{action.label}</button>
+        <button type="button" onClick={action.onClick} className="k-link-btn" style={{ background: "none", border: "none", padding: "6px 0", cursor: "pointer", fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, color: C.text2 }}>{action.label}</button>
+      ) : right != null ? (
+        <span style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 500, color: C.mutedLight, whiteSpace: "nowrap" }}>{right}</span>
       ) : count != null ? (
-        <Pill tone={tone} mono>{count}</Pill>
+        <span style={{ fontFamily: monoFont, fontSize: 12.5, fontWeight: 600, color: C.mutedLight }}>{count}</span>
       ) : null}
     </div>
   );
 }
 
-// Filtre çipi: 34px, köşe 11 — aktif mor dolu, pasif beyaz + kenarlık.
-export function Chip({ active, onClick, children }) {
+// Filtre çipi: 44px (dokunma alanı), köşe 12 — aktif fildişi dolu + koyu yazı, pasif --k1 + kenarlık.
+// tone="amber": seçili pas sebebi gibi durum anlamı taşıyan seçim (sarı zemin).
+export function Chip({ active, onClick, children, tone }) {
+  const activeStyle = tone === "amber"
+    ? { background: C.amberSoft, color: C.amber, border: `1px solid ${C.amber}55` }
+    : { background: C.accent, color: C.onAccent, border: `1px solid ${C.accent}` };
   return (
     <button
       type="button"
@@ -497,10 +491,9 @@ export function Chip({ active, onClick, children }) {
       aria-pressed={!!active}
       className="k-btn"
       style={{
-        height: 34, padding: "0 14px", borderRadius: 11, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap",
-        fontFamily: bodyFont, fontSize: 12.5, fontWeight: active ? 700 : 600,
-        background: active ? C.accent : C.surface, color: active ? C.onAccent : C.text2,
-        border: active ? `1px solid ${C.accent}` : `1px solid ${C.border}`,
+        minHeight: 44, padding: "0 16px", borderRadius: 12, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap",
+        fontFamily: bodyFont, fontSize: 14, fontWeight: active ? 700 : 500, letterSpacing: -0.1,
+        ...(active ? activeStyle : { background: C.surface, color: C.text2, border: `1px solid ${C.border}` }),
       }}
     >
       {children}
@@ -513,7 +506,7 @@ export function ProgressBar({ value, color, width = "100%", height = 5 }) {
   const pct = value == null ? 0 : Math.max(0, Math.min(100, value));
   return (
     <div style={{ width, height, borderRadius: 3, background: C.surface2, overflow: "hidden", flexShrink: 0 }}>
-      <div style={{ width: `${pct}%`, height: "100%", borderRadius: 3, background: color || C.accent }} />
+      <div style={{ width: `${pct}%`, height: "100%", borderRadius: 3, background: color || C.text2 }} />
     </div>
   );
 }
@@ -524,25 +517,232 @@ export function SubjectIcon({ src, size = 40, radius = 12 }) {
   return <img src={src} alt="" width={size} height={size} style={{ width: size, height: size, borderRadius: radius, flexShrink: 0, display: "block" }} />;
 }
 
-// Ödev satırı (öğrenci Ödevlerim + koç Öğrenci özeti): 72px, solda 3px durum şeridi, ders ikonu,
-// tek satırlık başlık, altında durum rozeti + soluk meta metni, sağda ok.
-// status: "overdue" | "pending" | "done" | "draft"
-export function AssignmentRow({ iconSrc, title, status, badge, meta, onClick }) {
-  const stripe = { overdue: "red", pending: "amber", done: "green" }[status];
+// Durum karesi: ders sembolü durum rengine boyanır — çözüldü yeşil, pas sarı, yapılmadı kırmızı,
+// süresi dolmadı nötr. Renkli ders ikonları "her renk bir veri anlamı taşır" kuralını bozuyordu; sembol
+// (assets/subject-glyphs) SVG maskesi olarak kullanılır, katmanları ve ince çizgileri korunur.
+export function StatusSquare({ subject, status = "open", size = 34, title }) {
+  const maskId = `sq${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
+  const tone = statusTone(status);
+  const glyph = Math.round(size * 0.66);
   return (
-    <Card hover={!!onClick} status={stripe} onClick={onClick} style={{ padding: 0, cursor: onClick ? "pointer" : "default" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, minHeight: 72, padding: "0 13px 0 16px" }}>
-        <SubjectIcon src={iconSrc} />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5, minWidth: 0 }}>
-            {badge}
-            {meta && <span style={{ fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{meta}</span>}
-          </div>
-        </div>
-        {onClick && <ChevronRight size={16} color={C.faintest} style={{ flexShrink: 0 }} />}
+    <span
+      role="img"
+      aria-label={title || `${subject}: ${STATUS_LABEL[status] || ""}`}
+      style={{
+        width: size, height: size, borderRadius: Math.round(size * 0.3), flexShrink: 0, boxSizing: "border-box",
+        background: tone.bg, border: `1px solid ${tone.fg}44`,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+      }}
+    >
+      <svg width={glyph} height={glyph} viewBox="0 0 100 100" aria-hidden="true" focusable="false">
+        <defs>
+          <mask id={maskId} maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+            <rect width="100" height="100" fill="black" />
+            <image href={subjectGlyphUrl(subject)} width="100" height="100" />
+          </mask>
+        </defs>
+        <rect width="100" height="100" fill={status === "open" ? C.mutedLight : tone.fg} mask={`url(#${maskId})`} />
+      </svg>
+    </span>
+  );
+}
+
+// Tam genişlik liste satırı (ödev listesi, branş ödevleri, koç yükü...) — üstünde --ciz çizgisi, kart
+// değil. left: durum karesi/avatar; right: sağ sütun (soru sayısı, net); onClick varsa sağda ok.
+export function ListRow({ left, title, titleExtra, subtitle, right, onClick, strong }) {
+  const Comp = onClick ? "button" : "div";
+  return (
+    <Comp
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className="k-list-row"
+      style={{
+        display: "flex", alignItems: "center", gap: 14, width: "100%", minHeight: 64, boxSizing: "border-box",
+        padding: "12px 0", background: "none", border: "none", borderTop: `1px solid ${C.divider}`,
+        textAlign: "left", cursor: onClick ? "pointer" : "default", fontFamily: bodyFont, color: C.text,
+      }}
+    >
+      {left}
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+          <span style={{ fontSize: 14.5, fontWeight: strong ? 700 : 600, letterSpacing: -0.2, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{title}</span>
+          {titleExtra}
+        </span>
+        {subtitle && <span style={{ display: "block", fontSize: 12, fontWeight: 500, color: C.mutedLight, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{subtitle}</span>}
+      </span>
+      {right}
+      {onClick && <ChevronRight size={17} color={C.faintest} style={{ flexShrink: 0 }} />}
+    </Comp>
+  );
+}
+
+// Liste satırlarının kabı — telefonda ekranın iki ucuna uzanır (index.html > .k-bleed), altta çizgi.
+export function ListGroup({ children, style }) {
+  return <div className="k-bleed" style={{ borderBottom: `1px solid ${C.divider}`, ...style }}>{children}</div>;
+}
+
+// Eski ödev satırı çağrıları için — yeni liste satırına bağlanır.
+// eslint-disable-next-line no-unused-vars
+export function AssignmentRow({ subject, iconSrc, title, status, badge, meta, onClick }) {
+  const sq = { overdue: "missed", pending: "open", done: "done", skipped: "skipped" }[status] || "open";
+  return (
+    <ListRow
+      left={<StatusSquare subject={subject} status={sq} />}
+      title={title}
+      subtitle={meta}
+      right={badge}
+      onClick={onClick}
+    />
+  );
+}
+
+// Çok parçalı ilerleme şeridi — 9px, parçalar arası 2px. parts: [{ value, color, label }], sıra
+// çağıranın (şartname: çözüldü → gecikti → pas → kalan).
+export function SegmentBar({ parts, height = 9 }) {
+  const total = parts.reduce((sum, p) => sum + (p.value || 0), 0);
+  const label = parts.map((p) => `${p.label} ${p.value}`).join(", ");
+  if (!total) return <div role="img" aria-label={label} style={{ height, borderRadius: 4, background: C.surface2 }} />;
+  return (
+    <div role="img" aria-label={label} style={{ display: "flex", gap: 2, height }}>
+      {parts.filter((p) => p.value > 0).map((p) => (
+        <span key={p.label} style={{ flex: p.value, background: p.color, borderRadius: 4, minWidth: 4 }} />
+      ))}
+    </div>
+  );
+}
+
+// Lejant: 7px nokta (square: kare) + sayı (mono, isteğe bağlı) + 12px etiket, yatay, sarılabilir.
+export function Legend({ items, square, style }) {
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 6, ...style }}>
+      {items.map((it) => (
+        <span key={it.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight }}>
+          <span aria-hidden="true" style={{ width: square ? 9 : 7, height: square ? 9 : 7, borderRadius: square ? 2 : 999, background: it.color, flexShrink: 0 }} />
+          {it.value != null && <span style={{ fontFamily: monoFont, fontSize: 13, fontWeight: 700, color: C.text }}>{it.value}</span>}
+          {it.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+// Adımlayıcı: 44×44 eksi, ortada 22px mono sayı, 44×44 artı. Artı/eksi klavye AÇMAZ (şartname);
+// basılı tutunca hızlanarak sayar. Haftalık ödevler 100+ soru olabildiği için ortadaki sayıya dokunup
+// yazmak da mümkün — şartnamedeki "klavye yok" kuralı 150 kez artıya basmayı gerektirirdi.
+export function Stepper({ label, value, onChange, dotColor, max = 9999 }) {
+  const valueRef = useRef(value);
+  valueRef.current = value;
+  const timer = useRef(null);
+  const stop = () => { clearTimeout(timer.current); timer.current = null; };
+  useEffect(() => stop, []);
+  const current = () => (valueRef.current === "" ? 0 : Number(valueRef.current) || 0);
+  const bump = (delta) => {
+    const next = Math.max(0, Math.min(max, current() + delta));
+    onChange(String(next));
+    valueRef.current = String(next);
+  };
+  const startHold = (delta) => {
+    stop();
+    bump(delta);
+    let ticks = 0;
+    const tick = () => {
+      ticks += 1;
+      bump(ticks > 20 ? delta * 5 : delta);
+      timer.current = setTimeout(tick, ticks > 8 ? 55 : 110);
+    };
+    timer.current = setTimeout(tick, 420);
+  };
+  const n = current();
+  const btn = (delta, Icon, aria, disabled) => (
+    <button
+      type="button" aria-label={aria} disabled={disabled}
+      onPointerDown={(e) => { if (e.button === 0 || e.pointerType !== "mouse") { e.preventDefault(); startHold(delta); } }}
+      onPointerUp={stop} onPointerLeave={stop} onPointerCancel={stop}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); bump(delta); } }}
+      className="k-icon-btn"
+      style={{
+        width: 44, height: 44, borderRadius: 12, flexShrink: 0, cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.4 : 1,
+        background: C.surface, border: `1px solid ${C.borderStrong}`, color: C.text,
+        display: "flex", alignItems: "center", justifyContent: "center", touchAction: "manipulation",
+      }}
+    >
+      <Icon size={18} strokeWidth={2.2} />
+    </button>
+  );
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: "12px 12px 12px 18px" }}>
+      <span aria-hidden="true" style={{ width: 8, height: 8, borderRadius: 999, background: dotColor, flexShrink: 0 }} />
+      <span style={{ flex: 1, minWidth: 0, fontFamily: bodyFont, fontSize: 15.5, fontWeight: 600, color: C.text }}>{label}</span>
+      {btn(-1, Minus, `${label} bir azalt`, n <= 0)}
+      <input
+        aria-label={label}
+        inputMode="numeric" pattern="[0-9]*" enterKeyHint="done"
+        value={value}
+        placeholder="0"
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, String(max).length))}
+        onFocus={(e) => e.target.select()}
+        style={{ width: 64, minWidth: 0, textAlign: "center", background: "transparent", border: "none", outline: "none", fontFamily: monoFont, fontSize: 22, fontWeight: 700, color: C.text, padding: "6px 0" }}
+      />
+      {btn(1, Plus, `${label} bir artır`, n >= max)}
+    </div>
+  );
+}
+
+// Kaynak etiketi — koç ödevinde mor "koçundan"; variant="okul": branş ödevi (yalnızca ödev detayında,
+// listede gösterilmez — varsayılan zaten okul).
+export function SourceTag({ variant = "koc" }) {
+  const koc = variant === "koc";
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", height: 20, padding: "0 7px", borderRadius: 6, flexShrink: 0, boxSizing: "border-box",
+      background: koc ? C.kocSoft : C.surface2, color: koc ? C.koc : C.mutedLight, border: `1px solid ${koc ? `${C.koc}44` : C.border}`,
+      fontFamily: bodyFont, fontSize: 11, fontWeight: 700, letterSpacing: 0.2, whiteSpace: "nowrap",
+    }}>
+      {koc ? "koçundan" : "okul"}
+    </span>
+  );
+}
+
+// Uyarı kutusu — kırmızı (gecikme, düşüş, teşhis), sarı ya da nötr (açıklama). Tek satırlık bilgi.
+export function AlertBox({ tone = "red", title, children, icon = true, style }) {
+  const t = { red: { fg: C.red, bg: C.redSoft }, amber: { fg: C.amber, bg: C.amberSoft }, neutral: { fg: C.text2, bg: C.surface } }[tone];
+  const border = tone === "neutral" ? C.border : `${t.fg}44`;
+  return (
+    <div role={tone === "neutral" ? undefined : "status"} style={{ display: "flex", gap: 12, alignItems: "flex-start", padding: "14px 16px", borderRadius: 16, background: t.bg, border: `1px solid ${border}`, color: t.fg, fontFamily: bodyFont, fontSize: 13.5, lineHeight: 1.5, ...style }}>
+      {icon && tone !== "neutral" && <AlertTriangle size={16} strokeWidth={2.2} style={{ flexShrink: 0, marginTop: 2 }} />}
+      <div style={{ minWidth: 0 }}>
+        {title && <div style={{ fontWeight: 700, marginBottom: children ? 4 : 0 }}>{title}</div>}
+        {children && <div style={{ color: tone === "neutral" ? C.text2 : undefined }}>{children}</div>}
       </div>
-    </Card>
+    </div>
+  );
+}
+
+// Küçük çubuk serisi (haftalık net, 6 hafta) — values: sayı ya da null (veri yok), colorFor(v, i).
+export function MiniBars({ values, height = 34, barWidth = 7, gap = 4, colorFor }) {
+  const nums = values.filter((v) => v != null);
+  const max = Math.max(1e-9, ...nums.map((v) => Math.abs(v)));
+  return (
+    <div aria-hidden="true" style={{ display: "flex", alignItems: "flex-end", gap, height, flexShrink: 0 }}>
+      {values.map((v, i) => (
+        <span key={i} style={{
+          width: barWidth, borderRadius: 2,
+          height: v == null ? 3 : Math.max(4, Math.round((Math.abs(v) / max) * height)),
+          background: v == null ? C.surface2 : colorFor ? colorFor(v, i) : C.text2,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+// Alt sabit eylem çubuğu: birincil (ve ikincil) düğme + altında ne yapıldığını özetleyen 11.5px cümle.
+// Telefonda alt menünün hemen üstünde sabit, masaüstünde sayfanın altına yapışık (index.html > .k-sticky-action).
+export function BottomActionBar({ children, caption }) {
+  return (
+    <div className="k-sticky-action" style={{ background: C.surface, borderTop: `1px solid ${C.divider}`, padding: "13px 18px 19px", marginTop: 24 }}>
+      <div style={{ display: "flex", gap: 10 }}>{children}</div>
+      {caption && <div style={{ textAlign: "center", fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, marginTop: 9, lineHeight: 1.4 }}>{caption}</div>}
+    </div>
   );
 }
 
@@ -631,7 +831,7 @@ export function DialogHost() {
   );
 }
 
-// Sayfalanmış listelerin altındaki "N tane daha" düğmesi — 40px, çerçeveli, mor yazı; kalan yoksa render edilmez.
+// Sayfalanmış listelerin altındaki "N tane daha" düğmesi — 44px, çerçeveli; kalan yoksa render edilmez.
 
 export function ShowMoreButton({ remaining, onClick }) {
   if (remaining <= 0) return null;
@@ -641,8 +841,8 @@ export function ShowMoreButton({ remaining, onClick }) {
       onClick={onClick}
       className="k-btn"
       style={{
-        width: "100%", height: 40, marginTop: 10, borderRadius: 12, cursor: "pointer",
-        background: C.surface, border: `1px solid ${C.border}`, color: C.accent,
+        width: "100%", height: 44, marginTop: 10, borderRadius: 12, cursor: "pointer",
+        background: C.surface, border: `1px solid ${C.border}`, color: C.text2,
         fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700,
       }}
     >

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
+import { trWeekRange, recipientStatus, netOf } from "../weekStats.js";
 
 // server/src/app.js'de requireAuth + requireRole("TEACHER") ile mount edilir.
 export const teacherRouter = Router();
@@ -20,26 +21,51 @@ teacherRouter.get("/students", async (req, res) => {
     // TÜM gönderilmiş ödevler sayılır — öğrenci özet ekranındaki oranla aynı kural, ikisi tutarlı kalsın.
     const recipients = await prisma.assignmentRecipient.findMany({
       where: { studentId: { in: students.map((s) => s.id) }, assignment: { status: "SENT" } },
-      select: { studentId: true, completed: true, assignment: { select: { endDate: true } } },
+      select: {
+        id: true, studentId: true, completed: true, skippedAt: true, skipReason: true,
+        submission: { select: { correctCount: true, wrongCount: true } },
+        assignment: { select: { endDate: true, subject: true, topic: true, targetMode: true, teacherId: true } },
+      },
     });
-    // Geciken: tamamlanmamış ve bitiş gününün Türkiye'deki sonu (UTC gece yarısı + 21 saat) geçmiş —
-    // istemcideki "X gün gecikti" ve zamanlayıcının gecikme kuralıyla aynı (bkz. scheduler.js).
-    const overdueCutoff = Date.now() - 21 * 60 * 60 * 1000;
+    // Koç panosu (bkz. TeacherStudentsScreen): bu haftanın (Pzt–Paz, Türkiye) ödevleri durumlarıyla,
+    // haftalık net ve geçen haftaya göre değişim, koçun kendi ödevleri (x/y), toplam geciken.
+    // Geciken: tamamlanmamış, pas geçilmemiş ve bitiş gününün Türkiye'deki sonu geçmiş — istemcideki
+    // "X gün gecikti" ve zamanlayıcının gecikme kuralıyla aynı (bkz. scheduler.js).
+    const now = new Date();
+    const { mon, sun, prevMon } = trWeekRange(now);
     const byStudent = new Map();
     for (const r of recipients) {
-      const entry = byStudent.get(r.studentId) || { total: 0, completed: 0, overdue: 0 };
-      entry.total += 1;
-      if (r.completed) entry.completed += 1;
-      else if (new Date(r.assignment.endDate).getTime() < overdueCutoff) entry.overdue += 1;
-      byStudent.set(r.studentId, entry);
+      const e = byStudent.get(r.studentId) || { total: 0, completed: 0, overdue: 0, week: [], weekNet: 0, prevWeekNet: null, mineDone: 0, mineTotal: 0 };
+      const status = recipientStatus(r, now);
+      const end = r.assignment.endDate.getTime();
+      const net = netOf(r.submission);
+      e.total += 1;
+      if (r.completed) e.completed += 1;
+      else if (status === "missed") e.overdue += 1;
+      if (end >= mon.getTime() && end <= sun.getTime()) {
+        const schoolWide = r.assignment.targetMode === "SCHOOL_WIDE";
+        e.week.push({ id: r.id, subject: r.assignment.subject, topic: r.assignment.topic, schoolWide, status, net, skipReason: r.skipReason });
+        if (net != null) e.weekNet += net;
+        if (!schoolWide && r.assignment.teacherId === req.userId) {
+          e.mineTotal += 1;
+          if (r.completed) e.mineDone += 1;
+        }
+      } else if (end >= prevMon.getTime() && end < mon.getTime() && net != null) {
+        e.prevWeekNet = (e.prevWeekNet || 0) + net;
+      }
+      byStudent.set(r.studentId, e);
     }
     const withRates = students.map((s) => {
-      const entry = byStudent.get(s.id);
+      const e = byStudent.get(s.id);
       return {
         ...s,
-        completionRate: entry && entry.total ? Math.round((entry.completed / entry.total) * 100) : null,
-        assignmentCount: entry?.total || 0,
-        overdueCount: entry?.overdue || 0,
+        completionRate: e && e.total ? Math.round((e.completed / e.total) * 100) : null,
+        assignmentCount: e?.total || 0,
+        overdueCount: e?.overdue || 0,
+        week: e?.week || [],
+        weekNet: e?.week.some((w) => w.net != null) ? e.weekNet : null,
+        prevWeekNet: e?.prevWeekNet ?? null,
+        mine: { done: e?.mineDone || 0, total: e?.mineTotal || 0 },
       };
     });
 

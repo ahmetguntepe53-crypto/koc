@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange } from "lucide-react";
-import { C, THEMES, bodyFont } from "./theme.js";
+import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange, BarChart3, GraduationCap } from "lucide-react";
+import { C, THEMES, DEFAULT_THEME, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID } from "./components/common.jsx";
 import { api } from "./api.js";
@@ -23,6 +23,7 @@ import StudentHomeScreen from "./screens/student/StudentHomeScreen.jsx";
 import AssignmentSubmitScreen from "./screens/student/AssignmentSubmitScreen.jsx";
 import StudyLogScreen from "./screens/student/StudyLogScreen.jsx";
 import ReportScreen from "./screens/ReportScreen.jsx";
+import BranchScreen from "./screens/teacher/BranchScreen.jsx";
 
 const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments" };
 
@@ -30,10 +31,13 @@ const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "
 // (PP'deki HalisahaApp.jsx ile aynı desen). Düzen: sol kenar çubuğu (rol'e göre sekmeler) + sağda
 // sayfa başlığı + içerik.
 // localStorage tek başına güvenilir değil (bkz. api.js), ama bir tema tercihi kaybolursa yalnızca
-// varsayılana (light) döner — auth token'ın aksine veri kaybı riski yok, bu yüzden Preferences köprüsü
+// varsayılana (koyu) döner — auth token'ın aksine veri kaybı riski yok, bu yüzden Preferences köprüsü
 // gerektirmeden doğrudan burada okunur/yazılır.
 function readStoredTheme() {
-  try { return localStorage.getItem("kocluk-theme") || "light"; } catch (_) { return "light"; }
+  try {
+    const t = localStorage.getItem("kocluk-theme");
+    return THEMES[t] ? t : DEFAULT_THEME;
+  } catch (_) { return DEFAULT_THEME; }
 }
 
 export default function App() {
@@ -50,7 +54,7 @@ export default function App() {
   // değiştiğinde App zaten yeniden render olur ve TÜM alt bileşenler bir sonraki render'da C'nin
   // güncel değerlerini görür — ayrı bir Context/"temayı yaydır" mekanizması gerekmez.
   const [theme, setThemeState] = useState(readStoredTheme);
-  Object.assign(C, THEMES[theme] || THEMES.light);
+  Object.assign(C, THEMES[theme] || THEMES[DEFAULT_THEME]);
   const setTheme = (t) => {
     setThemeState(t);
     try { localStorage.setItem("kocluk-theme", t); } catch (_) { /* tercih kalıcı olmasa da uygulama çalışmaya devam eder */ }
@@ -61,14 +65,21 @@ export default function App() {
   // effect'te, yalnızca theme değişince güncellenir.
   useEffect(() => {
     setStatusBarTheme(theme === "dark");
-    document.documentElement.style.setProperty("--accent-color", C.accent);
-    document.documentElement.style.setProperty("--accent-glow", C.accentSoft);
-    document.documentElement.style.setProperty("--surface-hover", C.surfaceHover);
+    const root = document.documentElement.style;
+    root.setProperty("--focus-color", C.mutedLight);
+    root.setProperty("--focus-glow", theme === "dark" ? "rgba(140,149,163,0.18)" : "rgba(94,103,117,0.16)");
+    root.setProperty("--surface-hover", C.surfaceHover);
+    root.setProperty("--border-strong", C.borderStrong);
+    document.body.style.background = C.bg;
   }, [theme]);
   // null = henüz role uygun bir varsayılan atanmadı (mount'ta oturum geri yüklenirken YA DA
   // logout()'un bıraktığı "login" değerinden sonra) — aşağıdaki effect authUser hazır olur olmaz
   // buna role uygun bir başlangıç ekranı atar.
   const [screen, setScreen] = useState(null);
+  // Ekranın kendi başlığı/bağlam satırı (ör. branş ekranında ders adı, koç panosunda öğrenci sayısı) —
+  // ekran değişince sıfırlanır; ekran veriyi yükleyince setHeader ile doldurur.
+  const [headerOverride, setHeaderOverride] = useState(null);
+  useEffect(() => { setHeaderOverride(null); }, [screen]);
   // Ödev/atama detay ekranlarına geçerken hangi kaydın açılacağını taşır — ayrı bir route
   // parametresi olmadığı için (router yok) en basit çözüm bu paylaşılan state.
   const [selectedAssignmentId, setSelectedAssignmentId] = useState(null);
@@ -241,11 +252,15 @@ export default function App() {
         setScreen("students");
         return;
       }
-      if (screen === "reports") {
+      if (screen === "reports" && reportReturnTo !== "tab") {
         setScreen(reportReturnTo);
         return;
       }
-      const tabIds = [...(TABS_BY_ROLE[authUser.role] || []).map((t) => t.id), "profile"];
+      if (screen === "plan" && authUser.role === "TEACHER" && authUser.isSubjectTeacher) {
+        setScreen("branch");
+        return;
+      }
+      const tabIds = [...tabsFor(authUser).map((t) => t.id), "profile"];
       if (tabIds.includes(screen)) {
         exitApp();
         return;
@@ -321,10 +336,11 @@ export default function App() {
   // Sekmelerden normal şekilde Ödev Oluştur'a gidilince az önceki "tek öğrenci" ön seçimi yapışıp kalmasın diye.
   const selectTab = (id) => {
     if (id === "assignmentCreate") { setAssignmentCreateInitialStudentId(null); setAssignmentCreateReturnTo("assignments"); }
+    if (id === "reports") setReportReturnTo("tab");
     setScreen(id);
   };
 
-  const tabs = [...(TABS_BY_ROLE[authUser.role] || []), { id: "profile", label: "Profilim", icon: UserCircle2 }];
+  const tabs = [...tabsFor(authUser), { id: "profile", label: "Ben", icon: UserCircle2 }];
   // Başlıktaki geri düğmesi — detay ekranlarında (sayfa içindeki "← … dön" bağlantılarının yerine).
   const backToOverviewFromCreate = () => {
     setAssignmentCreateInitialStudentId(null);
@@ -334,14 +350,16 @@ export default function App() {
   const headerBack = screen === "assignmentSubmit" ? backToMyAssignments
     : screen === "assignmentDetail" ? backToAssignments
     : screen === "studentOverview" ? backToStudents
-    : screen === "reports" ? backFromReport
+    : screen === "reports" && reportReturnTo !== "tab" ? backFromReport
+    : screen === "plan" && authUser.role === "TEACHER" && authUser.isSubjectTeacher ? () => setScreen("branch")
     : screen === "assignmentCreate" && assignmentCreateReturnTo === "studentOverview" && selectedStudentId ? backToOverviewFromCreate
     : undefined;
   // Detay ekranlarındayken de ait olduğu liste sekmesi kenar çubuğunda aktif görünsün diye.
   const activeTabId = screen === "assignmentDetail" ? (assignmentDetailReturnTo === "studentOverview" ? "students" : "assignments")
     : screen === "assignmentSubmit" ? "myAssignments"
     : screen === "studentOverview" ? "students"
-    : screen === "reports" ? (reportReturnTo === "studentOverview" ? "students" : "profile")
+    : screen === "reports" ? (reportReturnTo === "studentOverview" ? "students" : reportReturnTo === "tab" ? "reports" : "profile")
+    : screen === "plan" && authUser.isSubjectTeacher ? "branch"
     : screen;
 
   return (
@@ -349,8 +367,8 @@ export default function App() {
       <Sidebar user={authUser} tabs={tabs} activeId={activeTabId} onSelect={selectTab} onLogout={logout} />
       <div className="k-content-col" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <PageHeader
-          title={screenTitle(screen, authUser.role, { selectedStudentName, reportReturnTo })}
-          subtitle={screenSubtitle(screen, authUser)}
+          title={headerOverride?.title || screenTitle(screen, authUser.role, { selectedStudentName, reportReturnTo })}
+          subtitle={headerOverride?.subtitle ?? screenSubtitle(screen, authUser)}
           onBack={headerBack}
           right={
             <>
@@ -369,7 +387,7 @@ export default function App() {
                 <HeaderIconButton icon={Bell} label="Bildirimler" onClick={() => setScreen("notifications")}>
                   {unreadCount > 0 && (
                     <span style={{
-                      position: "absolute", top: -5, right: -5, background: C.red, color: "#fff", fontSize: 10, fontWeight: 800,
+                      position: "absolute", top: -5, right: -5, background: C.red, color: C.onRed, fontSize: 10, fontWeight: 800, fontFamily: monoFont,
                       borderRadius: 999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px",
                       boxShadow: `0 0 0 2px ${C.bg}`,
                     }}>{unreadCount}</span>
@@ -389,6 +407,9 @@ export default function App() {
             selectedStudentName, reportReturnTo, openReport, backFromReport,
             coachNoteOpen, onCloseNote: () => setCoachNoteOpen(false),
             openNotificationTarget: goToNotificationTarget,
+            setHeader: setHeaderOverride,
+            openStudyLog: () => setScreen("studyLog"),
+            openPlan: () => setScreen("plan"),
           })}
         </div>
       </div>
@@ -402,43 +423,57 @@ function screenTitle(screen, role, { selectedStudentName } = {}) {
   if (screen === "studentOverview" && selectedStudentName) return selectedStudentName;
   if (screen === "reports" && role === "TEACHER" && selectedStudentName) return `${selectedStudentName} — Rapor`;
   const titles = {
-    profile: "Profilim", notifications: "Bildirimler", users: "Kullanıcı Yönetimi", photos: "Kanıt Fotoğrafları",
-    students: "Öğrencilerim", assignmentCreate: "Ödev oluştur", assignments: "Ödevlerim",
-    assignmentDetail: "Ödev Detayı", myAssignments: "Ödevlerim", assignmentSubmit: "Ödev",
-    studyLog: "Serbest Çalışma", plan: "Takvim", studentOverview: "Öğrenci Özeti",
-    reports: role === "STUDENT" ? "Raporlarım" : "Raporlar",
+    profile: "Ben", notifications: "Bildirimler", users: "Kurulum", photos: "Kanıt fotoğrafları",
+    students: "Öğrencilerim", assignmentCreate: "Ödev ata", assignments: "Ödevlerim", branch: "Branş",
+    assignmentDetail: "Ödev detayı", myAssignments: "Bu hafta", assignmentSubmit: "Ödev",
+    studyLog: "Serbest çalışma", plan: "Yıllık plan", studentOverview: "Öğrenci",
+    reports: role === "STUDENT" ? "Gelişimim" : "Raporlar",
   };
   return titles[screen] || (role === "ADMIN" ? "Yönetici Paneli" : role === "TEACHER" ? "Koç Paneli" : "Öğrenci Paneli");
 }
 
+// Başlığın üstündeki bağlam satırı — kısa, tek satır (uzun açıklama cümleleri telefonda iki satıra taşıyordu).
 function screenSubtitle(screen, authUser) {
-  if (screen === "users") return "Öğretmen ve öğrenci hesaplarını yönet";
-  if (screen === "photos") return "Tüm öğrencilerin yüklediği kanıt fotoğrafları";
-  if (screen === "students") return "Koçluk grubundaki öğrenciler";
-  if (screen === "assignmentCreate") return "Öğrencilerine yeni bir ödev planla";
-  if (screen === "assignments") return "Oluşturduğun ödevler ve gönderim durumları";
-  if (screen === "plan") return "Takvimden gün seçip yıl boyunca ödev planla, zamanı gelince yayınla";
-  if (screen === "myAssignments") return "Sana atanan ödevler";
-  if (screen === "studyLog") return "Ödev dışı kendi çalışmalarını kaydet";
-  if (screen === "studentOverview") return "Ödevleri ve serbest çalışma geçmişi";
-  if (screen === "reports") return "Ders ve dönem bazlı doğru/yanlış/net dökümü";
+  if (screen === "myAssignments") {
+    return [authUser.name, authUser.className, authUser.coach?.name && `Koçun: ${authUser.coach.name}`].filter(Boolean).join(" · ");
+  }
+  if (screen === "users") return "Okul yönetimi · 2026–27 dönemi";
+  if (screen === "students" || screen === "assignmentCreate" || screen === "assignments" || screen === "plan") return authUser.name;
+  if (screen === "studyLog") return "Ödev dışı kendi çalışmaların";
+  if (screen === "reports" && authUser.role === "STUDENT") return "Ders ders doğru, yanlış ve net";
   return null;
+}
+
+// Rol'e göre sekmeler. Telefonda alt menü yalnızca yazı (şartname); kenar çubuğunda ikonlar da var.
+// Branş öğretmeninde "Takvim" yerine "Branş" sekmesi — yıllık planına branş ekranından girilir
+// (hafta hafta plan listesi orada); koç ekranı (6 öğrenci) ile branş ekranı (74 öğrenci) ayrı sekmeler.
+function tabsFor(user) {
+  if (user.role === "TEACHER" && user.isSubjectTeacher) {
+    return [
+      { id: "students", label: "Öğrenciler", icon: Users },
+      { id: "branch", label: "Branş", icon: GraduationCap },
+      { id: "assignmentCreate", label: "Ata", icon: PlusCircle },
+      { id: "assignments", label: "Ödevler", icon: ClipboardList },
+    ];
+  }
+  return TABS_BY_ROLE[user.role] || [];
 }
 
 const TABS_BY_ROLE = {
   ADMIN: [
-    { id: "users", label: "Kullanıcılar", icon: Users },
-    { id: "photos", label: "Kanıt Fotoğrafları", icon: Images },
+    { id: "users", label: "Kurulum", icon: Users },
+    { id: "photos", label: "Fotoğraflar", icon: Images },
   ],
   TEACHER: [
-    { id: "students", label: "Öğrencilerim", icon: Users },
-    { id: "assignmentCreate", label: "Ödev Oluştur", icon: PlusCircle },
-    { id: "assignments", label: "Ödevlerim", icon: ClipboardList },
+    { id: "students", label: "Öğrenciler", icon: Users },
+    { id: "assignmentCreate", label: "Ata", icon: PlusCircle },
+    { id: "assignments", label: "Ödevler", icon: ClipboardList },
     { id: "plan", label: "Takvim", icon: CalendarRange },
   ],
   STUDENT: [
-    { id: "myAssignments", label: "Ödevlerim", icon: ClipboardList },
-    { id: "studyLog", label: "Serbest Çalışma", icon: BookOpen },
+    { id: "myAssignments", label: "Bu hafta", icon: ClipboardList },
+    { id: "studyLog", label: "Çalışmam", icon: BookOpen },
+    { id: "reports", label: "Gelişim", icon: BarChart3 },
   ],
 };
 
@@ -448,7 +483,7 @@ function renderScreen({
   selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
   selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
   selectedStudentName, reportReturnTo, openReport, backFromReport,
-  coachNoteOpen, onCloseNote, openNotificationTarget,
+  coachNoteOpen, onCloseNote, openNotificationTarget, setHeader, openStudyLog, openPlan,
 }) {
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
@@ -466,18 +501,19 @@ function renderScreen({
   if (authUser.role === "ADMIN" && screen === "users") return <AdminUsersScreen />;
   if (authUser.role === "ADMIN" && screen === "photos") return <AdminPhotosScreen />;
   if (authUser.role === "TEACHER") {
-    if (screen === "students") return <TeacherStudentsScreen onOpen={openStudent} />;
-    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={createAssignmentForStudent} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} />;
+    if (screen === "students") return <TeacherStudentsScreen user={authUser} onOpen={openStudent} setHeader={setHeader} />;
+    if (screen === "branch" && authUser.isSubjectTeacher) return <BranchScreen user={authUser} setHeader={setHeader} onOpenPlan={openPlan} />;
+    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={createAssignmentForStudent} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} setHeader={setHeader} />;
     if (screen === "assignmentCreate") return <AssignmentCreateScreen onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} />;
     if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} backLabel={assignmentDetailReturnTo === "studentOverview" ? "Öğrenci özetine dön" : "Ödevlerime dön"} />;
     if (screen === "plan") return <PlanScreen user={authUser} />;
   }
   if (authUser.role === "STUDENT") {
-    if (screen === "myAssignments") return <StudentHomeScreen user={authUser} onOpen={openRecipient} refreshKey={myAssignmentsRefreshKey} />;
+    if (screen === "myAssignments") return <StudentHomeScreen user={authUser} onOpen={openRecipient} onOpenStudyLog={openStudyLog} refreshKey={myAssignmentsRefreshKey} />;
     // key: bildirimle başka bir ödeve geçilince bileşen yeniden kullanılıp önceki ödevin D/Y/B
     // değerleri ve notu formda kalıyor, yanlış ödeve gönderilebiliyordu — ödev değişince sıfırdan mount.
-    if (screen === "assignmentSubmit" && selectedRecipientId) return <AssignmentSubmitScreen key={selectedRecipientId} recipientId={selectedRecipientId} onBack={backToMyAssignments} />;
+    if (screen === "assignmentSubmit" && selectedRecipientId) return <AssignmentSubmitScreen key={selectedRecipientId} user={authUser} recipientId={selectedRecipientId} onBack={backToMyAssignments} setHeader={setHeader} />;
     if (screen === "studyLog") return <StudyLogScreen user={authUser} />;
   }
   return (

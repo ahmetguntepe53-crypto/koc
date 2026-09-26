@@ -1,15 +1,41 @@
 import { useEffect, useMemo, useState } from "react";
-import { UserPlus, Upload, RotateCcw, KeyRound, Ban, ShieldCheck, Trash2, GraduationCap, Search } from "lucide-react";
-import { C, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Select, Pill, Chip, Modal, EmptyState, Avatar, roleLabel, LoadingState, confirmDialog } from "../../components/common.jsx";
+import { UserPlus, Upload, Trash2, Search, X } from "lucide-react";
+import { C, bodyFont, monoFont } from "../../theme.js";
+import { Card, Button, Input, Select, Pill, Chip, Modal, EmptyState, Avatar, roleLabel, LoadingState, confirmDialog, StatCard, StatGrid, SectionHeader, AlertBox, ListRow, ListGroup } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { GRADE_OPTIONS, GRADE_LEVELS, BRANCHES, trackForGrade } from "../../subjects.js";
+import { GRADE_OPTIONS, GRADE_LEVELS, BRANCHES, BOARD_BRANCHES, boardBranchOf, trackForGrade } from "../../subjects.js";
+
+// Admin — Kurulum (şartname Z6). Sekmeler: Koç eşleştirme (varsayılan) · Hesaplar · Branşlar · Sistem.
+const TABS = [
+  { id: "coaches", label: "Koç eşleştirme" },
+  { id: "accounts", label: "Hesaplar" },
+  { id: "branches", label: "Branşlar" },
+  { id: "system", label: "Sistem" },
+];
+// Önerilen koç kapasitesi — zorlanmaz (okulun kararı), yalnızca yük çubuğunun rengi: dolu kırmızı, %85+ sarı.
+const COACH_CAPACITY = 7;
+
+function loadColor(n) {
+  if (n >= COACH_CAPACITY) return C.red;
+  if (n / COACH_CAPACITY >= 0.85) return C.amber;
+  return C.mutedLight;
+}
+
+// Branş rozetleri: "BRANŞ · MATEMATİK"; yoksa "yalnızca koç".
+function branchLabel(t) {
+  return t.isSubjectTeacher && t.teachingSubjects?.length
+    ? `BRANŞ · ${t.teachingSubjects.join(" / ").toLocaleUpperCase("tr-TR")}`
+    : null;
+}
 
 export default function AdminUsersScreen() {
+  const [tab, setTab] = useState("coaches");
   const [users, setUsers] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [roleFilter, setRoleFilter] = useState("");
+  const [coachFilter, setCoachFilter] = useState(""); // "" | "none" (koçsuz) | öğretmen id
   const [q, setQ] = useState("");
   const [toast, setToast] = useState(null);
   const [addModalRole, setAddModalRole] = useState(null); // "TEACHER" | "STUDENT" | null
@@ -20,12 +46,14 @@ export default function AdminUsersScreen() {
   const load = async () => {
     setLoading(true);
     try {
-      const [u, t] = await Promise.all([
+      const [u, t, st] = await Promise.all([
         api.adminListUsers({ role: roleFilter, q }),
         api.adminListTeachers(),
+        api.adminStats().catch(() => null),
       ]);
       setUsers(u.users);
       setTeachers(t.teachers);
+      setStats(st);
     } catch (e) {
       setToast({ type: "error", text: e.message });
     } finally {
@@ -33,7 +61,7 @@ export default function AdminUsersScreen() {
     }
   };
 
-  useEffect(() => { load(); }, [roleFilter]);
+  useEffect(() => { load(); }, [roleFilter]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const runSearch = (e) => { e.preventDefault(); load(); };
 
@@ -55,66 +83,185 @@ export default function AdminUsersScreen() {
   const reassignTeacher = withAction((studentId, teacherId) => api.adminReassignTeacher(studentId, teacherId || null));
   const changeGradeLevel = withAction((studentId, gradeLevel) => api.adminUpdateUser(studentId, { gradeLevel }));
   const resendActivation = withAction(async (id) => { await api.adminResendActivation(id); setToast({ type: "ok", text: "Aktivasyon bağlantısı tekrar gönderildi." }); });
-  const toggleBan = withAction(async (u) => { u.banned ? await api.adminUnbanUser(u.id) : await api.adminBanUser(u.id); });
+  const toggleBan = withAction(async (u) => {
+    if (!u.banned && !(await confirmDialog({ title: `${u.name} askıya alınsın mı?`, message: "Hesap giriş yapamaz, açık oturumları kapanır. Sonradan askıyı kaldırabilirsin.", confirmLabel: "Askıya al", danger: true }))) return;
+    u.banned ? await api.adminUnbanUser(u.id) : await api.adminBanUser(u.id);
+  });
   const remove = withAction(async (u) => {
     if (!(await confirmDialog({ title: `${u.name} silinsin mi?`, message: "Hesap kalıcı olarak silinecek. Bu işlem geri alınamaz.", confirmLabel: "Hesabı Sil", danger: true }))) return;
     await api.adminDeleteUser(u.id);
   });
 
+  // Koç yükünden ya da "koçu yok" uyarısından Hesaplar'a: o koçun (ya da koçsuz) öğrencileri.
+  const showStudentsOf = (coachId) => {
+    setTab("accounts");
+    setRoleFilter("STUDENT");
+    setCoachFilter(coachId);
+  };
+
+  const coveredBranches = BOARD_BRANCHES.filter((b) => teachers.some((t) => t.isSubjectTeacher && (t.teachingSubjects || []).some((sub) => boardBranchOf(sub) === b.key))).length;
+  const studentCount = stats?.studentCount ?? users.filter((u) => u.role === "STUDENT").length;
+  const withoutCoach = stats?.studentsWithoutTeacher ?? 0;
+  const visibleUsers = users.filter((u) => {
+    if (!coachFilter) return true;
+    if (coachFilter === "none") return u.role === "STUDENT" && !u.teacherId;
+    return u.teacherId === coachFilter;
+  });
+  const coachFilterName = coachFilter === "none" ? "Koçu olmayanlar" : teachers.find((t) => t.id === coachFilter)?.name;
+
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 1040, margin: "0 auto" }}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, auto)", gap: 8, maxWidth: "100%" }}>
-          <Button small icon={UserPlus} onClick={() => setAddModalRole("TEACHER")}>Öğretmen Ekle</Button>
-          <Button small icon={UserPlus} variant="secondary" onClick={() => setAddModalRole("STUDENT")}>Öğrenci Ekle</Button>
-          <Button small icon={Upload} variant="secondary" onClick={() => setBulkModalOpen(true)}>Toplu İçe Aktar</Button>
-        </div>
+      <div className="k-chip-row" role="tablist" aria-label="Kurulum bölümleri" style={{ marginBottom: 16 }}>
+        {TABS.map((t) => (
+          <Chip key={t.id} active={tab === t.id} onClick={() => { setTab(t.id); if (t.id !== "accounts") setCoachFilter(""); }}>{t.label}</Chip>
+        ))}
       </div>
 
       {toast && (
-        <div style={{ marginBottom: 16, padding: "11px 15px", borderRadius: C.radiusSm, background: toast.type === "error" ? C.redSoft : C.greenSoft, color: toast.type === "error" ? C.red : C.green, fontSize: 13, fontWeight: 600, fontFamily: bodyFont }}>
+        <div role={toast.type === "error" ? "alert" : "status"} style={{ marginBottom: 16, padding: "11px 15px", borderRadius: 12, background: toast.type === "error" ? C.redSoft : C.greenSoft, color: toast.type === "error" ? C.red : C.green, fontSize: 13, fontWeight: 600, fontFamily: bodyFont }}>
           {toast.text}
         </div>
       )}
 
-      <ExamDatesCard />
+      {tab === "coaches" && (
+        loading && !teachers.length ? <LoadingState /> : (
+          <>
+            <StatGrid min={96}>
+              <StatCard label="öğrenci" value={studentCount} />
+              <StatCard label="öğretmen" value={stats?.teacherCount ?? teachers.length} />
+              <StatCard label="branş atandı" value={`${coveredBranches}/${BOARD_BRANCHES.length}`} tone={coveredBranches === BOARD_BRANCHES.length ? "green" : "amber"} />
+            </StatGrid>
+            {withoutCoach > 0 && (
+              <AlertBox style={{ marginTop: 12 }}>
+                <span style={{ fontFamily: monoFont }}>{withoutCoach}</span> öğrencinin koçu yok · eşleştirilmeden ödev takibi yapılamaz.{" "}
+                <button type="button" onClick={() => showStudentsOf("none")} style={{ background: "none", border: "none", padding: 0, color: "inherit", fontWeight: 700, textDecoration: "underline", cursor: "pointer", fontFamily: bodyFont, fontSize: 13.5 }}>Göster</button>
+              </AlertBox>
+            )}
+            <SectionHeader title="Koç yükü" right={`${studentCount - withoutCoach}/${studentCount} eşleşti`} />
+            <div style={{ padding: "12px 16px", borderRadius: 14, background: C.surface, border: `1px solid ${C.border}`, fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, lineHeight: 1.5, marginBottom: 10 }}>
+              Bir koça en fazla {COACH_CAPACITY} öğrenci önerilir. Dolu koçlar kırmızı, %85 ve üstü sarı. Koça dokununca öğrencileri açılır.
+            </div>
+            <ListGroup>
+              {teachers.map((t) => (
+                <ListRow
+                  key={t.id}
+                  left={<Avatar name={t.name} size={40} />}
+                  title={t.name}
+                  subtitle={branchLabel(t) ? <span style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: 0.8, color: C.text2 }}>{branchLabel(t)}</span> : "yalnızca koç"}
+                  right={
+                    <span style={{ textAlign: "right", flexShrink: 0 }}>
+                      <span style={{ display: "block", fontFamily: monoFont, fontSize: 15, fontWeight: 700, color: t.studentCount >= COACH_CAPACITY * 0.85 ? loadColor(t.studentCount) : C.text }}>{t.studentCount}/{COACH_CAPACITY}</span>
+                      <span style={{ display: "block", width: 58, height: 4, borderRadius: 2, background: C.surface2, marginTop: 6, overflow: "hidden" }}>
+                        <span style={{ display: "block", height: "100%", width: `${Math.min(100, (t.studentCount / COACH_CAPACITY) * 100)}%`, background: loadColor(t.studentCount), borderRadius: 2 }} />
+                      </span>
+                    </span>
+                  }
+                  onClick={() => showStudentsOf(t.id)}
+                />
+              ))}
+            </ListGroup>
+          </>
+        )
+      )}
 
-      <form onSubmit={runSearch} style={{ display: "flex", gap: 10, marginBottom: 4, flexWrap: "wrap", alignItems: "flex-start" }}>
-        <div style={{ flex: "1 1 140px", maxWidth: 200 }}>
-          <Select aria-label="Role göre filtrele" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
-            <option value="">Tüm roller</option>
-            <option value="ADMIN">Yönetici</option>
-            <option value="TEACHER">Öğretmen</option>
-            <option value="STUDENT">Öğrenci</option>
-          </Select>
-        </div>
-        <div style={{ flex: "3 1 180px", minWidth: 0 }}>
-          <Input type="search" enterKeyHint="search" aria-label="İsim veya e-posta ara" placeholder="İsim veya e-posta ara..." value={q} onChange={(e) => setQ(e.target.value)} />
-        </div>
-        <div style={{ flex: "0 0 auto" }}><Button variant="secondary" type="submit" icon={Search}>Ara</Button></div>
-      </form>
+      {tab === "accounts" && (
+        <>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+            <Button small icon={UserPlus} onClick={() => setAddModalRole("TEACHER")}>Öğretmen ekle</Button>
+            <Button small icon={UserPlus} variant="secondary" onClick={() => setAddModalRole("STUDENT")}>Öğrenci ekle</Button>
+            <Button small icon={Upload} variant="secondary" onClick={() => setBulkModalOpen(true)}>Toplu içe aktar</Button>
+          </div>
+          <form onSubmit={runSearch} style={{ display: "flex", gap: 10, marginBottom: 4, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div style={{ flex: "1 1 140px", maxWidth: 200 }}>
+              <Select aria-label="Role göre filtrele" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+                <option value="">Tüm roller</option>
+                <option value="ADMIN">Yönetici</option>
+                <option value="TEACHER">Öğretmen</option>
+                <option value="STUDENT">Öğrenci</option>
+              </Select>
+            </div>
+            <div style={{ flex: "3 1 180px", minWidth: 0 }}>
+              <Input type="search" enterKeyHint="search" aria-label="İsim, okul no veya e-posta ara" placeholder="İsim, okul no veya e-posta ara..." value={q} onChange={(e) => setQ(e.target.value)} />
+            </div>
+            <div style={{ flex: "0 0 auto" }}><Button variant="secondary" type="submit" icon={Search}>Ara</Button></div>
+          </form>
+          {coachFilter && (
+            <div style={{ marginBottom: 12 }}>
+              <button type="button" onClick={() => setCoachFilter("")} className="k-btn" style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 36, padding: "0 12px", borderRadius: 10, background: C.surface2, border: `1px solid ${C.borderStrong}`, color: C.text, fontFamily: bodyFont, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                {coachFilter === "none" ? coachFilterName : `Koçu: ${coachFilterName || "—"}`} <X size={14} />
+              </button>
+            </div>
+          )}
+          {loading ? (
+            <LoadingState />
+          ) : visibleUsers.length === 0 ? (
+            <EmptyState text={coachFilter ? "Bu süzgece uyan öğrenci yok." : "Kayıtlı kullanıcı yok."} />
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {visibleUsers.map((u) => (
+                <UserRow
+                  key={u.id}
+                  user={u}
+                  teachers={teachers}
+                  onReassignTeacher={(teacherId) => reassignTeacher(u.id, teacherId)}
+                  onChangeGradeLevel={(gradeLevel) => changeGradeLevel(u.id, gradeLevel)}
+                  onResendActivation={() => resendActivation(u.id)}
+                  onToggleBan={() => toggleBan(u)}
+                  onEditBranches={() => setBranchesFor(u)}
+                  onSetPassword={() => setSetPasswordFor(u)}
+                  onDelete={() => remove(u)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
-      {loading ? (
-        <LoadingState />
-      ) : users.length === 0 ? (
-        <EmptyState text="Kayıtlı kullanıcı yok." />
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {users.map((u) => (
-            <UserRow
-              key={u.id}
-              user={u}
-              teachers={teachers}
-              onReassignTeacher={(teacherId) => reassignTeacher(u.id, teacherId)}
-              onChangeGradeLevel={(gradeLevel) => changeGradeLevel(u.id, gradeLevel)}
-              onResendActivation={() => resendActivation(u.id)}
-              onToggleBan={() => toggleBan(u)}
-              onEditBranches={() => setBranchesFor(u)}
-              onSetPassword={() => setSetPasswordFor(u)}
-              onDelete={() => remove(u)}
-            />
-          ))}
-        </div>
+      {tab === "branches" && (
+        <>
+          <StatGrid min={96}>
+            <StatCard label="branş atandı" value={`${coveredBranches}/${BOARD_BRANCHES.length}`} tone={coveredBranches === BOARD_BRANCHES.length ? "green" : "amber"} />
+            <StatCard label="branş öğretmeni" value={teachers.filter((t) => t.isSubjectTeacher).length} />
+          </StatGrid>
+          <SectionHeader title="Öğretmenler" right="dokun, dersini seç" />
+          <ListGroup>
+            {teachers.map((t) => (
+              <ListRow
+                key={t.id}
+                left={<Avatar name={t.name} size={40} />}
+                title={t.name}
+                subtitle={t.isSubjectTeacher && t.teachingSubjects?.length ? t.teachingSubjects.join(", ") : "branş yok · yalnızca koç"}
+                onClick={() => setBranchesFor(t)}
+              />
+            ))}
+          </ListGroup>
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, lineHeight: 1.5, marginTop: 12 }}>
+            Branş öğretmeni kendi dersinin yıllık planını yayınlar; ödev okuldaki tüm 11–12. sınıflara gider. Koç ekranı ile branş ekranı ayrı sekmelerdir.
+          </div>
+        </>
+      )}
+
+      {tab === "system" && (
+        <>
+          <SectionHeader title="Dönem ayarları" style={{ marginTop: 4 }} />
+          <ExamDatesCard />
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {[
+              ["Bildirim sessiz saatleri", "23:00 – 07:00", "Bu aralıkta hiçbir bildirim telefona gitmez; gece yayınlanan ödevin bildirimi sabah 07:00'de tek özet olarak gider."],
+              ["Son gün hatırlatması", "Bitiş günü 18:00", "Ödevini bitirmemiş öğrenciye bir kez, tek bildirimde."],
+              ["Geciken ödev hatırlatması", "Ödev başına 1 kez", "Süre dolunca öğrenciye bir kez; koça ödev başına bir özet. Pas geçilen ödeve hatırlatma gitmez."],
+            ].map(([label, value, detail]) => (
+              <Card key={label} style={{ padding: "14px 18px" }}>
+                <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight }}>{label}</div>
+                <div style={{ fontFamily: bodyFont, fontSize: 16, fontWeight: 700, color: C.text, marginTop: 3 }}>{value}</div>
+                <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, marginTop: 6, lineHeight: 1.45 }}>{detail}</div>
+              </Card>
+            ))}
+          </div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, lineHeight: 1.5, marginTop: 12 }}>
+            Sessiz saatler ve hatırlatma sayıları sistem kuralıdır — ekrandan değiştirilmez, öğrencileri korumak için sabittir.
+          </div>
+        </>
       )}
 
       {addModalRole && (
@@ -219,28 +366,30 @@ function ExamDatesCard() {
   );
 }
 
-// Kart düzeni: üstte kimlik (avatar, ad, rozetler, e-posta), öğrencide altında etiketli iki seçim
-// (sınıf düzeyi, koç), en altta işlem düğmeleri — önceden seçimler rozetlerin arasına karışıyor, telefonda
-// düzensiz satırlara kırılıyordu; seçimlerin neyi değiştirdiği de etiketsizdi.
+// Kart düzeni: üstte kimlik (avatar, ad, rozetler, kullanıcı adı), öğrencide altında etiketli iki seçim
+// (sınıf düzeyi, koç), en altta etiketli işlem düğmeleri — yıkıcı işlem (askıya al) ayrı renkte.
 function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onResendActivation, onToggleBan, onEditBranches, onSetPassword, onDelete }) {
   const isStudent = user.role === "STUDENT";
+  const teacherName = isStudent && user.teacher?.name;
   return (
-    <Card hover style={{ padding: 16 }}>
+    <Card style={{ padding: 16 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-        <Avatar name={user.name} size={38} />
+        <Avatar name={user.name} size={40} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text, marginRight: 2 }}>{user.name}</span>
-            <Pill tone={isStudent ? "accent" : "muted"}>{roleLabel(user.role)}</Pill>
+            <span style={{ fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.text, marginRight: 2 }}>{user.name}</span>
+            <Pill>{roleLabel(user.role)}</Pill>
             {isStudent && user.className && <Pill>{user.className}</Pill>}
             {user.banned && <Pill tone="red">Askıda</Pill>}
             {!user.hasPassword && <Pill tone="amber">Aktivasyon bekleniyor</Pill>}
             {isStudent && !GRADE_LEVELS.includes(user.gradeLevel) && <Pill tone="red">{user.gradeLevel ? "Sınıf düzeyi güncellenmeli" : "Sınıf düzeyi girilmedi"}</Pill>}
             {user.role === "TEACHER" && user.isSubjectTeacher && (
-              <Pill tone="accent">{user.teachingSubjects?.length ? `Branş: ${user.teachingSubjects.join(", ")}` : "Ders öğretmeni"}</Pill>
+              <Pill>{user.teachingSubjects?.length ? `Branş: ${user.teachingSubjects.join(", ")}` : "Ders öğretmeni"}</Pill>
             )}
           </div>
-          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{[user.username && `Kullanıcı adı: ${user.username}`, user.email].filter(Boolean).join(" · ")}</div>
+          <div style={{ fontFamily: monoFont, fontSize: 12, color: C.mutedLight, marginTop: 5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {[user.username && (isStudent ? `no ${user.username}` : user.username), user.email, teacherName].filter(Boolean).join(" · ")}
+          </div>
         </div>
       </div>
       {isStudent && (
@@ -251,27 +400,19 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onRese
             {user.gradeLevel && !GRADE_LEVELS.includes(user.gradeLevel) && <option value={user.gradeLevel} disabled>{user.gradeLevel}. Sınıf (güncellenmeli)</option>}
             {GRADE_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
           </Select>
-          <Select label="Koç" value={user.teacherId || ""} onChange={(e) => onReassignTeacher(e.target.value)}>
+          <Select label="Koçunu değiştir" value={user.teacherId || ""} onChange={(e) => onReassignTeacher(e.target.value)}>
             <option value="">Koç atanmadı</option>
-            {teachers.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.studentCount})</option>)}
+            {teachers.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.studentCount}/{COACH_CAPACITY})</option>)}
           </Select>
         </div>
       )}
-      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap", marginTop: isStudent ? -4 : 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
-        {!user.hasPassword && (
-          <IconButton title="Aktivasyon bağlantısını tekrar gönder" icon={RotateCcw} onClick={onResendActivation} />
-        )}
-        {user.role === "TEACHER" && (
-          <IconButton
-            title="Branş (ders öğretmeni — okul çapında ortak ödev gönderebilsin)"
-            icon={GraduationCap}
-            onClick={onEditBranches}
-            active={user.isSubjectTeacher}
-          />
-        )}
-        <IconButton title="Şifreyi doğrudan belirle" icon={KeyRound} onClick={onSetPassword} />
-        <IconButton title={user.banned ? "Askıyı kaldır" : "Askıya al"} icon={user.banned ? ShieldCheck : Ban} onClick={onToggleBan} />
-        <IconButton title="Sil" icon={Trash2} onClick={onDelete} danger />
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: isStudent ? -2 : 14, paddingTop: 12, borderTop: `1px solid ${C.divider}` }}>
+        {!user.hasPassword && user.email && <Button small variant="secondary" onClick={onResendActivation}>Aktivasyonu yeniden gönder</Button>}
+        <Button small variant="secondary" onClick={onSetPassword}>Şifre sıfırla</Button>
+        {user.role === "TEACHER" && <Button small variant="secondary" onClick={onEditBranches}>Branş</Button>}
+        <Button small variant={user.banned ? "secondary" : "danger"} onClick={onToggleBan}>{user.banned ? "Askıyı kaldır" : "Askıya al"}</Button>
+        <span style={{ flex: 1 }} />
+        <IconButton title="Hesabı sil" icon={Trash2} onClick={onDelete} danger />
       </div>
     </Card>
   );
@@ -286,8 +427,8 @@ function IconButton({ icon: Icon, onClick, title, danger, active }) {
       onClick={onClick}
       className="k-icon-btn"
       style={{
-        width: 38, height: 38, borderRadius: C.radiusSm, border: `1px solid ${active ? C.accent : C.border}`,
-        background: active ? C.accentSoft : C.surface2, color: danger ? C.red : active ? C.accent : C.muted, cursor: "pointer",
+        width: 40, height: 40, borderRadius: C.radiusSm, border: `1px solid ${danger ? `${C.red}55` : C.border}`,
+        background: danger ? C.redSoft : C.surface2, color: danger ? C.red : active ? C.text : C.muted, cursor: "pointer",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
     >

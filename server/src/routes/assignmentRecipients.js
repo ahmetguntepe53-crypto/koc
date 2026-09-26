@@ -74,7 +74,8 @@ async function submitHandler(req, res) {
     const cleanQuestionNumbers = Array.isArray(questionNumbers) ? questionNumbers.filter((n) => Number.isInteger(n) && n >= 0 && n <= MAX_ANSWER_COUNT) : [];
 
     const submission = await prisma.$transaction(async (tx) => {
-      await tx.assignmentRecipient.update({ where: { id: recipient.id }, data: { completed: true, completedAt: new Date() } });
+      // Sonuç girilen ödev artık "pas geçildi" değil.
+      await tx.assignmentRecipient.update({ where: { id: recipient.id }, data: { completed: true, completedAt: new Date(), skippedAt: null, skipReason: null, skipNote: null } });
       return tx.submission.upsert({
         where: { recipientId: recipient.id },
         update: { correctCount, wrongCount, blankCount, note: note ? String(note).trim() : null, questionNumbers: cleanQuestionNumbers },
@@ -89,6 +90,44 @@ async function submitHandler(req, res) {
 
 assignmentRecipientsRouter.post("/:id/submit", submitHandler);
 assignmentRecipientsRouter.patch("/:id/submit", submitHandler);
+
+// "Pas geç": öğrenci ödevi çözemediğini sebebiyle bildirir — boş bırakmaktan farklıdır, koçu ve branş
+// öğretmeni sebebi görür (bkz. schema.prisma > AssignmentRecipient.skipReason). Sonucu girilmiş ödev pas
+// geçilemez; pas geri alınabilir, sonradan sonuç girilirse de kendiliğinden kalkar.
+export const SKIP_REASONS = ["KONU", "ZAMAN", "KAYNAK", "DIGER"];
+
+assignmentRecipientsRouter.post("/:id/skip", async (req, res) => {
+  try {
+    assert(req.userRole === "STUDENT", "Bu işlem için yetkin yok", 403);
+    const recipient = await prisma.assignmentRecipient.findUnique({ where: { id: req.params.id }, include: { assignment: true } });
+    assert(recipient && recipient.studentId === req.userId, "Bulunamadı", 404);
+    assert(recipient.assignment.status === "SENT", "Bu ödev henüz sana gönderilmedi", 409);
+    assert(!recipient.completed, "Sonucunu girdiğin ödev pas geçilemez", 409);
+    const { reason, note } = req.body || {};
+    assert(SKIP_REASONS.includes(reason), "Bir sebep seç");
+    const cleanNote = reason === "DIGER" && note ? String(note).trim().slice(0, 300) || null : null;
+    const updated = await prisma.assignmentRecipient.update({
+      where: { id: recipient.id },
+      data: { skippedAt: new Date(), skipReason: reason, skipNote: cleanNote },
+      select: { id: true, skippedAt: true, skipReason: true, skipNote: true },
+    });
+    res.json({ recipient: updated });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+assignmentRecipientsRouter.delete("/:id/skip", async (req, res) => {
+  try {
+    assert(req.userRole === "STUDENT", "Bu işlem için yetkin yok", 403);
+    const recipient = await prisma.assignmentRecipient.findUnique({ where: { id: req.params.id } });
+    assert(recipient && recipient.studentId === req.userId, "Bulunamadı", 404);
+    await prisma.assignmentRecipient.update({ where: { id: recipient.id }, data: { skippedAt: null, skipReason: null, skipNote: null } });
+    res.json({ ok: true });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
 
 // Yalnızca ödevin sahibi öğrenci fotoğraf ekleyebilir/silebilir — koç ve admin yalnızca görüntüler
 // (bkz. GET /:id). Silme, sonucu gönderdikten sonra da (yanlış fotoğrafı kaldırmak için) açık kalır.

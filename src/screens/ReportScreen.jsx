@@ -70,19 +70,14 @@ function successRate(correctCount, wrongCount, blankCount) {
   return total ? Math.round((correctCount / total) * 100) : null;
 }
 
-// Ders kartındaki ilerleme çubuğu dersin kendi renginde — fonksiyon (sabit nesne değil), çünkü C.*
-// tema değişince yerinde güncelleniyor (bkz. theme.js). "-1/-2" ekli AYT dersleri ana dersin rengini alır.
-function subjectColor(subject) {
-  const base = String(subject || "").replace(/-\d+$/, "");
-  const colors = {
-    "Matematik": C.accent, "Geometri": C.accent,
-    "Türkçe": C.red, "Edebiyat": C.red,
-    "Fizik": C.blue, "Coğrafya": C.blue,
-    "Kimya": C.amber, "Tarih": C.amber, "T.C. İnkılap Tarihi ve Atatürkçülük": C.amber,
-    "Biyoloji": C.green, "Din Kültürü ve Ahlak Bilgisi": C.green,
-    "Felsefe": C.muted, "Felsefe Grubu": C.muted, "Mantık": C.muted, "Psikoloji": C.muted, "Sosyoloji": C.muted,
-  };
-  return colors[base] || C.accent;
+// Ders kartındaki ilerleme çubuğu başarı oranının renginde (≥70 yeşil, 40–69 sarı, <40 kırmızı) —
+// eskiden her dersin kendi rengi vardı (Türkçe kırmızı, Biyoloji yeşil): "her renk bir veri anlamı
+// taşır" kuralında kırmızı Türkçe "kötü" gibi okunuyordu. Fonksiyon, çünkü C.* tema değişince güncelleniyor.
+function rateColor(rate) {
+  if (rate == null) return C.faintest;
+  if (rate >= 70) return C.green;
+  if (rate >= 40) return C.amber;
+  return C.red;
 }
 
 // Kartların sağındaki net değeri — mono rakam, altında küçük "NET" etiketi. Negatif net kırmızı.
@@ -160,7 +155,7 @@ function SubjectCard({ subject, count, correctCount, wrongCount, blankCount, net
         </div>
       </div>
       <div style={{ marginTop: 12 }}>
-        <ProgressBar value={rate} color={subjectColor(subject)} height={6} />
+        <ProgressBar value={rate} color={rateColor(rate)} height={6} />
       </div>
     </Card>
   );

@@ -119,7 +119,7 @@ async function notifyDueToday(now) {
   const todayStart = trStartOfToday(now);
   const rows = await prisma.assignmentRecipient.findMany({
     where: {
-      completed: false, dueReminderSentAt: null, overdueReminderSentAt: null,
+      completed: false, skippedAt: null, dueReminderSentAt: null, overdueReminderSentAt: null,
       assignment: { status: "SENT", endDate: { gte: today, lt: new Date(today.getTime() + ONE_DAY_MS) } },
     },
     include: { assignment: { select: { subject: true, topic: true, sentAt: true } } },
@@ -149,7 +149,7 @@ async function notifyDueToday(now) {
 async function notifyOverdueRecipients(now) {
   const cutoff = new Date(now.getTime() - TR_END_OF_DAY_GRACE_MS);
   const overdue = await prisma.assignmentRecipient.findMany({
-    where: { completed: false, overdueReminderSentAt: null, assignment: { status: "SENT", endDate: { lt: cutoff } } },
+    where: { completed: false, skippedAt: null, overdueReminderSentAt: null, assignment: { status: "SENT", endDate: { lt: cutoff } } },
     include: { assignment: { select: { subject: true, topic: true, sentAt: true, endDate: true } } },
     orderBy: { createdAt: "asc" },
   });
@@ -177,11 +177,12 @@ async function notifyTeachersOfOverdueAssignments(now) {
   const cutoff = new Date(now.getTime() - TR_END_OF_DAY_GRACE_MS);
   const assignments = await prisma.assignment.findMany({
     where: { status: "SENT", endDate: { lt: cutoff }, teacherOverdueNotifiedAt: null },
-    include: { recipients: { select: { completed: true } } },
+    include: { recipients: { select: { completed: true, skippedAt: true } } },
   });
   for (const a of assignments) {
     try {
-      const missing = a.recipients.filter((r) => !r.completed).length;
+      // Pas geçen öğrenci sebebini bildirdi — "hâlâ tamamlamadı" sayılmaz.
+      const missing = a.recipients.filter((r) => !r.completed && !r.skippedAt).length;
       if (missing > 0 && !publishedAfterDeadline(a)) {
         const text = `"${a.subject} — ${a.topic}" ödevinin süresi geçti — ${missing}/${a.recipients.length} öğrenci hâlâ tamamlamadı.`;
         await notifyUser(a.teacherId, text, { type: "assignment_overdue_summary", data: { screen: "assignmentDetail", assignmentId: a.id }, now });

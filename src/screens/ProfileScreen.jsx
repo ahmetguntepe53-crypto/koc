@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { BarChart3, Sun, Moon } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { C, displayFont, bodyFont } from "../theme.js";
 import { Card, Button, Input, Pill, Avatar, roleLabel } from "../components/common.jsx";
 import { api, setToken } from "../api.js";
 import { gradeLabel } from "../subjects.js";
 
 const THEME_OPTIONS = [
-  { value: "light", label: "Açık", icon: Sun },
   { value: "dark", label: "Koyu", icon: Moon },
+  { value: "light", label: "Açık", icon: Sun },
 ];
 
 export default function ProfileScreen({ user, onLogout, onOpenReport, theme, onChangeTheme }) {
@@ -51,19 +51,7 @@ export default function ProfileScreen({ user, onLogout, onOpenReport, theme, onC
           </div>
         </div>
       </Card>
-      {user.role === "STUDENT" && onOpenReport && (
-        <Card hover style={{ marginBottom: 18, cursor: "pointer" }}>
-          <div onClick={onOpenReport} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <div style={{ width: 38, height: 38, borderRadius: 999, background: C.accentSoft, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              <BarChart3 size={18} color={C.accent} />
-            </div>
-            <div>
-              <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, color: C.text }}>Raporum</div>
-              <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.muted, marginTop: 1 }}>Ders ve dönem bazlı doğru/yanlış/net dökümün</div>
-            </div>
-          </div>
-        </Card>
-      )}
+      {/* Öğrencinin raporu artık alt menüdeki "Gelişim" sekmesinde. */}
       {onChangeTheme && (
         <Card style={{ marginBottom: 18 }}>
           <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, marginBottom: 3, color: C.text }}>Görünüm</div>

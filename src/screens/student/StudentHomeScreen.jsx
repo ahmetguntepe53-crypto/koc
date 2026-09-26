@@ -1,284 +1,260 @@
-import { useEffect, useState } from "react";
-import { Clock, ClipboardCheck, PartyPopper } from "lucide-react";
-import { C, bodyFont, monoFont, formatNet } from "../../theme.js";
-import { Select, Pill, EmptyState, StatCard, StatGrid, SectionHeader, AssignmentRow, ShowMoreButton, LoadingState, Num } from "../../components/common.jsx";
+import { useEffect, useMemo, useState } from "react";
+import { ClipboardCheck, Plus } from "lucide-react";
+import { C, bodyFont, monoFont, formatNet, recipientStatus, netOf } from "../../theme.js";
+import { Card, EmptyState, SectionHeader, LoadingState, StatusSquare, ListRow, ListGroup, SegmentBar, Legend, SourceTag, AlertBox, ShowMoreButton } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { ALL_SUBJECTS, subjectIconUrl } from "../../subjects.js";
-import { daysUntil } from "../../dates.js";
+import { BOARD_BRANCHES, boardBranchOf } from "../../subjects.js";
+import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, questionCountOf, isSchoolWide } from "../../work.js";
 import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
-// Geciken/Bekleyen: başta en fazla 2 satır, "N tane daha" her basışta 5 tane daha açar.
-// Tamamlanan: başta 1 satır — başlıktaki "Tümü" hepsini açar, "Daha az" yeniden 1'e indirir.
-const PAGE_SIZE = 5;
-const INITIAL_OPEN_COUNT = 2;
-const INITIAL_COMPLETED_COUNT = 1;
+// Öğrenci ana ekranı — "Bu hafta" (şartname Z1). Branş ödevleri ile koç ödevleri AYNI haftanın işi:
+// tek listede, kaynak farkını yalnızca koç ödevindeki mor "koçundan" etiketi taşır. Geciken ödevler
+// ayrı bir kovaya konmaz (suçluluk motive etmiyor) — tek satırlık uyarı + listenin başı.
 
-// Satırdaki durum rozeti: geciken kırmızı "N gün gecikti", bekleyen amber kalan gün, tamamlanan yeşil
-// "Net 16,25" — tamamlanmış bir ödevin en değerli bilgisi sonucudur (sonuç yoksa "Tamamlandı").
-function statusBadge(r) {
-  if (r.completed) {
-    const s = r.submission;
-    if (!s) return <Pill tone="green">Tamamlandı</Pill>;
-    return <Pill tone="green" mono>Net {formatNet(s.correctCount - s.wrongCount / 4)}</Pill>;
+const PAGE_SIZE = 6;
+// Sınav tarihi admin panelinden GÜN olarak girilir (UTC gece yarısı). Geri sayım TYT oturumunun
+// başlangıcına — Türkiye saatiyle 10.15'e (UTC 07.15) — göre.
+const TYT_START_UTC_OFFSET_MS = (7 * 60 + 15) * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function YksCard({ examDate }) {
+  if (!examDate) {
+    return <Card style={{ padding: "16px 20px", marginBottom: 12, color: C.mutedLight, fontFamily: bodyFont, fontSize: 14 }}>YKS tarihi henüz girilmedi.</Card>;
   }
-  const daysLeft = daysUntil(r.assignment.endDate);
-  if (daysLeft < 0) return <Pill tone="red"><Num>{Math.abs(daysLeft)}</Num>gün gecikti</Pill>;
-  if (daysLeft === 0) return <Pill tone="amber">Bugün son gün</Pill>;
-  if (daysLeft === 1) return <Pill tone="amber">Yarın</Pill>;
-  return <Pill tone="amber"><Num>{daysLeft}</Num>gün kaldı</Pill>;
+  const examStart = new Date(examDate).getTime() + TYT_START_UTC_OFFSET_MS;
+  const diff = examStart - Date.now();
+  const dateLabel = new Date(examDate).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  if (diff <= 0) {
+    const over = -diff > 2 * DAY_MS;
+    return <Card style={{ padding: "16px 20px", marginBottom: 12, fontFamily: bodyFont, fontSize: 15, fontWeight: 600, color: C.text }}>{over ? "Yeni YKS tarihi henüz girilmedi." : "Sınav günü geldi — bol şans!"}</Card>;
+  }
+  const days = Math.ceil(diff / DAY_MS);
+  return (
+    <Card style={{ padding: "15px 20px", marginBottom: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.mutedLight }}>YKS'ye kalan</div>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginTop: 2 }}>
+          <span style={{ fontFamily: monoFont, fontSize: 27, fontWeight: 700, letterSpacing: -1.1, color: C.text }}>{days}</span>
+          <span style={{ fontFamily: bodyFont, fontSize: 14, color: C.mutedLight }}>gün</span>
+        </div>
+      </div>
+      <div style={{ textAlign: "right", fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, lineHeight: 1.5 }}>
+        <div>{dateLabel}</div>
+        <div><span style={{ fontFamily: monoFont }}>{Math.floor(days / 7)}</span> hafta</div>
+      </div>
+    </Card>
+  );
 }
 
-function Row({ r, onOpen }) {
-  const a = r.assignment;
-  const status = r.completed ? "done" : daysUntil(a.endDate) < 0 ? "overdue" : "pending";
+// Bu haftanın ödev kartı: sayı, toplam soru, branş/koç dağılımı, haftalık net, dört parçalı şerit.
+// Şerit soru sayısıyla çizilir (her ödevin soru sayısı biliniyorsa), yoksa ödev sayısıyla.
+function WeekCard({ items }) {
+  const qs = items.map((r) => questionCountOf(r.assignment.pageRange));
+  const allQ = items.length > 0 && qs.every((q) => q != null);
+  const totalQ = allQ ? qs.reduce((a, b) => a + b, 0) : null;
+  const weight = (r, i) => (allQ ? qs[i] : 1);
+  const sums = { done: 0, missed: 0, skipped: 0, open: 0 };
+  items.forEach((r, i) => { sums[recipientStatus(r)] += weight(r, i); });
+  const branchCount = items.filter((r) => isSchoolWide(r.assignment)).length;
+  const coachCount = items.length - branchCount;
+  const nets = items.map((r) => netOf(r.submission)).filter((n) => n != null);
+  const weekNet = nets.length ? nets.reduce((a, b) => a + b, 0) : null;
   return (
-    <AssignmentRow
-      iconSrc={subjectIconUrl(a.subject)}
-      title={`${a.subject} — ${a.topic}`}
-      status={status}
-      badge={statusBadge(r)}
-      meta={[a.examType, a.pageRange].filter(Boolean).join(" · ")}
+    <Card style={{ padding: "18px 20px", marginBottom: 12 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, color: C.mutedLight }}>BU HAFTANIN ÖDEVLERİ</div>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: monoFont, fontSize: 34, fontWeight: 700, letterSpacing: -1.4, color: C.text, lineHeight: 1 }}>{items.length}</span>
+            <span style={{ fontFamily: bodyFont, fontSize: 14.5, color: C.text2 }}>
+              ödev{totalQ != null && <> · <span style={{ fontFamily: monoFont }}>{totalQ}</span> soru</>}
+            </span>
+          </div>
+          {items.length > 0 && (
+            <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, marginTop: 6 }}>
+              {[branchCount && `${branchCount} branş ödevi`, coachCount && `${coachCount} koç ödevi`].filter(Boolean).join(" + ")}
+            </div>
+          )}
+        </div>
+        <div style={{ textAlign: "right", flexShrink: 0 }}>
+          <div style={{ fontFamily: monoFont, fontSize: 27, fontWeight: 700, letterSpacing: -1.1, color: weekNet != null ? C.green : C.faintest }}>{weekNet != null ? formatNet(weekNet, 2) : "—"}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.mutedLight, marginTop: 2 }}>bu haftaki net</div>
+        </div>
+      </div>
+      {items.length > 0 && (
+        <>
+          <div style={{ marginTop: 16 }}>
+            <SegmentBar parts={[
+              { label: "çözdüm", value: sums.done, color: C.green },
+              { label: "gecikti", value: sums.missed, color: C.red },
+              { label: "pas", value: sums.skipped, color: C.amber },
+              { label: "kalan", value: sums.open, color: C.faintest },
+            ]} />
+          </div>
+          <Legend style={{ marginTop: 12 }} items={[
+            { label: "çözdüm", value: sums.done, color: C.green },
+            { label: "gecikti", value: sums.missed, color: C.red },
+            { label: "pas", value: sums.skipped, color: C.amber },
+            { label: "kalan", value: sums.open, color: C.faintest },
+          ]} />
+        </>
+      )}
+    </Card>
+  );
+}
+
+// Geciken uyarısı — tek satır; öğrenci her ödev için kaç kez uyarılacağını bilmeli (bir kez).
+function OverdueAlert({ missed }) {
+  if (!missed.length) return null;
+  if (missed.length === 1) {
+    const r = missed[0];
+    const reminded = r.overdueReminderSentAt ? "1 hatırlatma gönderildi" : "tek hatırlatma gönderilir";
+    return <AlertBox style={{ marginBottom: 4 }}>{r.assignment.subject} · {r.assignment.topic} ödevinin süresi {endedLabel(r.assignment.endDate).replace(" bitti", "")} doldu · {reminded}</AlertBox>;
+  }
+  return <AlertBox style={{ marginBottom: 4 }}>{missed.length} ödevinin süresi doldu · her biri için yalnızca 1 hatırlatma gönderilir — hâlâ sonucunu girebilirsin.</AlertBox>;
+}
+
+// Satırın alt yazısı: "Matematik · dün bitti" (kırmızı), "çözdüm · 31,0 net" (yeşil), "pas geçtim"
+// (sarı), "Pazar 23:59" (soluk).
+function rowSubtitle(r) {
+  const a = r.assignment;
+  const status = recipientStatus(r);
+  const net = netOf(r.submission);
+  const text = {
+    done: net != null ? `çözdüm · ${formatNet(net, 1)} net` : "çözdüm",
+    missed: endedLabel(a.endDate),
+    skipped: "pas geçtim",
+    open: deadlineLabel(a.endDate),
+  }[status];
+  const color = { done: C.green, missed: C.red, skipped: C.amber, open: C.mutedLight }[status];
+  return <>{a.subject} <span aria-hidden="true">·</span> <span style={{ color }}>{text}</span></>;
+}
+
+function AssignmentItem({ r, onOpen }) {
+  const a = r.assignment;
+  const q = questionCountOf(a.pageRange);
+  return (
+    <ListRow
+      left={<StatusSquare subject={a.subject} status={recipientStatus(r)} size={36} />}
+      title={a.topic}
+      titleExtra={!isSchoolWide(a) ? <SourceTag /> : null}
+      subtitle={rowSubtitle(r)}
+      right={q != null ? (
+        <span style={{ textAlign: "right", flexShrink: 0 }}>
+          <span style={{ display: "block", fontFamily: monoFont, fontSize: 17, fontWeight: 700, color: C.text }}>{q}</span>
+          <span style={{ display: "block", fontFamily: bodyFont, fontSize: 11, color: C.mutedLight }}>soru</span>
+        </span>
+      ) : null}
       onClick={() => onOpen(r.id)}
     />
   );
 }
 
-function RowList({ rows, onOpen }) {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {rows.map((r) => <Row key={r.id} r={r} onOpen={onOpen} />)}
-    </div>
-  );
+// Listenin sırası: gecikenler en üstte, sonra branş ödevleri (koç panosundaki branş sırasıyla), en
+// sonda koç ödevleri — koç ile öğrenci aynı düzeni görsün.
+const BRANCH_ORDER = Object.fromEntries(BOARD_BRANCHES.map((b, i) => [b.key, i]));
+function listRank(r) {
+  const status = recipientStatus(r);
+  if (status === "missed") return [0, dayKey(r.assignment.endDate)];
+  if (isSchoolWide(r.assignment)) return [1, String(BRANCH_ORDER[boardBranchOf(r.assignment.subject)] ?? 9).padStart(2, "0") + r.assignment.subject];
+  return [2, dayKey(r.assignment.endDate)];
 }
 
-// Saniye hassasiyeti göstermiyoruz (gün/saat/dakika yeterli) — bu yüzden dakikada bir yenilense
-// yeterli, saniyede bir yeniden render etmenin bir faydası yok.
-function useNowTicking(intervalMs = 30000) {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), intervalMs);
-    return () => clearInterval(t);
-  }, [intervalMs]);
-  return now;
-}
-
-// Sınav tarihi admin panelinden yalnızca GÜN olarak girilir (bkz. AdminUsersScreen > ExamDatesCard),
-// depolanan değer o günün UTC gece yarısı. Geri sayım YKS'nin ilk oturumu TYT'nin başlangıcına —
-// Türkiye saatiyle 10.15'e (UTC 07.15) — göre hesaplanır; önceden gece yarısına sayıyordu.
-const TYT_START_UTC_OFFSET_MS = (7 * 60 + 15) * 60 * 1000;
-const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-
-// "19 Haz 2027" — kısa ay adı, Türkiye saatine göre (gece yarısı UTC değeri cihaz saatiyle kaymasın).
-function examShortDate(examDate) {
-  return new Date(examDate).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/Istanbul" });
-}
-
-// Mor gradyan kart: üst satırda saat ikonu + "YKS'YE KALAN" ve sağda tarih, altında duruma göre
-// değişen içerik. Renkler countdown* jetonlarından — koyu temada altın gradyana döner.
-function ExamCountdownShell({ dateLabel, children }) {
-  return (
-    <div style={{
-      background: C.countdownBg, boxShadow: C.countdownShadow, color: C.onCountdown,
-      borderRadius: C.radiusLg, padding: "15px 16px", marginBottom: 14,
-    }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, opacity: 0.75, minWidth: 0 }}>
-          <Clock size={13} strokeWidth={2.4} style={{ flexShrink: 0 }} />
-          <span style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 800, letterSpacing: 1.3, whiteSpace: "nowrap" }}>YKS'YE KALAN</span>
-        </div>
-        {dateLabel && <span style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 500, opacity: 0.62, whiteSpace: "nowrap" }}>{dateLabel}</span>}
-      </div>
-      <div style={{ marginTop: 8 }}>{children}</div>
-    </div>
-  );
-}
-
-function CountdownMessage({ children }) {
-  return <div style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, lineHeight: 1.4, padding: "4px 0 2px" }}>{children}</div>;
-}
-
-// Saat/dakika: gün sayısından küçük, ikincil — "00 sa  37 dk".
-function CountdownUnit({ value, unit }) {
-  return (
-    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 4 }}>
-      <span style={{ fontFamily: monoFont, fontSize: 19, fontWeight: 700, letterSpacing: -0.4, opacity: 0.92 }}>{String(value).padStart(2, "0")}</span>
-      <span style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 600, opacity: 0.7 }}>{unit}</span>
-    </span>
-  );
-}
-
-function ExamCountdownCard({ examDate }) {
-  const now = useNowTicking();
-
-  if (!examDate) {
-    return (
-      <ExamCountdownShell>
-        <CountdownMessage>YKS tarihi henüz girilmedi.</CountdownMessage>
-      </ExamCountdownShell>
-    );
-  }
-
-  const examStart = new Date(examDate).getTime() + TYT_START_UTC_OFFSET_MS;
-  const diffMs = examStart - now;
-  if (diffMs <= 0) {
-    // Sınav günü (TYT + ertesi gün AYT) "bol şans"; ondan sonra kayıtlı tarih eskimiş demektir — bir
-    // sonraki yılın tarihi girilene kadar eski sınavı "geldi" diye göstermeye devam etmesin.
-    const examOver = now - examStart > 2 * ONE_DAY_MS;
-    return (
-      <ExamCountdownShell dateLabel={examOver ? null : examShortDate(examDate)}>
-        <CountdownMessage>{examOver ? "Yeni YKS tarihi henüz girilmedi." : "Sınav günü geldi — bol şans! 🍀"}</CountdownMessage>
-      </ExamCountdownShell>
-    );
-  }
-
-  const totalMinutes = Math.floor(diffMs / 60000);
-  const days = Math.floor(totalMinutes / (24 * 60));
-  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
-  const minutes = totalMinutes % 60;
-
-  return (
-    <ExamCountdownShell dateLabel={`${examShortDate(examDate)} · 10.15`}>
-      {/* Gün sayısı öne çıkar, saat/dakika ikincil — eski kartta üçü eşit büyüklükteydi. */}
-      <div aria-label={`${days} gün ${hours} saat ${minutes} dakika`} style={{ display: "flex", alignItems: "baseline", flexWrap: "wrap", columnGap: 14, rowGap: 2 }}>
-        <span style={{ display: "inline-flex", alignItems: "baseline", gap: 5 }}>
-          <span style={{ fontFamily: monoFont, fontSize: 38, fontWeight: 700, letterSpacing: -1.8, lineHeight: 1.05 }}>{days}</span>
-          <span style={{ fontFamily: bodyFont, fontSize: 13, fontWeight: 600, opacity: 0.75 }}>gün</span>
-        </span>
-        <CountdownUnit value={hours} unit="sa" />
-        <CountdownUnit value={minutes} unit="dk" />
-      </div>
-    </ExamCountdownShell>
-  );
-}
-
-export default function StudentHomeScreen({ onOpen, refreshKey }) {
+export default function StudentHomeScreen({ onOpen, onOpenStudyLog, refreshKey }) {
   const [recipients, setRecipients] = useState([]);
-  const [subject, setSubject] = useState("");
+  const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [examDates, setExamDates] = useState(null);
-  // Ders filtresi ya da liste değişince her bölüm baştan (2 / 2 / 1 satır) başlar.
-  const [visibleOverdueCount, setVisibleOverdueCount] = useState(INITIAL_OPEN_COUNT);
-  const [visiblePendingCount, setVisiblePendingCount] = useState(INITIAL_OPEN_COUNT);
-  const [completedExpanded, setCompletedExpanded] = useState(false);
-  // Üstteki "Geciken/Bekleyen/Tamamlanan" kutucuklarına tıklayınca aşağıdaki listeyi filtreler —
-  // aynı kutucuğa tekrar basmak "Tümü"ne (varsayılan, üç bölüm birden) geri döner.
-  const [assignmentFilter, setAssignmentFilter] = useState("all"); // "all" | "pending" | "overdue" | "completed"
-  const toggleFilter = (f) => setAssignmentFilter((cur) => (cur === f ? "all" : f));
+  const [pastVisible, setPastVisible] = useState(0);
 
   useEffect(() => {
     setLoading(true);
     setLoadError("");
-    api.listMyAssignments({ subject: subject || undefined })
-      .then(({ recipients }) => setRecipients(recipients))
+    Promise.all([api.listMyAssignments(), api.listStudySessions().catch(() => ({ sessions: [] }))])
+      .then(([{ recipients }, { sessions }]) => { setRecipients(recipients); setSessions(sessions || []); })
       .catch((e) => setLoadError(e.message || "Ödevler yüklenemedi"))
       .finally(() => setLoading(false));
-  }, [subject, refreshKey]);
-
+  }, [refreshKey]);
   useEffect(() => { api.getExamDates().then(setExamDates).catch(() => {}); }, []);
-  // Yalnızca ders filtresi değişince baştan başlar — refreshKey artık uygulama arka plandan dönünce de
-  // artıyor (bkz. App.jsx > kocluk:resume), o anda öğrencinin seçtiği kutucuk filtresi sıfırlanmamalı.
-  useEffect(() => {
-    setVisibleOverdueCount(INITIAL_OPEN_COUNT);
-    setVisiblePendingCount(INITIAL_OPEN_COUNT);
-    setCompletedExpanded(false);
-    setAssignmentFilter("all");
-  }, [subject]);
 
-  const pending = recipients.filter((r) => !r.completed);
-  // Geciken ödevler kendi ayrı bölümünde (en üstte) — "Bekleyen" bölümüyle çakışıp aynı ödevin iki
-  // kez listelenmemesi için oradan çıkarılıyor.
-  const overdue = pending.filter((r) => daysUntil(r.assignment.endDate) < 0);
-  // En az günü kalan (en acil) en üstte olacak şekilde sıralanır.
-  const notOverdue = pending
-    .filter((r) => daysUntil(r.assignment.endDate) >= 0)
-    .sort((a, b) => daysUntil(a.assignment.endDate) - daysUntil(b.assignment.endDate));
-  const completed = recipients.filter((r) => r.completed);
-  const visibleOverdue = overdue.slice(0, visibleOverdueCount);
-  const visiblePending = notOverdue.slice(0, visiblePendingCount);
-  const visibleCompleted = completedExpanded ? completed : completed.slice(0, INITIAL_COMPLETED_COUNT);
+  const week = weekBounds();
+  const { weekItems, list, past, missed } = useMemo(() => {
+    const weekItems = recipients.filter((r) => inWeek(r.assignment.endDate, week));
+    // Liste: bu hafta + önceki haftalardan hâlâ bekleyen (geciken) + ileri tarihli açık ödevler.
+    const current = recipients.filter((r) => {
+      const status = recipientStatus(r);
+      return inWeek(r.assignment.endDate, week) || status === "missed" || (status === "open" && dayKey(r.assignment.endDate) > week.sun);
+    });
+    const byRank = (a, b) => {
+      const [ra, ka] = listRank(a);
+      const [rb, kb] = listRank(b);
+      return ra - rb || ka.localeCompare(kb);
+    };
+    const currentIds = new Set(current.map((r) => r.id));
+    const past = recipients.filter((r) => !currentIds.has(r.id)).sort((a, b) => dayKey(b.assignment.endDate).localeCompare(dayKey(a.assignment.endDate)));
+    return { weekItems, list: [...current].sort(byRank), past, missed: current.filter((r) => recipientStatus(r) === "missed") };
+  }, [recipients, week.mon, week.sun]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Okul yalnızca YKS'ye hazırlanıyor — sayaç herkes için admin panelinden girilen YKS tarihini okur.
-  const examDate = examDates?.yksExamDate || null;
-  // Kutucuk sayıları listeden gelir — ilk yükleme bitmeden "0 / 0 / 0" yanıp sönmesin.
-  const showStats = !loadError && !(loading && recipients.length === 0);
+  const weekSessions = sessions.filter((s) => inWeek(s.studyDate, week));
+  const sessionQ = weekSessions.reduce((sum, s) => sum + s.correctCount + s.wrongCount + s.blankCount, 0);
+  const sessionNet = weekSessions.reduce((sum, s) => sum + netOf(s), 0);
 
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
       <PushPermissionBanner reason="Yeni ödevleri ve son gün hatırlatmalarını kaçırmamak için." />
-      {examDates && <ExamCountdownCard examDate={examDate} />}
-
-      <Select
-        aria-label="Derse göre filtrele"
-        value={subject}
-        onChange={(e) => setSubject(e.target.value)}
-        style={{ minHeight: 44, height: 44, padding: "0 14px" }}
-      >
-        <option value="">Tüm dersler</option>
-        {ALL_SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
-      </Select>
-
-      {showStats && (
-        <StatGrid>
-          <StatCard label="Geciken" value={overdue.length} tone="red" onClick={() => toggleFilter("overdue")} active={assignmentFilter === "overdue"} />
-          <StatCard label="Bekleyen" value={notOverdue.length} tone="amber" onClick={() => toggleFilter("pending")} active={assignmentFilter === "pending"} />
-          {/* Geciken/Bekleyen gibi listeden sayılır — ders filtresi seçiliyken yalnızca o dersin toplamı. */}
-          <StatCard label="Tamamlanan" value={completed.length} tone="green" onClick={() => toggleFilter("completed")} active={assignmentFilter === "completed"} />
-        </StatGrid>
-      )}
+      {examDates && <YksCard examDate={examDates.yksExamDate} />}
 
       {loading ? (
-        <div style={{ marginTop: 22 }}><LoadingState /></div>
+        <LoadingState />
       ) : loadError ? (
         <EmptyState text={loadError} />
-      ) : recipients.length === 0 ? (
-        <EmptyState icon={ClipboardCheck} text={subject ? `${subject} dersinde sana gönderilmiş bir ödev yok.` : "Henüz sana gönderilmiş bir ödev yok. Koçun ödev gönderdiğinde burada ve bildirimlerinde göreceksin."} />
       ) : (
         <>
-          {(assignmentFilter === "all" || assignmentFilter === "overdue") && (
-            <section>
-              <SectionHeader title="Geciken" count={overdue.length} tone="red" />
-              {overdue.length === 0 ? (
-                <EmptyState text="Geciken ödevin yok." />
-              ) : (
-                <>
-                  <RowList rows={visibleOverdue} onOpen={onOpen} />
-                  <ShowMoreButton remaining={overdue.length - visibleOverdue.length} onClick={() => setVisibleOverdueCount((n) => n + PAGE_SIZE)} />
-                </>
-              )}
-            </section>
+          <WeekCard items={weekItems} />
+          <OverdueAlert missed={missed} />
+
+          <SectionHeader title="Ödevler" count={list.length} />
+          {list.length === 0 ? (
+            <EmptyState icon={ClipboardCheck} text={recipients.length ? "Bu hafta bekleyen ödevin yok." : "Henüz sana gönderilmiş bir ödev yok. Branş öğretmenlerin ve koçun ödev gönderdiğinde burada göreceksin."} />
+          ) : (
+            <ListGroup>
+              {list.map((r) => <AssignmentItem key={r.id} r={r} onOpen={onOpen} />)}
+            </ListGroup>
           )}
 
-          {(assignmentFilter === "all" || assignmentFilter === "pending") && (
-            <section>
-              <SectionHeader title="Bekleyen" count={notOverdue.length} tone="amber" />
-              {notOverdue.length === 0 ? (
-                <EmptyState icon={PartyPopper} text="Bekleyen ödevin yok, harika gidiyorsun." />
-              ) : (
-                <>
-                  <RowList rows={visiblePending} onOpen={onOpen} />
-                  <ShowMoreButton remaining={notOverdue.length - visiblePending.length} onClick={() => setVisiblePendingCount((n) => n + PAGE_SIZE)} />
-                </>
-              )}
-            </section>
-          )}
+          <SectionHeader title="Kendi çalışmam" />
+          <Card style={{ padding: "16px 16px 16px 20px", display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontFamily: bodyFont, fontSize: 15.5, fontWeight: 600, color: C.text }}>Serbest çalışma</div>
+              <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, marginTop: 3 }}>
+                {weekSessions.length
+                  ? <>Bu hafta <span style={{ fontFamily: monoFont }}>{weekSessions.length}</span> kayıt · <span style={{ fontFamily: monoFont }}>{sessionQ}</span> soru · <span style={{ fontFamily: monoFont }}>{formatNet(sessionNet, 1)}</span> net</>
+                  : "Bu hafta henüz kayıt yok"}
+              </div>
+            </div>
+            {onOpenStudyLog && (
+              <button type="button" onClick={onOpenStudyLog} aria-label="Serbest çalışma ekle" className="k-icon-btn" style={{ width: 48, height: 48, borderRadius: 13, flexShrink: 0, background: C.surface2, border: `1px solid ${C.borderStrong}`, color: C.text, display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                <Plus size={20} strokeWidth={2.2} />
+              </button>
+            )}
+          </Card>
 
-          {(assignmentFilter === "all" || assignmentFilter === "completed") && (
-            <section>
+          {past.length > 0 && (
+            <>
               <SectionHeader
-                title="Tamamlanan"
-                count={completed.length}
-                tone="green"
-                action={completed.length > INITIAL_COMPLETED_COUNT
-                  ? { label: completedExpanded ? "Daha az" : "Tümü", onClick: () => setCompletedExpanded((v) => !v) }
-                  : undefined}
+                title="Önceki haftalar"
+                action={{ label: pastVisible ? "Gizle" : `${past.length} ödev`, onClick: () => setPastVisible((v) => (v ? 0 : PAGE_SIZE)) }}
               />
-              {completed.length === 0 ? (
-                <EmptyState text="Henüz tamamladığın bir ödev yok." />
-              ) : (
-                <RowList rows={visibleCompleted} onOpen={onOpen} />
+              {pastVisible > 0 && (
+                <>
+                  <ListGroup>
+                    {past.slice(0, pastVisible).map((r) => <AssignmentItem key={r.id} r={r} onOpen={onOpen} />)}
+                  </ListGroup>
+                  <ShowMoreButton remaining={past.length - pastVisible} onClick={() => setPastVisible((n) => n + PAGE_SIZE)} />
+                </>
               )}
-            </section>
+            </>
           )}
         </>
       )}

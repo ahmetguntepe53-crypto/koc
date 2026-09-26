@@ -22,3 +22,13 @@ export function maxQuestionCount(date, endDate) {
   const days = date && endDate ? Math.round((endDate.getTime() - date.getTime()) / DAY_MS) + 1 : 1;
   return MAX_QUESTIONS_PER_DAY * Math.max(1, days);
 }
+
+// Kullanıcının kendi belirlediği şifrenin kuralları — ilk giriş ekranında baştan gösterilir (bkz.
+// ForcePasswordScreen): en az 8 karakter, en az bir harf ve bir rakam, kullanıcı adıyla (öğrencide okul
+// numarası) aynı olamaz. Sorun yoksa null, varsa kullanıcıya gösterilecek mesaj döner.
+export function passwordProblem(password, username) {
+  if (typeof password !== "string" || password.length < 8) return "Şifre en az 8 karakter olmalı";
+  if (!/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(password) || !/[0-9]/.test(password)) return "Şifrede en az bir harf ve bir rakam olmalı";
+  if (username && password.trim().toLowerCase() === String(username).toLowerCase()) return "Şifren kullanıcı adınla (okul numaranla) aynı olamaz";
+  return null;
+}

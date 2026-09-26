@@ -172,6 +172,9 @@ model Assignment {
   // (öğrenci hâlâ eksikse ya da hepsi tamamlamış olsa bile) hemen doldurur, aynı ödev için asla ikinci
   // bir bildirim atılmaz.
   teacherOverdueNotifiedAt DateTime?
+  // Branş öğretmeni "Koçlara özet gönder" dediği an — sonuç girmeyen öğrencilerin koçlarına bildirim;
+  // aynı ödev için günde bir kez (bkz. routes/branch.js).
+  coachReminderSentAt DateTime?
 
   recipients AssignmentRecipient[]
   planEntry  PlanEntry?
@@ -259,6 +262,13 @@ model AssignmentRecipient {
   // Bitiş günü 18:00'de (Türkiye) "bugün son gün" hatırlatması gönderildiği an — scheduler.js >
   // notifyDueToday; gecikme hatırlatmasından ayrı, her ikisi de alıcı başına en fazla bir kez gider.
   dueReminderSentAt DateTime?
+  // Öğrenci ödevi çözemediyse "pas geçer" — boş bırakmaktan farklı: sebebi sorulur (KONU: konuyu
+  // bilmiyorum, ZAMAN: zaman yetmedi, KAYNAK: kaynağım yok, DIGER: başka sebep + skipNote). Pas geçilen
+  // ödeve gecikme/son gün hatırlatması gitmez; öğrenci sonradan sonucunu girerse pas kaldırılır.
+  // Sebebin "sahibi" branş ekranında gösterilir: konu → branş öğretmeni, zaman → koç, kaynak → yönetim.
+  skippedAt  DateTime?
+  skipReason String?
+  skipNote   String?
 
   submission Submission?
   // Submission'dan bağımsız — öğrenci sonucu girmeden ÖNCE de kanıt fotoğrafı ekleyebilir.

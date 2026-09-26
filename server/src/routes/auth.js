@@ -10,8 +10,15 @@ import { safeUser } from "../serialize.js";
 import { sendPasswordResetEmail } from "../mailer.js";
 import { handleErr } from "../handleErr.js";
 import { loginLimiter, loginIpLimiter, forgotPasswordLimiter, forgotPasswordIpLimiter, resetPasswordLimiter, setPasswordLimiter, deleteAccountLimiter } from "../middleware/rateLimiters.js";
-import { assert } from "../validators.js";
+import { assert, passwordProblem } from "../validators.js";
 import { recipientPhotosDir } from "../uploads.js";
+
+// İstemciye dönen kullanıcı — öğrenciye koçunun adı eklenir (ana ekran başlığı "Koçun: …").
+async function meResponse(user) {
+  if (user.role !== "STUDENT" || !user.teacherId) return safeUser(user);
+  const coach = await prisma.user.findUnique({ where: { id: user.teacherId }, select: { id: true, name: true } });
+  return { ...safeUser(user), coach };
+}
 
 export const authRouter = Router();
 
@@ -55,7 +62,7 @@ authRouter.post("/login", loginLimiter, loginIpLimiter, async (req, res) => {
     // bilmeyen birine hesabın var olduğunu (ve banlı olduğunu) sızdırırdı.
     if (user.banned) return res.status(403).json({ error: "Hesabın askıya alınmış — okul yöneticinle iletişime geç." });
     const token = signToken(user.id, user.tokenVersion);
-    res.json({ token, user: safeUser(user) });
+    res.json({ token, user: await meResponse(user) });
   } catch (e) {
     handleErr(res, e);
   }
@@ -87,6 +94,7 @@ authRouter.post("/reset-password", resetPasswordLimiter, async (req, res) => {
     const { token, password, acceptedTerms } = req.body || {};
     if (!token || !password) return res.status(400).json({ error: "token ve password gerekli" });
     if (typeof password !== "string" || password.length < 8) return res.status(400).json({ error: "Şifre en az 8 karakter olmalı" });
+    if (!/[A-Za-zÇĞİÖŞÜçğıöşü]/.test(password) || !/[0-9]/.test(password)) return res.status(400).json({ error: "Şifrede en az bir harf ve bir rakam olmalı" });
     const user = await prisma.user.findUnique({ where: { resetToken: String(token) } });
     if (!user || !user.resetTokenExpires || user.resetTokenExpires < new Date()) {
       return res.status(400).json({ error: "Bağlantının süresi dolmuş — okul yöneticinden yeni bir bağlantı iste." });
@@ -185,7 +193,7 @@ authRouter.get("/me", requireAuth, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı" });
-    res.json({ user: safeUser(user) });
+    res.json({ user: await meResponse(user) });
   } catch (e) {
     handleErr(res, e);
   }
@@ -196,17 +204,19 @@ authRouter.get("/me", requireAuth, async (req, res) => {
 authRouter.post("/set-password", setPasswordLimiter, requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword, acceptedTerms } = req.body || {};
-    if (typeof newPassword !== "string" || newPassword.length < 8) return res.status(400).json({ error: "Yeni şifre en az 8 karakter olmalı" });
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (user.passwordHash) {
-      if (!currentPassword || typeof currentPassword !== "string") return res.status(400).json({ error: "Mevcut şifre gerekli" });
-      const ok = await bcrypt.compare(currentPassword, user.passwordHash);
-      if (!ok) return res.status(401).json({ error: "Mevcut şifre hatalı" });
-      if (newPassword === currentPassword) return res.status(400).json({ error: "Yeni şifre eskisiyle aynı olamaz" });
-    }
     // Okul numarası herkesçe bilinebilir — kullanıcı adıyla aynı şifre, zorunlu değişikliği anlamsız kılar.
-    if (user.username && newPassword.trim().toLowerCase() === user.username) {
-      return res.status(400).json({ error: "Şifren kullanıcı adınla (okul numaranla) aynı olamaz" });
+    const problem = passwordProblem(newPassword, user.username);
+    if (problem) return res.status(400).json({ error: problem });
+    if (user.passwordHash) {
+      // İlk girişteki zorunlu değişiklikte kullanıcı az önce bu şifreyle giriş yaptı — tekrar sorulmaz
+      // (ilk giriş ekranı yalnızca iki alan). Normal şifre değişikliğinde mevcut şifre gerekli.
+      if (!user.mustChangePassword || currentPassword) {
+        if (!currentPassword || typeof currentPassword !== "string") return res.status(400).json({ error: "Mevcut şifre gerekli" });
+        const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+        if (!ok) return res.status(401).json({ error: "Mevcut şifre hatalı" });
+      }
+      if (await bcrypt.compare(newPassword, user.passwordHash)) return res.status(400).json({ error: "Yeni şifre eskisiyle aynı olamaz" });
     }
     // E-posta kurulum bağlantısından geçmemiş (okul numarasıyla açılmış) hesaplar metinleri burada kabul eder.
     const needsTerms = !user.termsAcceptedAt;
@@ -222,7 +232,7 @@ authRouter.post("/set-password", setPasswordLimiter, requireAuth, async (req, re
       },
     });
     const token = signToken(user.id, updated.tokenVersion);
-    res.json({ ok: true, token, user: safeUser(updated) });
+    res.json({ ok: true, token, user: await meResponse(updated) });
   } catch (e) {
     handleErr(res, e);
   }

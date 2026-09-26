@@ -11,6 +11,19 @@ import cografyaIcon from "./assets/subject-icons/Cografya.svg";
 import felsefeIcon from "./assets/subject-icons/Felsefe.svg";
 import dinKulturuIcon from "./assets/subject-icons/Din_Kulturu.svg";
 import ingilizceIcon from "./assets/subject-icons/Ingilizce.svg";
+import turkceGlyph from "./assets/subject-glyphs/Turkce.svg";
+import edebiyatGlyph from "./assets/subject-glyphs/Edebiyat.svg";
+import matematikGlyph from "./assets/subject-glyphs/Matematik.svg";
+import fenBilimleriGlyph from "./assets/subject-glyphs/Fen_Bilimleri.svg";
+import fizikGlyph from "./assets/subject-glyphs/Fizik.svg";
+import kimyaGlyph from "./assets/subject-glyphs/Kimya.svg";
+import biyolojiGlyph from "./assets/subject-glyphs/Biyoloji.svg";
+import tarihGlyph from "./assets/subject-glyphs/Tarih.svg";
+import inkilapTarihiGlyph from "./assets/subject-glyphs/Inkilap_Tarihi.svg";
+import cografyaGlyph from "./assets/subject-glyphs/Cografya.svg";
+import felsefeGlyph from "./assets/subject-glyphs/Felsefe.svg";
+import dinKulturuGlyph from "./assets/subject-glyphs/Din_Kulturu.svg";
+import ingilizceGlyph from "./assets/subject-glyphs/Ingilizce.svg";
 
 // SUBJECTS_BY_EXAM/trackForGrade/GRADE_LEVELS server/src/subjects.js ile İÇERİK olarak aynı
 // tutulmalı — sunucu bu listeye karşı doğruluyor, burada yalnızca dropdown'ı doldurmak için kopyası
@@ -98,4 +111,40 @@ const SUBJECT_ICON_URLS = {
 
 export function subjectIconUrl(subject) {
   return SUBJECT_ICON_URLS[subject] || turkceIcon;
+}
+
+// Durum karesinde kullanılan tek renkli ders sembolü (assets/subject-glyphs — renkli ikonlardan
+// üretildi): renkli ikon "her renk bir veri anlamı taşır" kuralını bozuyordu; sembol durum rengine
+// boyanır (bkz. common.jsx > StatusSquare).
+const SUBJECT_GLYPH_URLS = {
+  "Türkçe": turkceGlyph, "Edebiyat": edebiyatGlyph, "Matematik": matematikGlyph, "Geometri": matematikGlyph,
+  "Fen Bilimleri": fenBilimleriGlyph, "Fizik": fizikGlyph, "Kimya": kimyaGlyph, "Biyoloji": biyolojiGlyph,
+  "Tarih": tarihGlyph, "Tarih-1": tarihGlyph, "Tarih-2": tarihGlyph, "T.C. İnkılap Tarihi ve Atatürkçülük": inkilapTarihiGlyph,
+  "Coğrafya": cografyaGlyph, "Coğrafya-1": cografyaGlyph, "Coğrafya-2": cografyaGlyph,
+  "Felsefe": felsefeGlyph, "Felsefe Grubu": felsefeGlyph, "Mantık": felsefeGlyph, "Psikoloji": felsefeGlyph, "Sosyoloji": felsefeGlyph,
+  "Din Kültürü ve Ahlak Bilgisi": dinKulturuGlyph, "İngilizce": ingilizceGlyph, "Yabancı Dil": ingilizceGlyph,
+};
+
+export function subjectGlyphUrl(subject) {
+  return SUBJECT_GLYPH_URLS[subject] || turkceGlyph;
+}
+
+// Koç panosundaki branş kareleri — sıra her öğrencide aynı (şartname Z3). Bir branşın o hafta TYT ve AYT
+// ödevi ayrı ayrı olabilir (ör. Matematik); kare ikisinin toplam durumunu gösterir.
+export const BOARD_BRANCHES = [
+  { key: "Türkçe", label: "Türkçe / Edebiyat", icon: "Türkçe" },
+  { key: "Matematik", label: "Matematik", icon: "Matematik" },
+  { key: "Fizik", label: "Fizik", icon: "Fizik" },
+  { key: "Biyoloji", label: "Biyoloji", icon: "Biyoloji" },
+  { key: "Tarih", label: "Tarih", icon: "Tarih" },
+  { key: "Coğrafya", label: "Coğrafya", icon: "Coğrafya" },
+  { key: "Felsefe", label: "Felsefe", icon: "Felsefe" },
+];
+
+// Bir dersin panodaki branş karesi: Edebiyat Türkçe'yle, Geometri Matematik'le aynı karede.
+export function boardBranchOf(subject) {
+  const b = branchOfSubject(subject);
+  if (b === "Edebiyat") return "Türkçe";
+  if (b === "Geometri") return "Matematik";
+  return b;
 }

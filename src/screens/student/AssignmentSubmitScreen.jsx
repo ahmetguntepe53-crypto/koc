@@ -1,117 +1,71 @@
 import { useEffect, useRef, useState } from "react";
-import { Camera, X, Check, AlertTriangle, BookOpen, ListOrdered } from "lucide-react";
-import { C, displayFont, bodyFont, monoFont, formatNet } from "../../theme.js";
-import { Card, Button, Input, Textarea, Pill, SubjectIcon, EmptyState, LoadingState, confirmDialog, Num } from "../../components/common.jsx";
+import { X, Plus, Check, BookOpen, ListOrdered } from "lucide-react";
+import { C, bodyFont, monoFont, formatNet, netOf, recipientStatus, SKIP_REASONS } from "../../theme.js";
+import { Card, Button, Input, Textarea, EmptyState, LoadingState, confirmDialog, Stepper, SectionHeader, SourceTag, Chip, BottomActionBar, AlertBox } from "../../components/common.jsx";
 import { api, photoUrl } from "../../api.js";
-import { formatDateRange, daysUntil } from "../../dates.js";
-import { subjectIconUrl } from "../../subjects.js";
+import { questionCountOf, isSchoolWide, deadlineLabel, endedLabel, shortDate, dayKey } from "../../work.js";
 
-// 20 fotoğraf ne öğrencinin yükleyeceği ne koçun bakacağı bir sayıydı — sunucu da 6'ya indirildi.
+// Sonuç girişi (şartname Z2): üç adımlayıcı, net kartı + soru sayısı mutabakatı, aynı dersteki son üç
+// ödevin gelişimi, kanıt fotoğrafı, çözemediysen "pas geç" + sebep. Giriş ekranı veri toplamakla
+// kalmayıp karşılığında bir şey verir (gelişim); pas sebebi sorulur ki pas verisi yalnızca bir eksik
+// sayısı olmasın.
+
 const MAX_PHOTOS = 6;
-const PHOTO_COLUMNS = 3;
 
 function parseQuestionNumbers(text) {
-  return text
-    .split(",")
-    .map((s) => parseInt(s.trim(), 10))
-    .filter((n) => Number.isInteger(n) && n > 0);
+  return text.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isInteger(n) && n > 0);
 }
 
-// Ödevin soru sayısı ayrı bir alan değil — koç "Sayfa/Soru" alanına "30 soru" gibi yazıyorsa oradan
-// okunur. Yoksa null: toplam kontrolü yapılmaz.
-function expectedQuestionCount(pageRange) {
-  const m = /(\d+)\s*soru/i.exec(pageRange || "");
-  return m ? parseInt(m[1], 10) : null;
+// Başarı yüzdesi — ödevlerin soru sayıları farklı (30 / 148...) olduğu için gelişim çubukları ham net
+// yerine net/soru oranıyla karşılaştırılır; etiket yine net.
+function successPct(s) {
+  const total = s.correctCount + s.wrongCount + s.blankCount;
+  return total ? Math.round(((s.correctCount - s.wrongCount / 4) / total) * 100) : null;
 }
 
-const cardTitleStyle = () => ({ fontFamily: displayFont, fontSize: 15.5, fontWeight: 700, letterSpacing: -0.1, color: C.text });
-
-// Başlık kartındaki durum rozeti — Ödevlerim satırlarıyla aynı dil (kırmızı gecikti / yeşil tamamlandı /
-// amber kalan gün).
-function StatusPill({ completed, endDate }) {
-  if (completed) return <Pill tone="green">Tamamlandı</Pill>;
-  const daysLeft = daysUntil(endDate);
-  if (daysLeft < 0) return <Pill tone="red"><Num>{Math.abs(daysLeft)}</Num>gün gecikti</Pill>;
-  if (daysLeft === 0) return <Pill tone="amber">Bugün son gün</Pill>;
-  if (daysLeft === 1) return <Pill tone="amber">Yarın</Pill>;
-  return <Pill tone="amber"><Num>{daysLeft}</Num>gün kaldı</Pill>;
-}
-
-function DetailLine({ icon: Icon, children }) {
+function ProgressCard({ history, live }) {
+  const items = [...history, ...(live ? [live] : [])].slice(-3);
+  if (items.length < 2) {
+    return (
+      <Card style={{ fontFamily: bodyFont, fontSize: 13.5, color: C.mutedLight, lineHeight: 1.5 }}>
+        Bu dersteki ilk sonucun — sonraki ödevlerde gelişimini burada göreceksin.
+      </Card>
+    );
+  }
+  const maxPct = Math.max(1, ...items.map((i) => i.pct || 0));
+  const first = items[0].pct;
+  const last = items[items.length - 1].pct;
+  const delta = first != null && last != null ? last - first : null;
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 7, fontFamily: bodyFont, fontSize: 12.5, fontWeight: 500, color: C.text2, marginTop: 6, lineHeight: 1.45 }}>
-      <Icon size={13} strokeWidth={2.2} color={C.mutedLight} style={{ flexShrink: 0, marginTop: 2 }} />
-      <span style={{ minWidth: 0, overflowWrap: "anywhere" }}>{children}</span>
-    </div>
-  );
-}
-
-// Doğru/Yanlış/Boş kutusu: etiket durumun renginde, kutu durumun açık tonunda, değer mono 22.
-// Kenarlık durumun renginin %20'si — sabit hex/color-mix yerine üstte opaklığı 0.2 olan bir çerçeve
-// katmanıyla (her iki temada, eski WebView'larda da çalışsın diye).
-function ScoreField({ label, tone, value, onChange }) {
-  const fg = { green: C.green, red: C.red, muted: C.muted }[tone];
-  const bg = { green: C.greenSoft, red: C.redSoft, muted: C.surface2 }[tone];
-  return (
-    <label style={{ display: "block", minWidth: 0 }}>
-      <div style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 700, color: fg, marginBottom: 6 }}>{label}</div>
-      <div style={{ position: "relative" }}>
-        <input
-          type="text"
-          inputMode="numeric"
-          pattern="[0-9]*"
-          maxLength={3}
-          autoComplete="off"
-          required
-          value={value}
-          // Yalnızca rakam — type="number"ın masaüstündeki ok düğmeleri ortalanmış büyük rakamı kaydırıyordu.
-          onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
-          className="k-field"
-          style={{
-            display: "block", width: "100%", minWidth: 0, boxSizing: "border-box", height: 52, padding: "0 6px",
-            borderRadius: 12, border: "1.5px solid transparent", background: bg, color: fg, outline: "none",
-            fontFamily: monoFont, fontSize: 22, fontWeight: 700, textAlign: "center",
-          }}
-        />
-        <span aria-hidden="true" style={{ position: "absolute", inset: 0, borderRadius: 12, border: `1.5px solid ${fg}`, opacity: 0.2, pointerEvents: "none" }} />
+    <Card>
+      <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, color: C.mutedLight, marginBottom: 16 }}>BU DERSTEKİ SON {items.length === 3 ? "ÜÇ" : "İKİ"} ÖDEVİN</div>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))`, gap: 12, alignItems: "end" }}>
+        {items.map((it, i) => {
+          const isLast = i === items.length - 1;
+          return (
+            <div key={it.key} style={{ minWidth: 0 }}>
+              <div style={{ height: 52, display: "flex", alignItems: "flex-end" }}>
+                <div style={{ width: "100%", height: Math.max(8, Math.round(((it.pct || 0) / maxPct) * 52)), borderRadius: 6, background: isLast ? C.green : C.faintest }} />
+              </div>
+              <div style={{ fontFamily: monoFont, fontSize: 15, fontWeight: 700, color: isLast ? C.text : C.text2, marginTop: 8 }}>{formatNet(it.net, 2)}</div>
+              <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.mutedLight, marginTop: 2 }}>
+                {it.label}{it.pct != null && <> · <span style={{ fontFamily: monoFont }}>%{it.pct}</span></>}
+              </div>
+            </div>
+          );
+        })}
       </div>
-    </label>
+      {delta != null && (
+        <div style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 500, color: delta >= 0 ? C.green : C.red, marginTop: 14 }}>
+          Başarın <span style={{ fontFamily: monoFont }}>%{first}</span> → <span style={{ fontFamily: monoFont }}>%{last}</span>
+          {" "}({delta >= 0 ? "+" : "−"}<span style={{ fontFamily: monoFont }}>{Math.abs(delta)}</span> puan)
+        </div>
+      )}
+    </Card>
   );
 }
 
-// NET şeridinin sağı: girilen toplam soru sayısı ödevinkiyle tutuyor mu? Üç alan da girilince yeşil tik
-// ya da amber uyarı; ödevin soru sayısı bilinmiyorsa yalnızca toplam.
-function TotalCheck({ total, allEntered, anyEntered, expected }) {
-  const unit = <span style={{ fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.muted }}>soru</span>;
-  const mono = (color, text) => <span style={{ fontFamily: monoFont, fontSize: 12, fontWeight: 700, color }}>{text}</span>;
-  const row = (children) => <div style={{ display: "flex", alignItems: "center", gap: 5, marginLeft: "auto", flexShrink: 0 }}>{children}</div>;
-
-  if (expected == null) {
-    if (!anyEntered) return null;
-    return row(<>{mono(C.muted, total)}{unit}</>);
-  }
-  if (!allEntered) return row(<>{mono(C.muted, `${total}/${expected}`)}{unit}</>);
-  if (total === expected) {
-    return row(<><Check size={14} strokeWidth={2.6} color={C.green} />{mono(C.green, `${total}/${expected}`)}{unit}</>);
-  }
-  const diff = Math.abs(expected - total);
-  return row(
-    <>
-      <AlertTriangle size={14} strokeWidth={2.4} color={C.amber} />
-      {mono(C.amber, `${total}/${expected}`)}
-      <span style={{ fontFamily: bodyFont, fontSize: 11.5, fontWeight: 600, color: C.amber }}>
-        · <span style={{ fontFamily: monoFont }}>{diff}</span> soru {total < expected ? "eksik" : "fazla"}
-      </span>
-    </>
-  );
-}
-
-function tileStyle() {
-  // Taslaktaki gibi yatay kutu (~10:7) — kare kutular kartı gereksiz uzatıyordu.
-  return { position: "relative", aspectRatio: "10 / 7", borderRadius: 12, overflow: "hidden", boxSizing: "border-box", minWidth: 0 };
-}
-
-export default function AssignmentSubmitScreen({ recipientId }) {
+export default function AssignmentSubmitScreen({ user, recipientId, setHeader }) {
   const [recipient, setRecipient] = useState(null);
   const [loading, setLoading] = useState(true);
   const [correctCount, setCorrectCount] = useState("");
@@ -119,6 +73,7 @@ export default function AssignmentSubmitScreen({ recipientId }) {
   const [blankCount, setBlankCount] = useState("");
   const [note, setNote] = useState("");
   const [questionNumbers, setQuestionNumbers] = useState("");
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
@@ -126,6 +81,11 @@ export default function AssignmentSubmitScreen({ recipientId }) {
   const [photoError, setPhotoError] = useState("");
   const [uploadingCount, setUploadingCount] = useState(0);
   const [loadError, setLoadError] = useState("");
+  const [history, setHistory] = useState([]);
+  const [skipOpen, setSkipOpen] = useState(false);
+  const [skipReason, setSkipReason] = useState("");
+  const [skipNote, setSkipNote] = useState("");
+  const [skipBusy, setSkipBusy] = useState(false);
   const fileInputRef = useRef(null);
 
   useEffect(() => {
@@ -138,9 +98,21 @@ export default function AssignmentSubmitScreen({ recipientId }) {
         setBlankCount(String(recipient.submission.blankCount));
         setNote(recipient.submission.note || "");
         setQuestionNumbers((recipient.submission.questionNumbers || []).join(", "));
+        if (recipient.submission.note || recipient.submission.questionNumbers?.length) setDetailsOpen(true);
       }
+      const a = recipient.assignment;
+      const q = questionCountOf(a.pageRange);
+      setHeader?.({ title: a.topic, subtitle: [a.subject, a.teacher?.name, q != null && `${q} soru`].filter(Boolean).join(" · ") });
+      // Gelişim kartı: aynı dersteki önceki (sonucu girilmiş) ödevler.
+      api.listMyAssignments({ subject: a.subject, completed: "true" }).then(({ recipients }) => {
+        setHistory(recipients
+          .filter((r) => r.id !== recipient.id && r.submission)
+          .sort((x, y) => dayKey(x.assignment.endDate).localeCompare(dayKey(y.assignment.endDate)))
+          .slice(-2)
+          .map((r) => ({ key: r.id, net: netOf(r.submission), pct: successPct(r.submission), label: shortDate(r.assignment.endDate) })));
+      }).catch(() => {});
     }).catch((e) => setLoadError(e.message || "Ödev yüklenemedi")).finally(() => setLoading(false));
-  }, [recipientId]);
+  }, [recipientId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleFilesSelected = async (e) => {
     const files = [...(e.target.files || [])];
@@ -168,8 +140,7 @@ export default function AssignmentSubmitScreen({ recipientId }) {
         setUploadingCount((n) => n - 1);
       }
     }
-    // Kısmi başarı durumunda son hatayı TEK BAŞINA göstermek "hiçbiri yüklenmedi" izlenimi verirdi —
-    // kaç tanesinin başarılı olduğu da mesaja eklenir.
+    // Kısmi başarıda son hatayı TEK BAŞINA göstermek "hiçbiri yüklenmedi" izlenimi verirdi.
     const failureNotice = failed > 0 ? (succeeded > 0 ? `${succeeded} fotoğraf eklendi, ${failed} tanesi eklenemedi: ${lastFailure}` : lastFailure) : "";
     setPhotoError([limitNotice, failureNotice].filter(Boolean).join(" "));
   };
@@ -185,31 +156,29 @@ export default function AssignmentSubmitScreen({ recipientId }) {
     }
   };
 
-  const submit = async (e) => {
-    e.preventDefault();
+  const toInt = (v) => (v === "" ? 0 : parseInt(v, 10));
+
+  const submit = async () => {
     setError("");
     setSuccess("");
     const payload = {
-      correctCount: parseInt(correctCount, 10),
-      wrongCount: parseInt(wrongCount, 10),
-      blankCount: parseInt(blankCount, 10),
+      correctCount: toInt(correctCount),
+      wrongCount: toInt(wrongCount),
+      blankCount: toInt(blankCount),
       note: note.trim() || undefined,
       questionNumbers: parseQuestionNumbers(questionNumbers),
     };
-    if (![payload.correctCount, payload.wrongCount, payload.blankCount].every((n) => Number.isInteger(n) && n >= 0)) {
-      setError("Doğru/Yanlış/Boş sayılarını gir");
-      return;
-    }
-    // Toplam ödevin soru sayısını tutmuyorsa kaydetme ENGELLENMEZ, onay istenir — koç soru sayısını
-    // yanlış yazmış olabilir (ya da öğrenci bazı soruları hiç görmemiş); engellemek öğrenciyi
-    // sonucunu hiç giremez halde bırakırdı. Şeritteki amber uyarı hatayı zaten görünür kılıyor.
-    const expectedCount = expectedQuestionCount(recipient.assignment.pageRange);
     const total = payload.correctCount + payload.wrongCount + payload.blankCount;
-    if (expectedCount != null && total !== expectedCount) {
-      const diff = Math.abs(expectedCount - total);
+    if (total === 0) { setError("Doğru, yanlış ve boş sayılarını gir"); return; }
+    // Toplam soru sayısını tutmuyorsa kaydetme ENGELLENMEZ, onay istenir: soru sayısı ödevde ayrı bir
+    // alan değil (koçun yazdığı "30 soru"dan okunuyor) — koç yanlış yazdıysa engel öğrenciyi sonucunu hiç
+    // giremez hâlde bırakırdı. Net kartındaki kırmızı uyarı hatayı zaten görünür kılıyor.
+    const expected = questionCountOf(recipient.assignment.pageRange);
+    if (expected != null && total !== expected) {
+      const diff = Math.abs(expected - total);
       const ok = await confirmDialog({
         title: "Soru sayısı tutmuyor",
-        message: `Girdiğin toplam ${total}, bu ödevde ${expectedCount} soru var (${diff} soru ${total < expectedCount ? "eksik" : "fazla"}). Yine de kaydedilsin mi?`,
+        message: `Girdiğin toplam ${total}, bu ödevde ${expected} soru var (${diff} soru ${total < expected ? "eksik" : "fazla"}). Yine de kaydedilsin mi?`,
         confirmLabel: "Yine de kaydet",
         cancelLabel: "Düzelteyim",
       });
@@ -218,7 +187,8 @@ export default function AssignmentSubmitScreen({ recipientId }) {
     setSaving(true);
     try {
       const { submission } = await api.submitRecipient(recipientId, payload);
-      setRecipient((r) => ({ ...r, completed: true, submission }));
+      setRecipient((r) => ({ ...r, completed: true, submission, skippedAt: null, skipReason: null }));
+      setSkipOpen(false);
       setSuccess("Sonucun kaydedildi.");
     } catch (err) {
       setError(err.message || "Kaydedilemedi");
@@ -227,136 +197,191 @@ export default function AssignmentSubmitScreen({ recipientId }) {
     }
   };
 
-  // Geri düğmesi App başlığında (headerBack) — sayfa içinde ayrı bir "Ödevlerime dön" bağlantısı yok.
+  const doSkip = async () => {
+    if (!skipReason) return;
+    setSkipBusy(true);
+    setError("");
+    try {
+      const { recipient: upd } = await api.skipRecipient(recipientId, skipReason, skipReason === "DIGER" ? skipNote : undefined);
+      setRecipient((r) => ({ ...r, ...upd }));
+      setSkipOpen(false);
+    } catch (err) {
+      setError(err.message || "Pas geçilemedi");
+    } finally {
+      setSkipBusy(false);
+    }
+  };
+
+  const undoSkip = async () => {
+    setSkipBusy(true);
+    try {
+      await api.unskipRecipient(recipientId);
+      setRecipient((r) => ({ ...r, skippedAt: null, skipReason: null, skipNote: null }));
+      setSkipReason("");
+    } catch (err) {
+      setError(err.message || "Geri alınamadı");
+    } finally {
+      setSkipBusy(false);
+    }
+  };
+
+  // Geri düğmesi App başlığında (headerBack).
   if (loading) return <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}><LoadingState /></div>;
   if (loadError || !recipient) {
-    return (
-      <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-        <EmptyState text={loadError || "Ödev bulunamadı"} />
-      </div>
-    );
+    return <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}><EmptyState text={loadError || "Ödev bulunamadı"} /></div>;
   }
   const a = recipient.assignment;
-  const expected = expectedQuestionCount(a.pageRange);
-  // "30 soru" rozet olarak zaten görünüyor — Sayfa/Soru metni yalnızca bundan fazlasını söylüyorsa ayrıca yazılır.
+  const expected = questionCountOf(a.pageRange);
+  const branch = isSchoolWide(a);
+  const status = recipientStatus(recipient);
   const pageRangeIsJustCount = !!a.pageRange && /^\s*\d+\s*soru\s*$/i.test(a.pageRange);
 
-  // Girilen D/Y/B'den anlık net — öğrenci kaydetmeden önce sonucunu görsün (TYT/AYT: 4 yanlış 1 doğruyu götürür).
-  const [cN, wN, bN] = [correctCount, wrongCount, blankCount].map((v) => (v === "" ? null : parseInt(v, 10)));
-  const liveNet = Number.isInteger(cN) && Number.isInteger(wN) ? Math.round((cN - wN / 4) * 100) / 100 : null;
-  const liveTotal = (cN || 0) + (wN || 0) + (bN || 0);
-  const allEntered = [cN, wN, bN].every(Number.isInteger);
-  const anyEntered = [cN, wN, bN].some(Number.isInteger);
+  const [cN, wN, bN] = [correctCount, wrongCount, blankCount].map(toInt);
+  const liveNet = Math.round((cN - wN / 4) * 100) / 100;
+  const liveTotal = cN + wN + bN;
+  const anyEntered = liveTotal > 0;
+  const matches = expected == null || liveTotal === expected;
+  const live = anyEntered ? { key: "live", net: liveNet, pct: liveTotal ? Math.round((liveNet / liveTotal) * 100) : null, label: "bu ödev" } : null;
 
-  const canAddPhoto = photos.length < MAX_PHOTOS;
-  const tileCount = photos.length + (canAddPhoto ? 1 : 0);
-  // Son satırı boş yuvalarla tamamla — "daha ekleyebilirsin" hissi, yarım satır görünmesin.
-  const emptySlots = (PHOTO_COLUMNS - (tileCount % PHOTO_COLUMNS)) % PHOTO_COLUMNS;
+  const deadlineText = status === "missed" ? `süresi ${endedLabel(a.endDate).replace(" bitti", "")} doldu`
+    : status === "open" ? `${deadlineLabel(a.endDate)}'a kadar`
+    : null;
+  const coachName = user?.coach?.name;
+  const viewers = branch ? (coachName && coachName !== a.teacher?.name ? `${a.teacher?.name} ve koçun görür` : `${a.teacher?.name} görür`) : "Koçun görür";
   const uploading = uploadingCount > 0;
+  const canAddPhoto = photos.length < MAX_PHOTOS;
 
   return (
-    <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-      <Card style={{ marginBottom: 14, padding: 16 }}>
-        <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
-          <SubjectIcon src={subjectIconUrl(a.subject)} size={44} radius={13} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontFamily: displayFont, fontSize: 16, fontWeight: 700, letterSpacing: -0.1, color: C.text, lineHeight: 1.3 }}>{a.subject} — {a.topic}</div>
-            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-              <StatusPill completed={recipient.completed} endDate={a.endDate} />
-              {a.examType && <Pill>{a.examType}</Pill>}
-              {expected != null && <Pill><Num>{expected}</Num>soru</Pill>}
-            </div>
-            <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 500, color: C.mutedLight, marginTop: 8 }}>
-              {a.teacher?.name} · {formatDateRange(a.scheduledDate, a.endDate)}
-            </div>
-          </div>
+    <div className="k-page k-page-form" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, marginBottom: 4 }}>
+        <SourceTag variant={branch ? "okul" : "koc"} />
+        <span>{branch ? "Okul çapında branş ödevi" : "Koçunun kişisel ödevi"}{deadlineText && <> · <span style={{ color: status === "missed" ? C.red : C.mutedLight }}>{deadlineText}</span></>}</span>
+      </div>
+      {(a.sourceBook || (a.pageRange && !pageRangeIsJustCount) || a.note) && (
+        <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.text2, marginTop: 10, lineHeight: 1.5 }}>
+          {a.sourceBook && <div style={{ display: "flex", gap: 8, alignItems: "center" }}><BookOpen size={14} color={C.mutedLight} />{a.sourceBook}</div>}
+          {a.pageRange && !pageRangeIsJustCount && <div style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 4 }}><ListOrdered size={14} color={C.mutedLight} />{a.pageRange}</div>}
+          {a.note && <div style={{ marginTop: 10, padding: "10px 14px", borderRadius: 12, background: C.surface, border: `1px solid ${C.border}`, whiteSpace: "pre-wrap" }}>{a.note}</div>}
         </div>
-        {(a.sourceBook || (a.pageRange && !pageRangeIsJustCount)) && (
-          <div style={{ marginTop: 8 }}>
-            {a.sourceBook && <DetailLine icon={BookOpen}>{a.sourceBook}</DetailLine>}
-            {a.pageRange && !pageRangeIsJustCount && <DetailLine icon={ListOrdered}>{a.pageRange}</DetailLine>}
-          </div>
-        )}
-        {a.note && (
-          <div style={{ fontFamily: bodyFont, fontSize: 13, fontWeight: 500, color: C.text2, lineHeight: 1.5, marginTop: 12, padding: "10px 12px", borderRadius: C.radiusSm, background: C.surface2, whiteSpace: "pre-wrap" }}>
-            {a.note}
+      )}
+
+      {recipient.skippedAt && (
+        <AlertBox tone="amber" style={{ marginTop: 16 }}>
+          Bu ödevi pas geçtin · “{SKIP_REASONS[recipient.skipReason] || "Başka sebep"}”{recipient.skipNote ? ` — ${recipient.skipNote}` : ""}.{" "}
+          <button type="button" onClick={undoSkip} disabled={skipBusy} style={{ background: "none", border: "none", padding: 0, color: "inherit", fontWeight: 700, textDecoration: "underline", cursor: "pointer", fontFamily: bodyFont, fontSize: 13.5 }}>Geri al</button>
+          {" "}— sonucunu girersen pas kendiliğinden kalkar.
+        </AlertBox>
+      )}
+
+      <SectionHeader title="Sonucu gir" />
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <Stepper label="Doğru" dotColor={C.green} value={correctCount} onChange={setCorrectCount} />
+        <Stepper label="Yanlış" dotColor={C.red} value={wrongCount} onChange={setWrongCount} />
+        <Stepper label="Boş" dotColor={C.blank} value={blankCount} onChange={setBlankCount} />
+      </div>
+
+      <Card style={{ marginTop: 12, padding: "18px 20px", display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.mutedLight }}>Net</div>
+          <div aria-live="polite" style={{ fontFamily: monoFont, fontSize: 42, fontWeight: 700, letterSpacing: -1.8, color: anyEntered ? C.text : C.faintest, lineHeight: 1.1, marginTop: 4 }}>{anyEntered ? formatNet(liveNet, 2) : "—"}</div>
+          <div style={{ fontFamily: monoFont, fontSize: 13, color: C.mutedLight, marginTop: 6 }}>{cN} − {wN} / 4</div>
+        </div>
+        {expected != null && (
+          <div style={{ textAlign: "right", flexShrink: 0 }}>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: monoFont, fontSize: 16, fontWeight: 700, color: !anyEntered ? C.mutedLight : matches ? C.green : C.red }}>
+              {anyEntered && matches && <Check size={15} strokeWidth={2.6} />}
+              {liveTotal} / {expected}
+            </div>
+            <div style={{ fontFamily: bodyFont, fontSize: 12, color: !anyEntered || matches ? C.mutedLight : C.red, marginTop: 4, maxWidth: 120, lineHeight: 1.35 }}>
+              {!anyEntered ? "soru" : matches ? "soru sayısı tutuyor" : `${Math.abs(expected - liveTotal)} soru ${liveTotal < expected ? "eksik" : "fazla"}`}
+            </div>
           </div>
         )}
       </Card>
 
-      {/* Sonuç formu önce — öğrencinin bu ekrandaki asıl işi; kanıt fotoğrafı onu tamamlayan adım. */}
-      <Card style={{ marginBottom: 14, padding: 16 }}>
-        <div style={{ ...cardTitleStyle(), marginBottom: 14 }}>
-          {recipient.completed ? "Sonucunu güncelle" : "Sonucunu gir"}
-        </div>
-        <form onSubmit={submit}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 10 }}>
-            <ScoreField label="Doğru" tone="green" value={correctCount} onChange={setCorrectCount} />
-            <ScoreField label="Yanlış" tone="red" value={wrongCount} onChange={setWrongCount} />
-            <ScoreField label="Boş" tone="muted" value={blankCount} onChange={setBlankCount} />
-          </div>
-
-          {/* NET şeridi: net = doğru − yanlış/4; sağda toplamın ödevin soru sayısını tutup tutmadığı. */}
-          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", columnGap: 12, rowGap: 4, marginTop: 12, marginBottom: 18, padding: "12px 14px", borderRadius: 13, background: C.accentSoft, minWidth: 0 }}>
-            <span style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 800, letterSpacing: 1.2, color: C.accent }}>NET</span>
-            <span style={{ fontFamily: monoFont, fontSize: 26, fontWeight: 700, letterSpacing: -1, color: C.accent, lineHeight: 1.1 }}>
-              {liveNet != null ? formatNet(liveNet) : "—"}
-            </span>
-            <TotalCheck total={liveTotal} allEntered={allEntered} anyEntered={anyEntered} expected={expected} />
-          </div>
-
+      <button type="button" onClick={() => setDetailsOpen((v) => !v)} className="k-link-btn" style={{ background: "none", border: "none", padding: "12px 0 0", cursor: "pointer", fontFamily: bodyFont, fontSize: 13.5, fontWeight: 600, color: C.text2 }}>
+        {detailsOpen ? "Soru numaralarını ve notu gizle" : "Yanlış soru numaraları ya da koçuna not ekle (isteğe bağlı)"}
+      </button>
+      {detailsOpen && (
+        <div style={{ marginTop: 12 }}>
           <Input label="Yanlış ve boş soruların" value={questionNumbers} onChange={(e) => setQuestionNumbers(e.target.value)} placeholder="3, 7, 12" />
           <Textarea label="Koçuna not" value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="19. soruyu anlamadım" style={{ minHeight: 68 }} />
-          {error && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{error}</div>}
-          {success && <div style={{ color: C.green, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{success}</div>}
-          <Button full type="submit" disabled={saving}>{saving ? "Kaydediliyor..." : recipient.completed ? "Güncelle" : "Kaydet"}</Button>
-        </form>
-      </Card>
+        </div>
+      )}
 
-      <Card style={{ padding: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
-          <span style={cardTitleStyle()}>Kanıt fotoğrafı</span>
-          <span style={{ fontFamily: monoFont, fontSize: 12.5, fontWeight: 600, color: C.mutedLight }}>{photos.length}/{MAX_PHOTOS}</span>
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: `repeat(${PHOTO_COLUMNS}, minmax(0, 1fr))`, gap: 10 }}>
-          {canAddPhoto && (
+      <SectionHeader title="Gelişimin" />
+      <ProgressCard history={history} live={live} />
+
+      <SectionHeader title="Kanıt fotoğrafı" right="isteğe bağlı · en fazla 6" />
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${MAX_PHOTOS}, minmax(0, 1fr))`, gap: 8 }}>
+        {Array.from({ length: MAX_PHOTOS }, (_, i) => {
+          const p = photos[i];
+          const tile = { position: "relative", aspectRatio: "1 / 1", borderRadius: 12, overflow: "hidden", boxSizing: "border-box", minWidth: 0 };
+          if (p) {
+            return (
+              <div key={p.id} style={{ ...tile, border: `1px solid ${C.border}` }}>
+                <img src={photoUrl(p)} alt={`Kanıt fotoğrafı ${i + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+                <button type="button" onClick={() => deletePhoto(p.id)} aria-label={`${i + 1}. fotoğrafı sil`} style={{ position: "absolute", top: 2, right: 2, width: 26, height: 26, borderRadius: 999, border: "none", background: "rgba(0,0,0,0.65)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}>
+                  <X size={12} />
+                </button>
+              </div>
+            );
+          }
+          const isAdd = i === photos.length && canAddPhoto;
+          return (
             <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              aria-label={uploading ? "Fotoğraf yükleniyor" : "Fotoğraf ekle"}
-              className="k-btn"
-              style={{
-                ...tileStyle(), display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
-                border: `1.5px dashed ${C.faintest}`, background: C.surface, color: C.muted,
-                cursor: uploading ? "default" : "pointer", fontFamily: bodyFont, fontSize: 12, fontWeight: 600, padding: 0,
-              }}
+              key={`slot-${i}`} type="button" disabled={!isAdd || uploading}
+              onClick={isAdd ? () => fileInputRef.current?.click() : undefined}
+              aria-label={isAdd ? (uploading ? "Fotoğraf yükleniyor" : "Fotoğraf ekle") : undefined}
+              aria-hidden={isAdd ? undefined : true} tabIndex={isAdd ? 0 : -1}
+              className={isAdd ? "k-btn" : undefined}
+              style={{ ...tile, border: `1.5px dashed ${C.borderStrong}`, background: C.surface, color: isAdd ? C.text2 : C.faintest, display: "flex", alignItems: "center", justifyContent: "center", cursor: isAdd ? "pointer" : "default", padding: 0 }}
             >
-              <Camera size={20} strokeWidth={2} color={C.mutedLight} />
-              {uploading ? "Yükleniyor..." : "Ekle"}
+              <Plus size={18} strokeWidth={2} />
             </button>
+          );
+        })}
+      </div>
+      {canAddPhoto && <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" multiple hidden onChange={handleFilesSelected} />}
+      {uploading && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, marginTop: 8 }}>Yükleniyor…</div>}
+      {photoError && <div role="alert" style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{photoError}</div>}
+
+      {!recipient.completed && !recipient.skippedAt && (
+        <>
+          <SectionHeader title="Çözemediysen" />
+          {!skipOpen ? (
+            <Button full variant="secondary" onClick={() => setSkipOpen(true)}>Bu ödevi pas geç</Button>
+          ) : (
+            <Card>
+              <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 12 }}>Neden pas geçiyorsun?</div>
+              <div role="group" aria-label="Pas sebebi" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {Object.entries(SKIP_REASONS).map(([key, label]) => (
+                  <Chip key={key} tone="amber" active={skipReason === key} onClick={() => setSkipReason(key)}>{label}</Chip>
+                ))}
+              </div>
+              {skipReason === "DIGER" && (
+                <div style={{ marginTop: 12 }}>
+                  <Input label="Kısaca yaz (isteğe bağlı)" value={skipNote} maxLength={300} onChange={(e) => setSkipNote(e.target.value)} placeholder="ör. Okulda sınav vardı" />
+                </div>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <Button variant="ghost" onClick={() => { setSkipOpen(false); setSkipReason(""); }}>Vazgeç</Button>
+                <div style={{ flex: 1 }}><Button full disabled={!skipReason || skipBusy} onClick={doSkip}>{skipBusy ? "Kaydediliyor..." : "Pas geç"}</Button></div>
+              </div>
+            </Card>
           )}
-          {photos.map((p) => (
-            <div key={p.id} style={{ ...tileStyle(), border: `1px solid ${C.border}` }}>
-              <img src={photoUrl(p)} alt="Kanıt fotoğrafı" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
-              <button
-                type="button"
-                onClick={() => deletePhoto(p.id)}
-                title="Fotoğrafı sil"
-                aria-label="Fotoğrafı sil"
-                style={{ position: "absolute", top: 4, right: 4, width: 28, height: 28, borderRadius: 999, border: "none", background: "rgba(15,23,42,0.6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
-              >
-                <X size={13} />
-              </button>
-            </div>
-          ))}
-          {Array.from({ length: emptySlots }, (_, i) => (
-            <div key={`empty-${i}`} aria-hidden="true" style={{ ...tileStyle(), border: `1px solid ${C.border}`, background: C.fieldBg }} />
-          ))}
-        </div>
-        {canAddPhoto && <input ref={fileInputRef} type="file" accept="image/jpeg,image/png" multiple hidden onChange={handleFilesSelected} />}
-        {photoError && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{photoError}</div>}
-      </Card>
+          <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, lineHeight: 1.55, marginTop: 10, padding: "12px 14px", borderRadius: 14, background: C.surface, border: `1px solid ${C.border}` }}>
+            Pas geçmek boş bırakmaktan iyidir: koçun sebebini görür. Aynı konuyu birçok öğrenci “bilmiyorum” diye pas geçerse branş öğretmenine geri gider.
+          </div>
+        </>
+      )}
+
+      {error && <div role="alert" style={{ color: C.red, fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginTop: 16 }}>{error}</div>}
+      {success && <div role="status" style={{ color: C.green, fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginTop: 16 }}>{success}</div>}
+
+      <BottomActionBar caption={<>{anyEntered ? <><span style={{ fontFamily: monoFont }}>{formatNet(liveNet, 2)}</span> net · </> : null}<span style={{ fontFamily: monoFont }}>{photos.length}</span> fotoğraf · {viewers}</>}>
+        <Button full disabled={saving} onClick={submit}>{saving ? "Kaydediliyor..." : recipient.completed ? "Sonucu güncelle" : "Sonucu kaydet"}</Button>
+      </BottomActionBar>
     </div>
   );
 }

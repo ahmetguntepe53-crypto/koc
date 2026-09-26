@@ -172,6 +172,14 @@ export const api = {
   submitRecipient: (id, payload) => request(`/assignment-recipients/${id}/submit`, { method: "POST", body: payload }),
   uploadRecipientPhoto: (id, file) => uploadFile(`/assignment-recipients/${id}/photos`, file),
   deleteRecipientPhoto: (id, photoId) => request(`/assignment-recipients/${id}/photos/${photoId}`, { method: "DELETE" }),
+  // "Pas geç": reason KONU | ZAMAN | KAYNAK | DIGER (+ note yalnızca DIGER'de).
+  skipRecipient: (id, reason, note) => request(`/assignment-recipients/${id}/skip`, { method: "POST", body: { reason, note } }),
+  unskipRecipient: (id) => request(`/assignment-recipients/${id}/skip`, { method: "DELETE" }),
+
+  // --- branş öğretmeni ---
+  branchTracks: () => request("/branch/tracks"),
+  branchOverview: (examType, subject) => request(`/branch/overview?examType=${encodeURIComponent(examType)}&subject=${encodeURIComponent(subject)}`),
+  branchRemindCoaches: (assignmentId) => request(`/branch/assignments/${assignmentId}/remind-coaches`, { method: "POST" }),
 
   // --- öğrenci: serbest çalışma ---
   createStudySession: (payload) => request("/study-sessions", { method: "POST", body: payload }),
