@@ -3,6 +3,7 @@ import { C, bodyFont, monoFont, formatNet, netOf, recipientStatus, SKIP_REASONS 
 import { Card, Button, Input, Textarea, Chip, EmptyState, Modal, ShowMoreButton, LoadingState, SectionHeader, StatusSquare, ListRow, ListGroup, MiniBars, AlertBox, BottomActionBar, Pill, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { BOARD_BRANCHES, boardBranchOf, gradeLabel, GRADE_LEVELS } from "../../subjects.js";
+import { STUDENT_FIELDS, FIELD_SHORT, FIELD_LABELS } from "../../studentField.js";
 import { formatDate } from "../../dates.js";
 import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, shortDate, isSchoolWide, lastSeenInfo, noteDate } from "../../work.js";
 
@@ -146,6 +147,42 @@ function NoteModal({ studentId, note, onClose, onSaved, onDeleted }) {
         <div style={{ flex: 1 }}><Button full disabled={saving || deleting} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button></div>
       </div>
     </Modal>
+  );
+}
+
+// Öğrencinin YKS alanı (SAY / EA / SÖZ / DİL) — koç kendi öğrencisi için girer; rapor alanın AYT derslerini kaydı
+// olmasa da izler (bkz. reportModel.js > FIELD_AYT). Seçili çipe yeniden dokunmak alanı siler (bilinmiyor).
+function FieldPicker({ studentId, value, onSaved }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const pick = async (f) => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await api.teacherSetStudentField(studentId, f === value ? null : f);
+      onSaved(res.student?.field ?? null);
+    } catch (e) {
+      setError(e.message || "Kaydedilemedi");
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <>
+      <SectionHeader title="YKS alanı" right={saving ? "kaydediliyor..." : value ? FIELD_LABELS[value] : "girilmedi"} />
+      <div className="k-chip-row" role="group" aria-label="YKS alanı">
+        {STUDENT_FIELDS.map((f) => <Chip key={f} active={value === f} onClick={() => pick(f)}>{FIELD_SHORT[f]}</Chip>)}
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, marginTop: 8, lineHeight: 1.5 }}>
+        {value === "DIL"
+          ? "DİL öğrencisi AYT yerine YDT'ye girer; raporda TYT/AYT dengesi önerilmez."
+          : value
+            ? `Raporda ${FIELD_LABELS[value]} alanının AYT dersleri kaydı olmasa da izlenir.`
+            : "Girilmezse rapor AYT derslerini son 8 haftanın kayıtlarından tahmin eder."}
+      </div>
+      {error && <div role="alert" style={{ color: C.red, fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginTop: 8 }}>{error}</div>}
+    </>
   );
 }
 
@@ -379,6 +416,8 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
           </div>
         )}
       </Card>
+
+      <FieldPicker studentId={studentId} value={student.field || null} onSaved={(field) => setData((d) => ({ ...d, student: { ...d.student, field } }))} />
 
       <div ref={notesRef} style={{ scrollMarginTop: 80 }}>
         <SectionHeader title="Özel notlarım" count={notes.length || null} />

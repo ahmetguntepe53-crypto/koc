@@ -8,12 +8,16 @@ import { safeUser } from "../serialize.js";
 import { sendAccountSetupEmail } from "../mailer.js";
 import { handleErr } from "../handleErr.js";
 import { isValidEmail, isValidUsername, assert } from "../validators.js";
-import { GRADE_LEVELS, BRANCHES } from "../subjects.js";
+import { GRADE_LEVELS, BRANCHES, normalizeField } from "../subjects.js";
 import { recipientPhotosDir } from "../uploads.js";
+import { adminAnalyticsRouter } from "./adminAnalytics.js";
 
 // Bu router server/src/app.js'de zaten requireAuth + requireRole("ADMIN") ile mount edilir —
 // buradaki her uç nokta yalnızca kimlik doğrulanmış bir ADMIN tarafından çağrılabilir.
 export const adminRouter = Router();
+
+// Okul analizi (okul geneli ödevlerin toplu sonuçları; öğrenci adı/tekil değer yok) — bkz. routes/adminAnalytics.js.
+adminRouter.use("/analytics", adminAnalyticsRouter);
 
 // 7 gün: öğrenciler kurulum e-postasını çoğu zaman ertesi gün (ya da hafta sonu) açıyor — 1 saatlik
 // süre bu linklerin çoğunu kullanılamaz hale getiriyordu. "Şifremi unuttum" linki ise kullanıcının
@@ -101,7 +105,16 @@ async function findIdentifierClash(values, exceptUserId) {
 // E-posta ya da kullanıcı adından en az biri zorunlu. E-posta verilirse eskisi gibi şifre belirleme
 // bağlantısı gider; YALNIZCA kullanıcı adı verilirse (e-postası olmayan öğrenci — okulun kuralı:
 // kullanıcı adı ve ilk şifre okul numarası) ilk şifre kullanıcı adıyla aynı olur.
-async function createOneUser({ role, name, email, username, phone, className, teacherId, gradeLevel }) {
+// YKS alanı doğrulaması (tekil/toplu ekleme ve PATCH ortak): boş → null, tanınmayan değer → 400.
+const FIELD_ERROR = "Geçersiz YKS alanı — SAY, EA, SÖZ ya da DİL olmalı";
+function cleanField(value) {
+  const field = normalizeField(value);
+  assert(field !== undefined, FIELD_ERROR);
+  return field;
+}
+
+// field (ya da toplu listedeki Türkçe sütun adıyla alan) isteğe bağlı: boşsa alan bilinmiyor kalır.
+async function createOneUser({ role, name, email, username, phone, className, teacherId, gradeLevel, field, alan }) {
   assert(role === "TEACHER" || role === "STUDENT", "Rol TEACHER veya STUDENT olmalı");
   assert(name && String(name).trim(), "İsim gerekli");
   const cleanEmail = email ? String(email).trim().toLowerCase() : null;
@@ -114,7 +127,9 @@ async function createOneUser({ role, name, email, username, phone, className, te
 
   let resolvedTeacherId = null;
   let resolvedGradeLevel = null;
+  let resolvedField = null;
   if (role === "STUDENT") {
+    resolvedField = cleanField(field !== undefined ? field : alan);
     if (teacherId) {
       const teacher = await prisma.user.findUnique({ where: { id: teacherId } });
       assert(teacher && teacher.role === "TEACHER", "Geçersiz koç seçimi");
@@ -140,6 +155,7 @@ async function createOneUser({ role, name, email, username, phone, className, te
       className: role === "STUDENT" && className ? String(className).trim() : null,
       teacherId: resolvedTeacherId,
       gradeLevel: resolvedGradeLevel,
+      field: resolvedField,
     },
   });
   if (cleanEmail) {
@@ -159,7 +175,7 @@ adminRouter.post("/users", async (req, res) => {
 });
 
 // 200 öğrenciyi tek tek eklemek pratik değil — Excel/Sheets'ten kopyalanan satırları client tarafında
-// ayrıştırıp buraya {role, rows:[{name,email,phone?,className?,teacherId?}]} olarak gönderiyoruz,
+// ayrıştırıp buraya {role, rows:[{name,email,phone?,className?,teacherId?,field?}]} olarak gönderiyoruz,
 // her satır bağımsız değerlendirilip başarı/hata raporu dönülüyor (bir satırın hatası diğerlerini durdurmaz).
 adminRouter.post("/users/bulk-import", async (req, res) => {
   try {
@@ -183,7 +199,7 @@ adminRouter.post("/users/bulk-import", async (req, res) => {
 
 adminRouter.patch("/users/:id", async (req, res) => {
   try {
-    const { name, phone, className, gradeLevel, username } = req.body || {};
+    const { name, phone, className, gradeLevel, username, field } = req.body || {};
     const data = {};
     if (name !== undefined) data.name = String(name).trim();
     if (username !== undefined) {
@@ -204,6 +220,13 @@ adminRouter.patch("/users/:id", async (req, res) => {
       const gradeLevelNum = Number(gradeLevel);
       assert(GRADE_LEVELS.includes(gradeLevelNum), "Geçerli bir sınıf düzeyi seç (11 veya 12)");
       data.gradeLevel = gradeLevelNum;
+    }
+    // YKS alanı: null / "" alanı siler (bilinmiyor). Yalnızca öğrencide anlamlı — öğretmene yazılmaz.
+    if (field !== undefined) {
+      data.field = cleanField(field);
+      const current = await prisma.user.findUnique({ where: { id: req.params.id }, select: { role: true } });
+      assert(current, "Bulunamadı", 404);
+      assert(current.role === "STUDENT" || data.field === null, "YKS alanı yalnızca öğrenciler için geçerli");
     }
     const user = await prisma.user.update({ where: { id: req.params.id }, data });
     res.json({ user: safeUser(user) });
@@ -335,7 +358,7 @@ adminRouter.post("/users/:id/unban", async (req, res) => {
 // "ban" ile hesabı devre dışı bırakmalı.
 adminRouter.delete("/users/:id", async (req, res) => {
   try {
-    const [assignmentsCreated, assignmentRecipients, studySessions, coachedStudents] = await Promise.all([
+    const [assignmentsCreated, assignmentRecipients, studySessions, coachedStudents, practiceExams] = await Promise.all([
       prisma.assignment.count({ where: { teacherId: req.params.id } }),
       prisma.assignmentRecipient.count({ where: { studentId: req.params.id } }),
       prisma.studySession.count({ where: { studentId: req.params.id } }),
@@ -343,9 +366,12 @@ adminRouter.delete("/users/:id", async (req, res) => {
       // oluşturmamış olsa bile (assignmentsCreated=0) silme, öğrencileri koçsuz (teacherId=null,
       // bkz. schema.prisma onDelete: SetNull) bırakmasın — önce öğrenciler başka bir koça atanmalı.
       prisma.user.count({ where: { teacherId: req.params.id } }),
+      // Öğrencinin deneme sınavları da sınav hazırlık geçmişidir (silinirse cascade ile giderdi). Koçun girdiği denemeler
+      // engel değil: giren hesap silinince kayıt öğrencide kalır (createdById → null).
+      prisma.practiceExam.count({ where: { studentId: req.params.id } }),
     ]);
-    if (assignmentsCreated + assignmentRecipients + studySessions + coachedStudents > 0) {
-      return res.status(409).json({ error: "Bu kullanıcının geçmiş ödev/çalışma kayıtları ya da kendisine atanmış öğrencileri var — silmek yerine hesabı askıya al." });
+    if (assignmentsCreated + assignmentRecipients + studySessions + coachedStudents + practiceExams > 0) {
+      return res.status(409).json({ error: "Bu kullanıcının geçmiş ödev/çalışma/deneme kayıtları ya da kendisine atanmış öğrencileri var — silmek yerine hesabı askıya al." });
     }
     await prisma.user.delete({ where: { id: req.params.id } });
     res.json({ ok: true });

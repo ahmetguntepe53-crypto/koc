@@ -5,5 +5,6 @@ import gelisimBasari from "./gelisimBasari.js";
 import gelisimDuzen from "./gelisimDuzen.js";
 import koc from "./koc.js";
 import konusmaDikkat from "./konusmaDikkat.js";
+import deneme from "./deneme.js";
 
-export const PHRASES = { ...ozet, ...guclu, ...gelisimBasari, ...gelisimDuzen, ...koc, ...konusmaDikkat };
+export const PHRASES = { ...ozet, ...guclu, ...gelisimBasari, ...gelisimDuzen, ...koc, ...konusmaDikkat, ...deneme };

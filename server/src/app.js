@@ -15,7 +15,11 @@ import { planEntriesRouter } from "./routes/planEntries.js";
 import { settingsRouter } from "./routes/settings.js";
 import { branchRouter } from "./routes/branch.js";
 import { aiAnalysisRouter } from "./routes/aiAnalysis.js";
+import { practiceExamsRouter } from "./routes/practiceExams.js";
 import { requireAuth, requireRole } from "./middleware/auth.js";
+import { prisma } from "./db.js";
+import { recordUnexpected500 } from "./handleErr.js";
+import { getSchedulerHealth } from "./scheduler.js";
 
 export const app = express();
 
@@ -32,7 +36,47 @@ app.use(cors());
 // 1mb: toplu içe aktarma (admin.js > /users/bulk-import, 500 satıra kadar) varsayılan 100kb'ı aşabiliyor.
 app.use(express.json({ limit: "1mb" }));
 
-app.get("/api/health", (req, res) => res.json({ ok: true }));
+// Sağlık kontrolü — kimlik doğrulamasız; dağıtım betiği (`curl -fsS …/api/health`) ve saatlik dış kontrol
+// (.github/workflows/uptime.yml) kullanır. Eskiden süreç ayaktaysa her zaman {ok:true} dönüyordu: DB gitmişken ya da
+// zamanlayıcı asılıyken bile "sağlıklı" görünüyordu. Şimdi:
+//  • DB: SELECT 1, en fazla 2 sn (ulaşılamayan DB'de Prisma'nın bağlantı zaman aşımını beklemesin). Olmazsa 503.
+//  • Zamanlayıcı (yalnız BU süreçte çalışıyorsa — bkz. index.js): 10 dakikadır tur tamamlanmadıysa 503.
+// Başarıda {ok:true} biçimi korunur (ek alanlar yalnız ekleme). Yanıtta kişisel veri ya da ayrıntılı hata yok — herkese açık.
+const HEALTH_DB_TIMEOUT_MS = 2000;
+async function dbReachable() {
+  let timer;
+  try {
+    return await Promise.race([
+      // $queryRaw tembeldir: .then ile tetiklenir. Zaman aşımı kazanırsa sorgu arka planda sürer; sonradan reddedilse
+      // bile Promise.race o dala da işleyici bağladığı için unhandledRejection olmaz.
+      prisma.$queryRaw`SELECT 1`.then(() => true),
+      new Promise((resolve) => {
+        timer = setTimeout(() => resolve(false), HEALTH_DB_TIMEOUT_MS);
+      }),
+    ]);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+app.get("/api/health", async (req, res) => {
+  const db = await dbReachable();
+  if (!db) console.error("[health] veritabanına ulaşılamadı (SELECT 1 başarısız ya da 2 sn'de yanıt yok)");
+  const body = { ok: db, db };
+  const sched = getSchedulerHealth();
+  if (sched.running) {
+    body.scheduler = {
+      ok: !sched.stale,
+      lastTickSecondsAgo: sched.sinceLastTickMs == null ? null : Math.round(sched.sinceLastTickMs / 1000),
+      lastTickOk: sched.lastTickOk,
+    };
+    if (sched.stale) body.ok = false;
+  }
+  // Ara bellekte (CDN/proxy) eski bir "sağlıklı" yanıt kalmasın.
+  res.set("Cache-Control", "no-store");
+  res.status(body.ok ? 200 : 503).json(body);
+});
 
 // Kanıt fotoğrafları requireAuth OLMADAN servis edilir: <img src> tarayıcıdan Authorization header'ı
 // gönderemez, token'ı URL'e koymak (query param) log/tarayıcı geçmişinde sızdırır. Bunun yerine
@@ -61,6 +105,8 @@ app.use("/api/plan-entries", requireAuth, requireRole("TEACHER"), planEntriesRou
 app.use("/api/settings", requireAuth, settingsRouter);
 app.use("/api/branch", requireAuth, requireRole("TEACHER"), branchRouter);
 app.use("/api/ai", requireAuth, requireRole("TEACHER", "ADMIN"), aiAnalysisRouter);
+// Deneme sınavları — rol karışık (öğrenci kendisi, koç kendi öğrencisi yazar; admin okur), yetki handler içinde.
+app.use("/api/practice-exams", requireAuth, practiceExamsRouter);
 
 // Bilinmeyen /api/* rotaları için genel 404 — istemci tarafında "sunucudan boş HTML döndü" gibi
 // anlaşılması güç hatalar yerine net bir JSON hata mesajı görülsün diye.
@@ -78,5 +124,6 @@ app.use((err, req, res, next) => {
   const status = err.status || err.statusCode;
   if (Number.isInteger(status) && status >= 400 && status < 500) return res.status(status).json({ error: "Geçersiz istek" });
   console.error("[app] beklenmeyen hata:", err);
+  recordUnexpected500(err, `${req.method} ${req.path}`); // uyarı sayacı (bkz. handleErr.js) — router dışı 500'ler de sayılsın
   res.status(500).json({ error: "Sunucu hatası" });
 });

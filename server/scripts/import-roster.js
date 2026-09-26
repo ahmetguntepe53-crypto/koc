@@ -1,5 +1,5 @@
 // Okulun koç–öğrenci dağılım listesini sisteme aktarır: eksik öğretmen ve öğrenci hesaplarını açar,
-// her öğrenciyi koçuna bağlar, sınıf düzeyini (11/12) ve şubesini yazar.
+// her öğrenciyi koçuna bağlar, sınıf düzeyini (11/12), şubesini ve (listede varsa) YKS alanını yazar.
 //
 // Kullanım (server/ klasöründen, .env'deki DATABASE_URL'e yazar):
 //   node scripts/import-roster.js data/roster-2026.json            → KURU ÇALIŞMA: yalnızca rapor, hiçbir şey yazılmaz
@@ -17,13 +17,16 @@
 // - Öğretmende "branches": ["Matematik"] varsa branş öğretmeni yapılır (teachingSubjects + isSubjectTeacher —
 //   okul çapında ortak ödev yetkisi); alan yoksa öğretmenin mevcut branşına dokunulmaz. Yıllık planlar
 //   ayrıca scripts/import-plans.js ile branş öğretmenine yüklenir.
+// - Öğrencide isteğe bağlı "alan" (ya da "field"): YKS alanı — "SAY", "EA", "SÖZ", "DİL" ya da tam adı ("Sayısal",
+//   "Eşit Ağırlık"...). Tanınmayan değer listeyi durdurur. Alan verilmemiş (ya da boş) satırda öğrencinin mevcut
+//   alanına dokunulmaz — koçun sonradan girdiği alan listeyi yeniden çalıştırınca silinmesin.
 // - Liste dosyası reşit olmayanların kişisel verisidir: server/data/ git dışıdır (bkz. .gitignore).
 import "dotenv/config";
 import fs from "node:fs";
 import path from "node:path";
 import bcrypt from "bcryptjs";
 import { prisma } from "../src/db.js";
-import { BRANCHES } from "../src/subjects.js";
+import { BRANCHES, normalizeField } from "../src/subjects.js";
 
 const args = process.argv.slice(2);
 const file = args.find((a) => !a.startsWith("--"));
@@ -78,15 +81,18 @@ for (const t of roster.teachers || []) {
     seenNos.set(no, s.name);
     const m = /^(11|12)-([A-ZÇĞİÖŞÜ])$/.exec(String(s.className || "").trim());
     if (!m) fail(`Geçersiz şube: "${s.className}" (${s.name}) — 11-A / 12-B biçiminde olmalı`);
-    rows.push({ teacherName: t.name, schoolNo: no, name: s.name, className: `${m[1]}-${m[2]}`, gradeLevel: Number(m[1]) });
+    // field: kod ya da null (satırda yok/boş → mevcut alana dokunulmaz).
+    const field = normalizeField(s.alan !== undefined ? s.alan : s.field);
+    if (field === undefined) fail(`Geçersiz alan: "${s.alan ?? s.field}" (${s.name}) — SAY, EA, SÖZ ya da DİL olmalı`);
+    rows.push({ teacherName: t.name, schoolNo: no, name: s.name, className: `${m[1]}-${m[2]}`, gradeLevel: Number(m[1]), field });
   }
 }
 const exp = roster.expected || {};
-const counts = { teachers: (roster.teachers || []).length, students: rows.length, grade11: rows.filter((r) => r.gradeLevel === 11).length, grade12: rows.filter((r) => r.gradeLevel === 12).length };
+const counts = { teachers: (roster.teachers || []).length, students: rows.length, grade11: rows.filter((r) => r.gradeLevel === 11).length, grade12: rows.filter((r) => r.gradeLevel === 12).length, withField: rows.filter((r) => r.field).length };
 for (const k of Object.keys(exp)) {
   if (exp[k] !== counts[k]) fail(`Liste başlığındaki toplamla uyuşmuyor — ${k}: beklenen ${exp[k]}, dosyada ${counts[k]}`);
 }
-console.log(`Liste: ${counts.teachers} öğretmen, ${counts.students} öğrenci (11. sınıf: ${counts.grade11}, 12. sınıf: ${counts.grade12}) — toplamlar başlıkla uyumlu.`);
+console.log(`Liste: ${counts.teachers} öğretmen, ${counts.students} öğrenci (11. sınıf: ${counts.grade11}, 12. sınıf: ${counts.grade12}; alanı yazılı: ${counts.withField}) — toplamlar başlıkla uyumlu.`);
 console.log(APPLY ? "Mod: UYGULA\n" : "Mod: KURU ÇALIŞMA (hiçbir şey yazılmayacak — uygulamak için --apply)\n");
 
 const report = { teachersCreated: [], teachersMatched: [], studentsCreated: 0, studentsUpdated: 0, studentsUnchanged: 0, passwordsReset: 0, conflicts: [] };
@@ -147,7 +153,7 @@ async function main() {
   // --- Öğrenciler ---
   const existingStudents = await prisma.user.findMany({
     where: { role: "STUDENT" },
-    select: { id: true, name: true, username: true, email: true, passwordHash: true, teacherId: true, gradeLevel: true, className: true },
+    select: { id: true, name: true, username: true, email: true, passwordHash: true, teacherId: true, gradeLevel: true, className: true, field: true },
   });
   const matchedIds = new Set();
   for (const r of rows) {
@@ -173,7 +179,7 @@ async function main() {
         await prisma.user.create({
           data: {
             role: "STUDENT", name: displayName, username: r.schoolNo, passwordHash: await bcrypt.hash(r.schoolNo, 10), mustChangePassword: true,
-            gradeLevel: r.gradeLevel, className: r.className, teacherId,
+            gradeLevel: r.gradeLevel, className: r.className, teacherId, field: r.field,
           },
         });
       }
@@ -185,6 +191,8 @@ async function main() {
     if (match.username !== r.schoolNo) data.username = r.schoolNo;
     if (match.gradeLevel !== r.gradeLevel) data.gradeLevel = r.gradeLevel;
     if (match.className !== r.className) data.className = r.className;
+    // Alan yalnızca listede yazılıysa güncellenir (boş satır koçun girdiği alanı silmez).
+    if (r.field && match.field !== r.field) data.field = r.field;
     // Kuru çalışmada yeni koçun id'si henüz yok ("(yeni:...)") — yalnızca "değişecek" diye sayılır.
     if (match.teacherId !== teacherId) data.teacherId = teacherId;
     // Şifre: hiç belirlenmemişse (aktivasyon bekleyen) okul numarası olur; kendi şifresini belirlemişse

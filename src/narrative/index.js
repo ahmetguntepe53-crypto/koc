@@ -1,6 +1,8 @@
 // Otomatik aylık değerlendirme ("yorum botu") — ücretsiz, cihazda çalışır, veri hiçbir yere gitmez.
 // buildNarrative(sunucu yanıtı, { month }) → { ozet, gucluYonler, gelisimAlanlari, kocaOneriler, ogrenciyleKonusma, dikkat,
 // seyir, ... } — yapay zekâ incelemesiyle AYNI biçim (ekran ve PDF ikisini de aynı bileşenle gösterir).
+// buildNarrative(raw, { month, audience: "student" }) → öğrencinin kendi "Ayın değerlendirmesi" (./student.js): aynı olgular,
+// "sen" diliyle ayrı kalıp bankası (./phrases-student); koça özel bölümler (koça öneriler, görüşme, dikkat) yok.
 //
 // Nasıl çalışır:
 //  1. Seçilen ay ve önceki 5 aya kadar her ay, raporun kendi modeliyle (src/reportModel.js) ayrı hesaplanır.
@@ -8,14 +10,16 @@
 //  3. Her bölüm için en önemli olgular seçilir (ders başına sınır, tür çeşitliliği).
 //  4. Her olgu, kalıp bankasından (src/narrative/phrases) seçilen bir kalıpla cümleye dönüşür. Seçim öğrenci + ay
 //     tohumlu rastgeleliktir: aynı rapor her açılışta aynıdır, farklı öğrencilerde ve aylarda farklı cümleler çıkar.
-import { buildReport, monthWindowKey, trDay } from "../reportModel.js";
+import { buildReport, monthWindowKey, trDay, fmtDay } from "../reportModel.js";
 import { MONTH_FORMS } from "./catalog.js";
 import { PHRASES } from "./phrases/index.js";
 import { h, rng, tidy, FORBIDDEN } from "./text.js";
+import { composeStudent } from "./student.js";
 
 const DAY = 864e5;
 const WEEKDAYS = ["Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi", "Pazar"];
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const r2 = (v) => Math.round(v * 100) / 100; // deneme netleri (0,25'in katları; farkları da)
 
 // ---------------------------------------------------------------- aylar
 const monthKeyOf = (y, m) => `${y}-${String(m + 1).padStart(2, "0")}`;
@@ -37,11 +41,12 @@ function firstDataDay(raw) {
   const days = [];
   for (const it of raw.items || []) { days.push(trDay(it.endDate)); if (it.completedAt) days.push(trDay(it.completedAt)); }
   for (const s of raw.sessions || []) days.push(trDay(s.date));
+  for (const e of raw.practiceExams || []) days.push(trDay(e.date)); // yalnızca denemesi olan aylar da analize girer
   return days.length ? Math.min(...days) : null;
 }
 
 // ---------------------------------------------------------------- ana fonksiyon
-export function buildNarrative(raw, { month, now } = {}) {
+export function buildNarrative(raw, { month, now, audience } = {}) {
   const nowD = now ? new Date(now) : new Date();
   const m0 = month || defaultNarrativeMonth(nowD);
   const first = firstDataDay(raw);
@@ -53,7 +58,9 @@ export function buildNarrative(raw, { month, now } = {}) {
   }
   const models = keys.map((k) => buildReport(raw, { window: monthWindowKey(k), now: nowD }));
   const facts = extractFacts(models, keys);
-  return compose(facts, `${raw.student?.id || "?"}|${m0}`, { month: m0, keys });
+  const seed = `${raw.student?.id || "?"}|${m0}`;
+  if (audience === "student") return composeStudent(facts, seed, { month: m0, keys });
+  return compose(facts, seed, { month: m0, keys });
 }
 
 // ---------------------------------------------------------------- olgular
@@ -117,6 +124,18 @@ export function extractFacts(models, keys) {
     if (pts.length >= 2 && !F.ozet.seyir) {
       F.ozet.seyir = { sinav: ex, ilk: pts[0], son: pts[pts.length - 1], yon: direction(pts.map((p) => p.NO)), aySayisi: pts.length, degerler: pts.map((p) => p.NO) };
     }
+  }
+  // Deneme sınavları (GERÇEK net; bkz. src/practiceExams.js): ayın EN SON denemesi (tür fark etmez) ve aynı türün bir
+  // önceki denemesine (önceki aydan da olabilir) göre değişim. Denemesiz ayda ya da eski sunucu yanıtında olgu yok.
+  const DM = cur.denemeler;
+  const denemeSon = DM ? ["TYT", "AYT"].map((e) => DM[e]).filter((s) => s.last).sort((a, b) => b.last.day - a.last.day)[0] : null;
+  if (denemeSon) {
+    const L = denemeSon.last;
+    F.ozet.deneme = {
+      sinav: denemeSon.examType, net: r2(L.net), tarih: fmtDay(L.day), ad: L.name || null,
+      fark: denemeSon.deltaVsPrev == null ? null : r2(denemeSon.deltaVsPrev), oncekiNet: denemeSon.prev ? r2(denemeSon.prev.net) : null,
+      sayi: denemeSon.n, soru: L.max,
+    };
   }
   // Çalışma ritmi (hafta günlerine göre soru).
   const cells = cur.discipline.heatmap.filter((c) => c.inWindow && !c.future);
@@ -184,6 +203,24 @@ export function extractFacts(models, keys) {
       G("guclu.enIyiAy", { sinav: ex, ay, NO: last, aySayisi: nums.length }, 78);
     }
   }
+  // Denemeler: bu ayın son denemesiyle biten belirgin yükseliş (son üç deneme düşmeden, ≥ 4 net) ya da kişisel rekor.
+  // Gerçek sınav neti olduğu için yükseliş, ödev temelli güçlü yönlerle aynı ağırlıkta öne çıkar.
+  if (DM) {
+    for (const ex of ["TYT", "AYT"]) {
+      const s = DM[ex];
+      if (s.rise) {
+        G("guclu.deneme", {
+          sinav: ex, tip: "yukselis", net: r2(s.rise.to.net), ilkNet: r2(s.rise.from.net), artis: r2(s.rise.delta), sayi: 3,
+          oncekiEnIyi: null, degerler: s.rise.values.map(r2),
+        }, 87);
+      } else if (s.record) {
+        G("guclu.deneme", {
+          sinav: ex, tip: "rekor", net: r2(s.record.net), ilkNet: null, artis: r2(s.record.net - s.record.prevBest), sayi: s.record.count,
+          oncekiEnIyi: r2(s.record.prevBest), degerler: null,
+        }, 79);
+      }
+    }
+  }
 
   // --- GELİŞİM ALANLARI
   const MAP = {
@@ -222,6 +259,21 @@ export function extractFacts(models, keys) {
   if (worstSubjDown && !F.gelisim.some((g) => g.subject === worstSubjDown.key && g.key === "gelisim.dusus")) {
     F.gelisim.push({ key: "gelisim.seyirDusus", f: (({ key, ...f }) => f)(worstSubjDown), score: 78, subject: worstSubjDown.key });
   }
+  // Denemede en çok net kaçan ders (son en fazla 3 denemede soru − net; en az 2 denemede girilmiş). subject anahtarı ödev
+  // dersleriyle aynı ("TYT|Matematik") — aynı ders için odak ders olgusuyla birlikte seçilmez (ders başına 1).
+  if (DM) {
+    for (const ex of ["TYT", "AYT"]) {
+      const lt = DM[ex].lossTop;
+      if (!lt) continue;
+      F.gelisim.push({
+        key: "gelisim.denemeDers", subject: lt.key, score: 84 + Math.min(6, lt.avgLost / 4),
+        f: {
+          ders: `${ex} ${lt.label}`, soru: lt.max, deneme: lt.n, ortNet: r2(lt.avgNet), kayip: r2(lt.avgLost), sonNet: r2(lt.lastNet),
+          yanlisPay: Math.round(lt.wrongShare), yanlisKaybi: r2(lt.wrongLost), bosKaybi: r2(lt.blankLost),
+        },
+      });
+    }
+  }
 
   // --- DİKKAT
   const D = (key, f, score) => F.dikkat.push({ key, f, score });
@@ -244,8 +296,10 @@ export function extractFacts(models, keys) {
     const kismi = dn.withE ? (dn.partialRate ?? 0) + (dn.overRate ?? 0) : null;
     D("dikkat.veri", { kismiOran: kismi != null && kismi >= 30 ? kismi : null, serbestFark: dn.freeGap != null && Math.abs(dn.freeGap) >= 15 ? dn.freeGap : null }, 55);
   }
+  // Alan biliniyorsa takip dışı kalan AYT dersleri zaten alan dışıdır (alanın dersleri her zaman izlenir) — "alanda mı
+  // değil mi, teyit edin" uyarısı yalnızca alan bilinmiyorken anlamlı.
   const untracked = dn.untracked.filter((u) => u.schoolItems > 0 && u.records === 0).map((u) => u.name).slice(0, 3);
-  if (untracked.length) D("dikkat.takipDisi", { dersler: untracked }, 40);
+  if (untracked.length && !cur.field) D("dikkat.takipDisi", { dersler: untracked }, 40);
 
   // Görüşme ve koç önerileri için yardımcı bilgiler.
   F.hedefGun = clamp(Math.round(cur.kpi.activeDays.n / Math.max(1, cur.kpi.activeDays.of / 7)) + 1, 3, 6);
@@ -275,6 +329,9 @@ function praise(g) {
     case "guclu.aktifGun": return { t: `ayın ${h.n(f.aktifGun, "gününde")} çalışmasını`, k: `ayın ${h.n(f.aktifGun, "gününde")} çalışmanı` };
     case "guclu.seyirDuzen": return { t: `teslim oranını ${h.pct(f.simdi.pct)} düzeyine çıkarmasını`, k: "teslim oranındaki artışı" };
     case "guclu.enIyiAy": return { t: `${f.sinav} tarafında en iyi ayını geçirmesini`, k: `${f.sinav} tarafındaki en iyi ayını` };
+    case "guclu.deneme": return f.tip === "yukselis"
+      ? { t: `${f.sinav} denemelerindeki yükselişi`, k: `${f.sinav} denemelerindeki yükselişini` }
+      : { t: `${f.sinav} denemesindeki kişisel rekorunu`, k: `${f.sinav} denemesindeki kişisel rekorunu` };
     default: return { t: "düzenli kayıt girmesini", k: "raporunu düzenli doldurmanı" };
   }
 }
@@ -338,6 +395,7 @@ function compose(F, seedStr, { month, keys }) {
     seyir: () => O.seyir && say("ozet.seyir", O.seyir, oz),
     ritim: () => O.ritim && say("ozet.ritim", O.ritim, oz),
     durum: () => say(O.durum.key, O.durum.f, oz),
+    deneme: () => O.deneme && say("ozet.deneme", O.deneme, oz),
   };
   const PLANS = [
     ["acilis", "guclu", "odak", "durum"],
@@ -354,7 +412,11 @@ function compose(F, seedStr, { month, keys }) {
     ? [["acilis", "durum"]]
     : PLANS.filter((p) => avail(p[0]) && p.filter(avail).length >= 3);
   const plan = plans[Math.floor(rand() * plans.length)] || ["acilis", "odak", "durum"];
-  const ozet = plan.filter(avail).slice(0, 4).map((k) => sentence[k]()).filter(Boolean).join(" ");
+  // Ayın denemesi varsa (YKS'nin en önemli ölçüsü) her planda ilk cümlenin hemen ardından gelir; planın kendi cümleleri
+  // düşmesin diye özet o zaman en fazla 5 cümle.
+  const planKeys = plan.filter(avail);
+  if (O.deneme) planKeys.splice(1, 0, "deneme");
+  const ozet = planKeys.slice(0, O.deneme ? 5 : 4).map((k) => sentence[k]()).filter(Boolean).join(" ");
 
   // --- GÜÇLÜ YÖNLER
   const gs = pickTop(F.guclu, F.guclu.length >= 4 && rand() < 0.5 ? 4 : 3);

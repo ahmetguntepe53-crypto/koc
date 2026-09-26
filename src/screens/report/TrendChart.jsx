@@ -3,7 +3,8 @@ import { C, monoFont } from "../../theme.js";
 import { fmtPct, fmtInt } from "../../reportModel.js";
 
 // Kabın gerçek genişliği — viewBox buna eşitlenir, SVG ölçeklenmez ve yazılar her ekranda ~11px kalır.
-function useElementWidth() {
+// Deneme grafiği (DenemeChart.jsx) de aynı kancayı kullanır.
+export function useElementWidth() {
   const ref = useRef(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {

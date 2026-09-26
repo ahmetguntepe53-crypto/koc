@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
 import { questionCountOf } from "../weekStats.js";
+import { serializePracticeExam } from "../practiceExams.js";
 
 // server/src/app.js'de requireAuth ile mount edilir.
 export const statsRouter = Router();
@@ -165,8 +166,8 @@ statsRouter.get("/full-report", async (req, res) => {
   try {
     const studentId = await resolveReportStudent(req, req.query?.studentId);
     const isCoachView = req.userRole !== "STUDENT";
-    const [student, recipients, sessions, settings] = await Promise.all([
-      prisma.user.findUnique({ where: { id: studentId }, select: { id: true, name: true, className: true, gradeLevel: true, lastSeenAt: true, createdAt: true, teacher: { select: { name: true } } } }),
+    const [student, recipients, sessions, settings, practiceExams] = await Promise.all([
+      prisma.user.findUnique({ where: { id: studentId }, select: { id: true, name: true, className: true, gradeLevel: true, field: true, lastSeenAt: true, createdAt: true, teacher: { select: { name: true } } } }),
       prisma.assignmentRecipient.findMany({
         where: { studentId, assignment: { status: "SENT", examType: { in: ["TYT", "AYT"] } } },
         include: {
@@ -178,6 +179,10 @@ statsRouter.get("/full-report", async (req, res) => {
       }),
       prisma.studySession.findMany({ where: { studentId, examType: { in: ["TYT", "AYT"] } }, orderBy: { studyDate: "asc" } }),
       prisma.schoolSettings.findUnique({ where: { id: "singleton" } }),
+      // Deneme sınavları — öğrencinin kendi kaydı (başkasının denemesi hiçbir görünümde dönmez); eskiden yeniye.
+      prisma.practiceExam.findMany({
+        where: { studentId, examType: { in: ["TYT", "AYT"] } }, include: { results: true }, orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+      }),
     ]);
 
     // Okul geneli ödevlerin diğer alıcıları — yalnızca toplu hesap için; istemciye tekil satır gitmez.
@@ -258,6 +263,8 @@ statsRouter.get("/full-report", async (req, res) => {
       viewer: isCoachView ? "coach" : "student",
       student: {
         id: student.id, name: student.name, className: student.className, gradeLevel: student.gradeLevel,
+        // YKS alanı (SAY/EA/SOZ/DIL, null = bilinmiyor) — model AYT'de hangi derslerin izleneceğini buradan bilir.
+        field: student.field ?? null,
         createdAt: student.createdAt, coach: student.teacher?.name || null,
         ...(isCoachView ? { lastSeenAt: student.lastSeenAt } : {}),
       },
@@ -269,6 +276,9 @@ statsRouter.get("/full-report", async (req, res) => {
         correct: s.correctCount, wrong: s.wrongCount, blank: s.blankCount, questionNumbers: s.questionNumbers || [],
         ...(isCoachView ? { note: s.note || null } : {}),
       })),
+      // Deneme sınavları (ders ders D/Y/B) — model "Denemeler" bölümünü buradan kurar (src/reportModel.js > denemeler).
+      // Yeni alan, yalnızca ekleme: eski uygulama sürümleri tanımadığı alanı yok sayar.
+      practiceExams: practiceExams.map((e) => serializePracticeExam(e, { role: req.userRole, userId: req.userId })),
     });
   } catch (e) {
     handleErr(res, e);

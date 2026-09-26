@@ -13,11 +13,14 @@ import { Section, LabelChip, TrendMark, NoValue, DybBar, Sparkline, Mini, Collap
 import TrendChart from "./report/TrendChart.jsx";
 import SubjectDetail from "./report/SubjectDetail.jsx";
 import CoachPanel from "./report/CoachPanel.jsx";
+import Denemeler from "./report/Denemeler.jsx";
+import StudentNarrativeCard from "./report/StudentNarrative.jsx";
 import { monthLabel } from "./teacher/MonthlyReportsScreen.jsx";
 
 // Gelişim raporu — öğrencinin "Gelişim" sekmesi ve koçun öğrenci detayı aynı ekranı ve aynı modeli (src/reportModel.js)
-// kullanır. Bölüm sırası: Özet → Öneriler → (koç) Koç paneli → Ders karnesi → Ödev düzeni → Konu analizi → Gelişim trendi
-// → Net nereden kaçıyor → Kapsam ve telafi. PDF bu bölümlerin tam hâlidir (src/reportPdf.js).
+// kullanır. Bölüm sırası: Özet → Denemeler → Öneriler → (koç) Koç paneli / (öğrenci) Ayın değerlendirmesi → Ders karnesi →
+// Ödev düzeni → Konu analizi → Gelişim trendi → Net nereden kaçıyor → Kapsam ve telafi. PDF bu bölümlerin tam hâlidir
+// (src/reportPdf.js).
 const HIDE_KEY = "kocluk-report-hidden";
 function readHidden() {
   try { return JSON.parse(localStorage.getItem(HIDE_KEY) || "{}") || {}; } catch { return {}; }
@@ -44,22 +47,31 @@ export default function ReportScreen({ user, studentId: fixedStudentId, studentN
   useEffect(() => setHeaderSlot(document.getElementById(HEADER_SLOT_ID)), []);
 
   const seq = useRef(0);
+  // Deneme eklenince/silinince rapor sessizce yeniden çekilir (reloadKey > 0): yükleniyor ekranına düşülmez, kaydırma
+  // yeri korunur; sessiz yenileme başarısız olursa eldeki rapor kalır.
+  const [reloadKey, setReloadKey] = useState(0);
   useEffect(() => {
     if (isCoach && !studentId) return;
     const my = ++seq.current;
-    setLoading(true);
-    setError("");
+    const silent = reloadKey > 0;
+    if (!silent) { setLoading(true); setError(""); }
     api.getFullReport(studentId)
       .then((d) => { if (my === seq.current) setRaw(d); })
-      .catch((e) => { if (my === seq.current) setError(e.message || "Rapor yüklenemedi"); })
-      .finally(() => { if (my === seq.current) setLoading(false); });
-  }, [studentId, isCoach]);
+      .catch((e) => { if (my === seq.current && !silent) setError(e.message || "Rapor yüklenemedi"); })
+      .finally(() => { if (my === seq.current && !silent) setLoading(false); });
+  }, [studentId, isCoach, reloadKey]);
+  const reload = () => setReloadKey((k) => k + 1);
 
   const model = useMemo(() => (raw ? buildReport(raw, { window: windowKey }) : null), [raw, windowKey]);
   const windows = month ? [{ key: monthWindowKey(month), label: monthLabel(month) }, ...WINDOWS] : WINDOWS;
   const detail = detailKey && model ? model.subjectMap.get(detailKey) : null;
   const studentName = raw?.student?.name || fixedStudentName || user.name;
-  const empty = model && model.allRecordCount === 0 && model.discipline.total.V === 0 && model.inProgress.length === 0;
+  const empty = model && model.allRecordCount === 0 && model.discipline.total.V === 0 && model.inProgress.length === 0 && model.denemeler.all === 0;
+  // Deneme ekleyebilen: öğrenci kendisi için, koç kendi öğrencisi için (admin yalnızca okur).
+  const canAddDeneme = user.role === "STUDENT" || (user.role === "TEACHER" && !!studentId);
+  const denemeler = model && (
+    <Denemeler model={model} isCoach={isCoach} canAdd={canAddDeneme} studentId={studentId} field={raw?.student?.field ?? null} onChanged={reload} />
+  );
 
   const study = (subjectKey, topic) => {
     if (!onOpenStudyLog) return;
@@ -89,6 +101,8 @@ export default function ReportScreen({ user, studentId: fixedStudentId, studentN
       {model && !empty && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
           <span style={text(12, 500, C.mutedLight)}>{model.rangeText}</span>
+          {/* YKS alanı (girilmişse) — AYT'de hangi derslerin izlendiğini belirler; nötr etiket. */}
+          {model.fieldLabel && <span style={{ ...text(11.5, 600, C.mutedLight), whiteSpace: "nowrap", background: C.surface2, borderRadius: 7, padding: "3px 7px" }}>Alan: {model.fieldLabel}</span>}
           {model.daysToYks != null && <span style={{ ...mono(11.5, 600, C.mutedLight), whiteSpace: "nowrap", background: C.surface2, borderRadius: 7, padding: "3px 7px" }}>YKS'ye {model.daysToYks} gün</span>}
         </div>
       )}
@@ -98,15 +112,25 @@ export default function ReportScreen({ user, studentId: fixedStudentId, studentN
       ) : error ? (
         <EmptyState text={error} />
       ) : !model ? null : empty ? (
-        <EmptyState icon={BarChart3} text="Henüz raporlanacak bir sonuç yok — ödev sonuçları ve serbest çalışma kayıtları girildikçe burada görünecek." />
+        <>
+          <EmptyState icon={BarChart3} text="Henüz raporlanacak bir sonuç yok — ödev sonuçları ve serbest çalışma kayıtları girildikçe burada görünecek." />
+          {denemeler}
+        </>
       ) : (
         <>
           <Summary model={model} isCoach={isCoach} onChip={setDetailKey} onStudy={study} onOpenHome={onOpenHome} />
+          {denemeler}
           <Recommendations model={model} isCoach={isCoach} hidden={hidden} onHide={hideRec} onStudy={study} onAssign={assign}
             onOpenRecipient={onOpenRecipient} onOpenAssignment={onOpenAssignment} />
           {isCoach && studentId && (
             <Section id="koc" title="Koç paneli">
               <CoachPanel model={model} raw={raw} studentId={studentId} aiMonth={month || model.window.month} onAiLoaded={setAi} onNarrative={setNarrative} onOpenAssignment={onOpenAssignment} />
+            </Section>
+          )}
+          {/* Öğrencinin kendi aylık değerlendirmesi ("sen" dili; koça özel bölüm yok) — yalnız öğrenci görünümünde. */}
+          {!isCoach && (
+            <Section id="degerlendirme" title="Ayın değerlendirmesi">
+              <StudentNarrativeCard raw={raw} />
             </Section>
           )}
           <SubjectCards model={model} isCoach={isCoach} exam={exam} setExam={setExam} onOpen={setDetailKey} onStudy={study} />
@@ -411,7 +435,11 @@ function SubjectCards({ model, isCoach, exam, setExam, onOpen, onStudy }) {
       )}
       {untracked.length > 0 && (
         <Collapsible title="Takip dışı AYT dersleri" count={untracked.length}>
-          <div style={{ ...text(12, 500, C.mutedLight), marginBottom: 6 }}>Son 8 haftada kaydı olmayan AYT dersleri düzen ve öneri hesabına girmez (alan bilgisi yok).</div>
+          <div style={{ ...text(12, 500, C.mutedLight), marginBottom: 6 }}>
+            {model.fieldLabel
+              ? `${model.fieldLabel} alanının dışında kalan ve son 8 haftada kaydı olmayan AYT dersleri düzen ve öneri hesabına girmez.`
+              : "Son 8 haftada kaydı olmayan AYT dersleri düzen ve öneri hesabına girmez (alan bilgisi yok)."}
+          </div>
           {untracked.map((s) => <SubjectRow key={s.key} s={s} isCoach={isCoach} onOpen={onOpen} />)}
         </Collapsible>
       )}
@@ -750,7 +778,7 @@ function PdfSheet({ raw, isCoach, initialWindow, windows, ai, narrative, student
   };
   return (
     <Modal title="PDF raporu" onClose={onClose}>
-      <div style={{ ...text(12.5, 500, C.text2), marginBottom: 12, lineHeight: 1.5 }}>{studentName} için A'dan Z'ye rapor: özet, ders karnesi, trend, ödev düzeni, net kaybı, konu dökümü, kapsam ve ekler.</div>
+      <div style={{ ...text(12.5, 500, C.text2), marginBottom: 12, lineHeight: 1.5 }}>{studentName} için A'dan Z'ye rapor: özet, denemeler, ders karnesi, trend, ödev düzeni, net kaybı, konu dökümü, kapsam ve ekler.</div>
       <div style={{ ...text(12, 700, C.mutedLight), marginBottom: 6 }}>Aralık</div>
       <div className="k-chip-row" role="group" aria-label="PDF aralığı" style={{ marginBottom: 14 }}>
         {windows.map((w) => <Chip key={w.key} active={win === w.key} onClick={() => setWin(w.key)}>{w.label}</Chip>)}

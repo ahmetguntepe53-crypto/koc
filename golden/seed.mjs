@@ -198,6 +198,34 @@ if (zeynepDone) {
   });
 }
 
+// YKS alanları (kurgusal) ve Zeynep'in deneme sınavları — rapordaki "Denemeler" bölümü ve alan bilgisi dolu görünsün.
+for (const [no, field] of [["1201", "SAY"], ["1202", "EA"], ["1203", "SAY"], ["1204", "SAY"], ["1205", "EA"], ["1206", "SOZ"], ["1207", "SAY"], ["1208", "SOZ"]]) {
+  await prisma.user.update({ where: { id: students[no].id }, data: { field } });
+}
+{
+  const TYT_ROWS = (k) => [
+    ["Türkçe", 31 + k, 6 - Math.min(k, 3), 3], ["Tarih", 4, 1, 0], ["Coğrafya", 3, 1, 1], ["Felsefe", 4, 0, 1], ["Din Kültürü ve Ahlak Bilgisi", 4, 1, 0],
+    ["Matematik", 14 + 2 * k, 7, 9 - 2 * k], ["Geometri", 4 + (k > 1 ? 1 : 0), 3, 3 - (k > 1 ? 1 : 0)], ["Fizik", 3, 2, 2], ["Kimya", 4, 2, 1], ["Biyoloji", 4, 1, 1],
+  ];
+  const AYT_ROWS = (k) => [["Matematik", 10 + 3 * k, 8, 12 - 3 * k], ["Geometri", 3, 3, 4], ["Fizik", 5 + k, 4, 5 - k], ["Kimya", 5, 3, 5], ["Biyoloji", 6, 3, 4]];
+  const exams = [
+    { examType: "TYT", w: -6, name: "Golden Yayınları TYT-1", rows: TYT_ROWS(0) },
+    { examType: "TYT", w: -4, name: "Golden Yayınları TYT-2", rows: TYT_ROWS(1) },
+    { examType: "AYT", w: -3, name: "Golden Yayınları AYT-1", rows: AYT_ROWS(0) },
+    { examType: "TYT", w: -2, name: "Golden Yayınları TYT-3", rows: TYT_ROWS(2) },
+    { examType: "TYT", w: -1, name: "Okul Denemesi TYT", rows: TYT_ROWS(3) },
+    { examType: "AYT", w: -1, name: "Golden Yayınları AYT-2", rows: AYT_ROWS(1) },
+  ];
+  for (const e of exams) {
+    await prisma.practiceExam.create({
+      data: {
+        studentId: zeynep.id, examType: e.examType, date: new Date(weekStart(e.w).getTime() + 5 * DAY), name: e.name, createdById: zeynep.id,
+        results: { create: e.rows.map(([subject, correct, wrong, blank]) => ({ subject, correct, wrong, blank })) },
+      },
+    });
+  }
+}
+
 // Bildirimlerin zamanları sabit: yayın anında yazılanlar "az önce" görünmesin, günlere yayılsın.
 const notes = await prisma.notification.findMany({ where: { userId: zeynep.id }, orderBy: { createdAt: "asc" } });
 for (let i = 0; i < notes.length; i++) {

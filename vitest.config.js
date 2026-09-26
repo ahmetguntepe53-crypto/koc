@@ -12,5 +12,8 @@ export default defineConfig({
     setupFiles: ["./test/setup.js"],
     include: ["test/**/*.test.jsx", "test/**/*.test.js"],
     globals: true,
+    // Rapor modeli + PDF testleri tek başına 1–3 sn sürer; paralel dosyalarla yüklü bir makinede (2 çekirdekli CI koşucusu,
+    // aynı anda koşan başka testler) varsayılan 5 sn aşılıp test mantık yüzünden değil süre yüzünden düşüyordu.
+    testTimeout: 20000,
   },
 });

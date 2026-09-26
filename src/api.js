@@ -125,6 +125,8 @@ export const api = {
   adminUpdateSettings: (patch) => request("/admin/settings", { method: "PUT", body: patch }),
   // Branş öğretmeninin dersleri — en az bir ders "ders öğretmeni" yetkisini açar, boş liste kapatır.
   adminSetTeacherSubjects: (id, subjects) => request(`/admin/users/${id}/subject-teacher`, { method: "POST", body: { subjects } }),
+  // Okul analizi — okul geneli ödevlerin toplu sonuçları (weeks: 4 | 8 | 16; gradeLevel: 11 | 12, boş = tümü).
+  adminAnalytics: (weeks, gradeLevel) => request(`/admin/analytics?weeks=${encodeURIComponent(weeks)}${gradeLevel ? `&gradeLevel=${encodeURIComponent(gradeLevel)}` : ""}`),
 
   // --- okul ayarları (herkese salt-okunur) ---
   getExamDates: () => request("/settings"),
@@ -132,6 +134,8 @@ export const api = {
   // --- öğretmen ---
   teacherListStudents: () => request("/teacher/students"),
   teacherStudentOverview: (studentId) => request(`/teacher/students/${studentId}/overview`),
+  // Öğrencinin YKS alanı (SAY / EA / SOZ / DIL; null = bilinmiyor) — yalnızca kendi öğrencisi.
+  teacherSetStudentField: (studentId, field) => request(`/teacher/students/${studentId}/field`, { method: "PATCH", body: { field } }),
   // Koçun tarihli özel notları — yalnızca yazan koç görür.
   teacherAddNote: (studentId, text) => request(`/teacher/students/${studentId}/notes`, { method: "POST", body: { text } }),
   teacherEditNote: (noteId, text) => request(`/teacher/notes/${noteId}`, { method: "PATCH", body: { text } }),
@@ -188,6 +192,13 @@ export const api = {
   createStudySession: (payload) => request("/study-sessions", { method: "POST", body: payload }),
   listStudySessions: () => request("/study-sessions"),
   deleteStudySession: (id) => request(`/study-sessions/${id}`, { method: "DELETE" }),
+
+  // --- deneme sınavları (öğrenci kendisi; koç kendi öğrencisi için studentId ile; admin yalnızca okur) ---
+  // payload: { studentId?, examType: "TYT" | "AYT", date: "YYYY-MM-DD", name?, results: [{ subject, correct, wrong, blank }] }
+  listPracticeExams: (studentId) => request(`/practice-exams${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`),
+  createPracticeExam: (payload) => request("/practice-exams", { method: "POST", body: payload }),
+  updatePracticeExam: (id, payload) => request(`/practice-exams/${id}`, { method: "PUT", body: payload }),
+  deletePracticeExam: (id) => request(`/practice-exams/${id}`, { method: "DELETE" }),
 
   // --- özet istatistikler ---
   teacherStats: () => request("/stats/teacher"),

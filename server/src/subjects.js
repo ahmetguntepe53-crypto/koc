@@ -45,3 +45,26 @@ export function trackForExamType(examType) {
 }
 
 export const GRADE_LEVELS = [11, 12];
+
+// Öğrencinin YKS alanı (User.field) — istemcide src/studentField.js ile İÇERİK olarak aynı. SAY/EA/SOZ AYT'ye,
+// DIL ise AYT yerine YDT'ye girer (rapor bu yüzden DİL öğrencisinde TYT/AYT dengesi önermez).
+export const STUDENT_FIELDS = ["SAY", "EA", "SOZ", "DIL"];
+// Okul listelerinde/elle yazımda görülen biçimler: kod ("SÖZ", "DİL"), tam ad ("Eşit Ağırlık"), eski ad ("TM") ve
+// "YDT". Karşılaştırma Türkçe harfler sadeleştirilip küçük harfle yapılır ("DIL" → "dıl" → "dil").
+const FIELD_ALIASES = {
+  say: "SAY", sayisal: "SAY",
+  ea: "EA", esitagirlik: "EA", tm: "EA",
+  soz: "SOZ", sozel: "SOZ",
+  dil: "DIL", yabancidil: "DIL", ydt: "DIL",
+};
+const FIELD_FOLD = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u", â: "a", î: "i", û: "u" };
+
+// Boş (undefined/null/"") → null (alan bilinmiyor / silinsin); tanınan değer → kod; tanınmayan → undefined — çağıran
+// taraf undefined'ı 400 ile reddeder. Sayı ya da nesne gibi metin olmayan değerler de tanınmaz.
+export function normalizeField(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value !== "string") return undefined;
+  const key = value.toLocaleLowerCase("tr-TR").replace(/[çğıöşüâîû]/g, (c) => FIELD_FOLD[c] || c).replace(/[^a-z0-9]/g, "");
+  if (!key) return null;
+  return FIELD_ALIASES[key];
+}

@@ -3,6 +3,9 @@ import { notifyUser, flushPendingPushes } from "./notify.js";
 import { publishPlanEntry } from "./routes/planEntries.js";
 import { notifyRecipientsAssignmentSent } from "./routes/assignments.js";
 import { isQuietHours, trHour, trStartOfToday, trTodayAsDateOnly } from "./quietHours.js";
+import { alert } from "./alerts.js";
+import { notifyStudentWeeklyDigest, notifyCoachWeeklyDigest } from "./weeklyDigest.js";
+import { notifyReviewReminders } from "./reviewReminders.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 // endDate UTC gece yarısı olarak saklanır (bkz. planEntries.js > parseDateOnly, assignments.js'in
@@ -240,6 +243,37 @@ async function notifyTeachersOfOverdueAssignments(now) {
   }
 }
 
+// Zamanlayıcının sağlığı (süreç belleğinde) — /api/health (app.js) ve index.js'teki gözcü okur. Adım patlarsa uyarı
+// e-postası gider (alerts.js); ama tur bir await'te ASILI kalırsa (yanıt vermeyen DB bağlantısı vb.) hiçbir şey
+// fırlatmaz, `running` kilidi yüzünden sonraki turlar da sessizce atlanır — bunu yalnız "son tamamlanan tur ne zaman"
+// sorusu yakalar. Zamanlar DUVAR SAATİ (new Date()), turun `now` parametresi değil: testler geçmiş/gelecek bir anla tur
+// çalıştırır, sağlık ise gerçek zamanda "kaç dakikadır tur bitmedi" diye bakar.
+export const SCHEDULER_STALE_MS = 10 * 60 * 1000;
+const health = { runningSince: null, lastTickAt: null, lastTickOk: null, failedSteps: [] };
+
+// index.js zamanlayıcıyı BU süreçte başlatınca çağırır. Çağrılmadıysa (testler, PM2'de 0 dışındaki kopyalar)
+// /api/health zamanlayıcıya hiç bakmaz — başka kopyanın işini burada "durmuş" saymak yanlış alarm olurdu.
+export function markSchedulerRunning(at = new Date()) {
+  health.runningSince = at;
+}
+
+// { running, lastTickAt, lastTickOk, failedSteps, sinceLastTickMs, stale }. stale: bu süreçte çalışıyor ve son
+// SCHEDULER_STALE_MS içinde hiç tur tamamlanmadı (henüz hiç tamamlanmadıysa başlangıçtan beri sayılır — yeniden
+// başlatmadan hemen sonra, ilk tur sürerken yanlış alarm olmasın).
+export function getSchedulerHealth(at = new Date()) {
+  const running = health.runningSince != null;
+  const since = health.lastTickAt || health.runningSince;
+  const sinceLastTickMs = health.lastTickAt ? at.getTime() - health.lastTickAt.getTime() : null;
+  return {
+    running,
+    lastTickAt: health.lastTickAt,
+    lastTickOk: health.lastTickOk,
+    failedSteps: health.failedSteps.slice(),
+    sinceLastTickMs,
+    stale: running && !!since && at.getTime() - since.getTime() > SCHEDULER_STALE_MS,
+  };
+}
+
 let running = false;
 // Her N saniyede bir server/src/index.js'ten çağrılır. Bir tick hâlâ sürüyorsa üst üste binmesin
 // diye basit bir kilit — PP'deki scheduler.js ile aynı desen (bkz. runMatchLifecycleTick).
@@ -247,21 +281,37 @@ let running = false;
 export async function runSchedulerTick(now = new Date()) {
   if (running) return;
   running = true;
+  const failed = [];
+  let finished = false;
   try {
-    if (isQuietHours(now)) return;
+    // Sessiz saatlerde erken dönen tur da "tamamlanmış" sayılır: zamanlayıcı canlı, yalnızca bilerek bekliyor.
+    if (isQuietHours(now)) {
+      finished = true;
+      return;
+    }
     // Her adım kendi try/catch'i içinde — biri patlarsa (ör. geçici DB hatası) diğerleri yine de
     // çalışır, aksi halde tek bir hata o tick'teki TÜM zamanlanmış işleri (ör. öğretmen özet
     // bildirimini) sessizce atlatırdı.
-    // Önce gece bekletilen push'lar (sabahın ilk tick'i), sonra yeni yayınlar ve hatırlatmalar.
-    const steps = [flushPendingPushes, publishDueAssignments, publishDuePlanEntries, notifyDueToday, notifyOverdueRecipients, notifyTeachersOfOverdueAssignments, notifyMonthlyReports];
+    // Önce gece bekletilen push'lar (sabahın ilk tick'i), sonra yeni yayınlar ve hatırlatmalar. Haftalık özetler en
+    // sonda: Pazar 19:00'daki özet, aynı turda yazılan "bugün son gün" hatırlatmasından sonra sayılsın. Tekrar
+    // hatırlatmaları (reviewReminders.js, 17:00 sonrası) ödev hatırlatmalarından sonra.
+    const steps = [flushPendingPushes, publishDueAssignments, publishDuePlanEntries, notifyDueToday, notifyOverdueRecipients, notifyTeachersOfOverdueAssignments, notifyReviewReminders, notifyMonthlyReports, notifyStudentWeeklyDigest, notifyCoachWeeklyDigest];
     for (const step of steps) {
       try {
         await step(now);
       } catch (e) {
         console.error(`[scheduler] ${step.name} başarısız oldu:`, e.message);
+        failed.push(step.name);
+        // Adım başına ayrı tür: DB çökünce her dakika 7 adım patlar — tür başına 30 dakikada bir e-posta (alerts.js).
+        // await edilmez: e-posta gönderimi (Resend yeniden denemeleri) turun geri kalanını bekletmesin.
+        void alert(`scheduler:${step.name}`, `Zamanlayıcı adımı ${step.name} hata verdi — bu turdaki diğer adımlar çalışmaya devam etti; adım bir sonraki turda (1 dk) yeniden denenecek.`, { error: e });
       }
     }
+    finished = true;
   } finally {
+    health.lastTickAt = new Date();
+    health.lastTickOk = finished && failed.length === 0;
+    health.failedSteps = failed;
     running = false;
   }
 }

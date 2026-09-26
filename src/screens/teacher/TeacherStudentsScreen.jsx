@@ -1,13 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
 import { C, bodyFont, monoFont, formatNet, SKIP_REASONS, STATUS_LABEL } from "../../theme.js";
-import { EmptyState, Avatar, LoadingState, StatCard, StatGrid, SectionHeader, StatusSquare, Legend, Pill } from "../../components/common.jsx";
+import { EmptyState, Avatar, LoadingState, StatCard, StatGrid, SectionHeader, StatusSquare, Legend, Pill, Chip } from "../../components/common.jsx";
 import { api } from "../../api.js";
+import { loadStudentStatuses, getCachedStatus, statusRank, STATUS_TONE } from "../../studentStatus.js";
 import { BOARD_BRANCHES, boardBranchOf, GRADE_LEVELS, gradeLabel } from "../../subjects.js";
 import { weekBounds, shortDate, lastSeenInfo } from "../../work.js";
 import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
 // Koç — Öğrencilerim (şartname Z3). Her satırda 7 kare: 7 branş dersinin bu haftaki ödevi, sıra her
 // öğrencide aynı. Sıralama alfabetik değil, EN GERİDEN — koç ekranı açıp ilk iki satıra bakıp kapatabilmeli.
+// İsmin yanındaki durum çipi (Müdahale / Takip et / Yolunda) raporun koç panelindeki durumun AYNISI
+// (src/studentStatus.js raporun modelini öğrenci öğrenci çalıştırır); liste onu beklemeden çizilir, çipler
+// geldikçe belirir. "Önce müdahale" açıksa sıra durum önceliğine göre, eşitlikte yine en geriden.
+
+// "Önce müdahale" tercihi cihazda hatırlanır — yalnızca kolaylık; okunamazsa varsayılan sıra.
+const SORT_KEY = "kocluk-students-sort";
+function readSortByStatus() {
+  try { return localStorage.getItem(SORT_KEY) === "status"; } catch { return false; }
+}
+function writeSortByStatus(on) {
+  try { if (on) localStorage.setItem(SORT_KEY, "status"); else localStorage.removeItem(SORT_KEY); } catch { /* tercih yalnızca kolaylık */ }
+}
+
+// Metin içindeki sayılar ("2 sessiz ödev (14 gün)", "ele alınan %40") eşit genişlikli yazıyla.
+function MonoDigits({ text }) {
+  return String(text).split(/(%?\d+(?:[.,]\d+)*)/).map((part, i) => (i % 2 ? <span key={i} style={{ fontFamily: monoFont }}>{part}</span> : part));
+}
 
 // Bir branşın bu haftaki ödev(ler)inin toplam durumu (TYT ve AYT ayrı ödev olabilir): biri yapılmadıysa
 // kırmızı, pas varsa sarı, açık varsa nötr, hepsi çözüldüyse yeşil. O hafta ödevi yoksa null (soluk kare).
@@ -49,8 +67,9 @@ function problemLine(s) {
   return parts.join(" · ");
 }
 
-function StudentRow({ s, onOpen }) {
+function StudentRow({ s, st, onOpen }) {
   const problem = problemLine(s);
+  const reason = st?.reasons?.[0];
   const delta = s.weekNet != null && s.prevWeekNet != null ? s.weekNet - s.prevWeekNet : null;
   return (
     <button
@@ -63,9 +82,11 @@ function StudentRow({ s, onOpen }) {
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "flex", alignItems: "baseline", columnGap: 10, rowGap: 2, flexWrap: "wrap" }}>
           <span style={{ fontSize: 16, fontWeight: 700, letterSpacing: -0.3, color: C.text }}>{s.name}</span>
+          {st && <Pill tone={STATUS_TONE[st.status]}>{st.statusLabel}</Pill>}
           {s.mine.total > 0 && <span style={{ fontSize: 12.5, color: C.mutedLight }}>benim ödevim <span style={{ fontFamily: monoFont }}>{s.mine.done}/{s.mine.total}</span></span>}
           {s.banned && <Pill tone="red">Askıda</Pill>}
         </span>
+        {reason && <span style={{ display: "block", fontSize: 13, fontWeight: 500, color: C.text2, marginTop: 4, lineHeight: 1.4 }}><MonoDigits text={reason} /></span>}
         <span style={{ display: "flex", gap: 4, marginTop: 10, flexWrap: "wrap" }}>
           {BOARD_BRANCHES.map((b) => {
             const status = branchStatus(s.week.filter((w) => w.schoolWide && boardBranchOf(w.subject) === b.key));
@@ -91,9 +112,24 @@ export default function TeacherStudentsScreen({ user, onOpen, setHeader }) {
   const [students, setStudents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // id → { status, statusLabel, reasons }; yalnızca gelenler. Önbellekteki taze durumlar ilk çizimde hazır.
+  const [statuses, setStatuses] = useState({});
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [byStatus, setByStatus] = useState(readSortByStatus);
 
   useEffect(() => {
-    api.teacherListStudents().then(({ students }) => setStudents(students)).catch((e) => setLoadError(e.message || "Öğrenci listesi yüklenemedi")).finally(() => setLoading(false));
+    api.teacherListStudents()
+      .then(({ students }) => {
+        const cached = {};
+        for (const s of students) {
+          const hit = getCachedStatus(s.id);
+          if (hit) cached[s.id] = hit;
+        }
+        setStatuses(cached);
+        setStudents(students);
+      })
+      .catch((e) => setLoadError(e.message || "Öğrenci listesi yüklenemedi"))
+      .finally(() => setLoading(false));
   }, []);
 
   const week = weekBounds();
@@ -102,7 +138,33 @@ export default function TeacherStudentsScreen({ user, onOpen, setHeader }) {
     setHeader?.({ title: "Öğrencilerim", subtitle: [user?.name, `${students.length} öğrenci`, `${shortDate(week.mon)} – ${shortDate(week.sun)}`].filter(Boolean).join(" · ") });
   }, [loading, students.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const sorted = useMemo(() => [...students].sort(compareBehind), [students]);
+  const behindOrder = useMemo(() => [...students].sort(compareBehind), [students]);
+  // Array.sort kararlı: aynı durumdaki öğrenciler en geriden sırasını korur; durumu gelmemiş olanlar en sonda.
+  const sorted = useMemo(
+    () => (byStatus ? [...behindOrder].sort((a, b) => statusRank(statuses[a.id]) - statusRank(statuses[b.id])) : behindOrder),
+    [behindOrder, statuses, byStatus],
+  );
+
+  // Durumlar listedeki sırayla (üstteki önce) yüklenir; ekran kapanınca sıradakiler için istek başlatılmaz.
+  useEffect(() => {
+    if (!behindOrder.length) return undefined;
+    const ctrl = new AbortController();
+    // Hepsi önbellekteyse "hesaplanıyor" satırı bir kare bile yanıp sönmesin.
+    if (behindOrder.some((s) => !getCachedStatus(s.id))) setStatusLoading(true);
+    loadStudentStatuses(behindOrder.map((s) => s.id), {
+      signal: ctrl.signal,
+      onStatus: (id, value) => setStatuses((prev) => (prev[id] === value ? prev : { ...prev, [id]: value })),
+    }).finally(() => { if (!ctrl.signal.aborted) setStatusLoading(false); });
+    return () => ctrl.abort();
+  }, [behindOrder]);
+
+  const toggleByStatus = () => {
+    const next = !byStatus;
+    setByStatus(next);
+    writeSortByStatus(next);
+  };
+  const loadedCount = students.filter((s) => statuses[s.id]).length;
+  const countOf = (key) => students.filter((s) => statuses[s.id]?.status === key).length;
   const behind = students.filter((s) => s.overdueCount > 0).length;
   const skippedWeek = students.reduce((n, s) => n + s.week.filter((w) => w.status === "skipped").length, 0);
   const nets = students.map((s) => s.weekNet).filter((n) => n != null);
@@ -120,7 +182,7 @@ export default function TeacherStudentsScreen({ user, onOpen, setHeader }) {
       ) : (
         <>
           <StatGrid min={96}>
-            <StatCard label="öğrenci geride" value={behind} tone={behind ? "red" : "muted"} />
+            <StatCard label="öğrenci takipte" value={behind} tone={behind ? "red" : "muted"} />
             <StatCard label="ödev pas geçildi" value={skippedWeek} tone={skippedWeek ? "amber" : "muted"} />
             <StatCard label="ortalama net" value={avgNet != null ? formatNet(avgNet, 1) : "—"} />
           </StatGrid>
@@ -135,9 +197,21 @@ export default function TeacherStudentsScreen({ user, onOpen, setHeader }) {
             ]} />
           </div>
 
-          <SectionHeader title="En geriden başlayarak" />
+          <SectionHeader title={byStatus ? "Önce müdahale gerekenler" : "Önce desteğe ihtiyacı olanlar"} />
+          <div style={{ display: "flex", alignItems: "center", columnGap: 12, rowGap: 8, flexWrap: "wrap", marginBottom: 8, fontFamily: bodyFont }}>
+            <Chip active={byStatus} onClick={toggleByStatus}>Önce müdahale</Chip>
+            <span style={{ fontSize: 12.5, fontWeight: 500, color: C.mutedLight, lineHeight: 1.4 }}>
+              {statusLoading ? (
+                <>Durumlar hesaplanıyor · <span style={{ fontFamily: monoFont }}>{loadedCount}/{students.length}</span></>
+              ) : loadedCount > 0 ? (
+                <>
+                  <span style={{ fontFamily: monoFont }}>{countOf("intervene")}</span> müdahale · <span style={{ fontFamily: monoFont }}>{countOf("watch")}</span> takip et · <span style={{ fontFamily: monoFont }}>{countOf("ok")}</span> yolunda
+                </>
+              ) : null}
+            </span>
+          </div>
           <div className="k-bleed" style={{ borderBottom: `1px solid ${C.divider}` }}>
-            {sorted.map((s) => <StudentRow key={s.id} s={s} onOpen={onOpen} />)}
+            {sorted.map((s) => <StudentRow key={s.id} s={s} st={statuses[s.id]} onOpen={onOpen} />)}
           </div>
         </>
       )}

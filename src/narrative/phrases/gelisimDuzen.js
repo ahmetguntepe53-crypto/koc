@@ -468,7 +468,10 @@ export default {
       (f, h) =>
         f.kucuk === "TYT"
           ? `TYT her puan türünde hesaba katıldığı için bu açığı ertelemeyin; bu hafta ${h.int(f.hedef)} TYT sorusunu Türkçe ve Matematik arasında paylaştırın.`
-          : `Sistemde alan bilgisi olmadığı için önce öğrencinin hedefini (lisans, puan türü) netleştirin; AYT gerekiyorsa bu hafta ${h.n(f.hedef, "soruyla")} başlayın.`,
+          : f.alan
+            // Alan biliniyor (DİL'de bu olgu hiç üretilmez): hedefi sormak yerine alanın AYT derslerine yönlendir.
+            ? `Öğrencinin alanı ${f.alan} ve bu puan türünde AYT oturumu puanın ${h.pct(60)} kadarını belirliyor; bu hafta alanın AYT derslerinden ${h.n(f.hedef, "soruyla")} başlayın.`
+            : `Sistemde alan bilgisi olmadığı için önce öğrencinin hedefini (lisans, puan türü) netleştirin; AYT gerekiyorsa bu hafta ${h.n(f.hedef, "soruyla")} başlayın.`,
     ],
   },
 

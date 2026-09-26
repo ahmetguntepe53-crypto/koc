@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, Check, ChevronRight, ClipboardList, AlertTriangle, Users, AlarmClock, BarChart3 } from "lucide-react";
+import { Bell, Check, ChevronRight, ClipboardList, AlertTriangle, Users, AlarmClock, BarChart3, CalendarCheck, CalendarRange, RotateCcw } from "lucide-react";
 import { C, bodyFont, monoFont } from "../theme.js";
 import { Card, Button, EmptyState, LoadingState } from "../components/common.jsx";
 import { api } from "../api.js";
@@ -291,5 +291,10 @@ const NOTIFICATION_STYLE = {
   get assignment_overdue() { return { icon: AlertTriangle, tone: { bg: C.redSoft, fg: C.red } }; },
   get assignment_overdue_summary() { return { icon: Users, tone: { bg: C.amberSoft, fg: C.amber } }; },
   get monthly_report() { return { icon: BarChart3, tone: { bg: C.surface2, fg: C.text2 } }; },
+  // Haftalık özetler (server/src/weeklyDigest.js) — bilgi amaçlı, nötr renk: öğrenciye Pazar akşamı, koça Pazartesi sabahı.
+  get weekly_digest() { return { icon: CalendarCheck, tone: { bg: C.surface2, fg: C.text2 } }; },
+  get weekly_digest_coach() { return { icon: CalendarRange, tone: { bg: C.surface2, fg: C.text2 } }; },
+  // Tekrar zamanı (server/src/reviewReminders.js) — odak konusu: amber. Dokununca Çalışma Kaydı konu dolu açılır.
+  get review_reminder() { return { icon: RotateCcw, tone: { bg: C.amberSoft, fg: C.amber } }; },
   get info() { return { icon: Bell, tone: { bg: C.surface2, fg: C.muted } }; },
 };

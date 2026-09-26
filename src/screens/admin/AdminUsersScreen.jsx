@@ -1,16 +1,22 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { UserPlus, Upload, Trash2, Search, X } from "lucide-react";
 import { C, bodyFont, monoFont } from "../../theme.js";
 import { lastSeenInfo } from "../../work.js";
 import { Card, Button, Input, Select, Pill, Chip, Modal, EmptyState, Avatar, roleLabel, LoadingState, confirmDialog, StatCard, StatGrid, SectionHeader, AlertBox, ListRow, ListGroup } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { GRADE_OPTIONS, GRADE_LEVELS, BRANCHES, BOARD_BRANCHES, boardBranchOf, trackForGrade } from "../../subjects.js";
+import { FIELD_OPTIONS, FIELD_SHORT, normalizeField } from "../../studentField.js";
+// Tembel yükleme: okul analizi rapor modelini (reportModel.js, ~100 KB) kullanır — yalnızca sekme açılınca insin,
+// herkesin açılış paketine girmesin (App.jsx > ReportScreen ile aynı gerekçe).
+const AdminAnalytics = lazy(() => import("./AdminAnalytics.jsx"));
 
-// Admin — Kurulum (şartname Z6). Sekmeler: Koç eşleştirme (varsayılan) · Hesaplar · Branşlar · Sistem.
+// Admin — Kurulum (şartname Z6). Sekmeler: Koç eşleştirme (varsayılan) · Hesaplar · Branşlar · Okul analizi · Sistem.
+// "Okul analizi": okul geneli ödevlerin toplu sonuçları (öğrenci adı yok) — bkz. AdminAnalytics.jsx.
 const TABS = [
   { id: "coaches", label: "Koç eşleştirme" },
   { id: "accounts", label: "Hesaplar" },
   { id: "branches", label: "Branşlar" },
+  { id: "analytics", label: "Okul analizi" },
   { id: "system", label: "Sistem" },
 ];
 // Önerilen koç kapasitesi — zorlanmaz (okulun kararı), yalnızca yük çubuğunun rengi: dolu kırmızı, %85+ sarı.
@@ -94,6 +100,8 @@ export default function AdminUsersScreen() {
     await api.adminReassignTeacher(studentId, teacherId || null);
   });
   const changeGradeLevel = withAction((studentId, gradeLevel) => api.adminUpdateUser(studentId, { gradeLevel }));
+  // YKS alanı — "Bilinmiyor" seçilirse silinir (null); rapor o zaman AYT derslerini kayıtlardan tahmin eder.
+  const changeField = withAction((studentId, field) => api.adminUpdateUser(studentId, { field: field || null }));
   const resendActivation = withAction(async (id) => { await api.adminResendActivation(id); setToast({ type: "ok", text: "Aktivasyon bağlantısı tekrar gönderildi." }); });
   const toggleBan = withAction(async (u) => {
     if (!u.banned && !(await confirmDialog({ title: `${u.name} askıya alınsın mı?`, message: "Hesap giriş yapamaz, açık oturumları kapanır. Sonradan askıyı kaldırabilirsin.", confirmLabel: "Askıya al", danger: true }))) return;
@@ -217,6 +225,7 @@ export default function AdminUsersScreen() {
                   teachers={teachers}
                   onReassignTeacher={(teacherId) => reassignTeacher(u.id, teacherId)}
                   onChangeGradeLevel={(gradeLevel) => changeGradeLevel(u.id, gradeLevel)}
+                  onChangeField={(field) => changeField(u.id, field)}
                   onResendActivation={() => resendActivation(u.id)}
                   onToggleBan={() => toggleBan(u)}
                   onEditBranches={() => setBranchesFor(u)}
@@ -252,6 +261,8 @@ export default function AdminUsersScreen() {
           </div>
         </>
       )}
+
+      {tab === "analytics" && <Suspense fallback={<LoadingState />}><AdminAnalytics /></Suspense>}
 
       {tab === "system" && (
         <>
@@ -428,9 +439,9 @@ function AiSettingsCard() {
   );
 }
 
-// Kart düzeni: üstte kimlik (avatar, ad, rozetler, kullanıcı adı), öğrencide altında etiketli iki seçim
-// (sınıf düzeyi, koç), en altta etiketli işlem düğmeleri — yıkıcı işlem (askıya al) ayrı renkte.
-function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onResendActivation, onToggleBan, onEditBranches, onSetPassword, onDelete }) {
+// Kart düzeni: üstte kimlik (avatar, ad, rozetler, kullanıcı adı), öğrencide altında etiketli üç seçim
+// (sınıf düzeyi, YKS alanı, koç), en altta etiketli işlem düğmeleri — yıkıcı işlem (askıya al) ayrı renkte.
+function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onChangeField, onResendActivation, onToggleBan, onEditBranches, onSetPassword, onDelete }) {
   const isStudent = user.role === "STUDENT";
   const teacherName = isStudent && user.teacher?.name;
   return (
@@ -464,6 +475,10 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onRese
             {/* Artık seçilemeyen eski bir düzey (ör. 9, 10, 8) kayıtlıysa görünür kalsın — admin 11/12'ye çeksin. */}
             {user.gradeLevel && !GRADE_LEVELS.includes(user.gradeLevel) && <option value={user.gradeLevel} disabled>{user.gradeLevel}. Sınıf (güncellenmeli)</option>}
             {GRADE_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+          </Select>
+          <Select label="Alan" value={user.field || ""} onChange={(e) => onChangeField(e.target.value)}>
+            <option value="">Bilinmiyor</option>
+            {FIELD_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
           </Select>
           <Select label="Koçunu değiştir" value={user.teacherId || ""} onChange={(e) => onReassignTeacher(e.target.value)}>
             <option value="">Koç atanmadı</option>
@@ -509,6 +524,7 @@ function AddUserModal({ role, teachers, onClose, onCreated }) {
   const [phone, setPhone] = useState("");
   const [className, setClassName] = useState("");
   const [gradeLevel, setGradeLevel] = useState("");
+  const [field, setField] = useState("");
   const [teacherId, setTeacherId] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -520,7 +536,7 @@ function AddUserModal({ role, teachers, onClose, onCreated }) {
     if (!email.trim() && !username.trim()) { setError(role === "STUDENT" ? "Okul numarası ya da e-posta gir" : "Kullanıcı adı ya da e-posta gir"); return; }
     setSaving(true);
     try {
-      await api.adminCreateUser({ role, name, email: email.trim() || undefined, username: username.trim() || undefined, phone: phone || undefined, className: className || undefined, gradeLevel: gradeLevel || undefined, teacherId: teacherId || undefined });
+      await api.adminCreateUser({ role, name, email: email.trim() || undefined, username: username.trim() || undefined, phone: phone || undefined, className: className || undefined, gradeLevel: gradeLevel || undefined, field: field || undefined, teacherId: teacherId || undefined });
       onCreated();
     } catch (err) {
       setError(err.message || "Kaydedilemedi");
@@ -548,6 +564,10 @@ function AddUserModal({ role, teachers, onClose, onCreated }) {
             <Select label="Sınıf Düzeyi" value={gradeLevel} onChange={(e) => setGradeLevel(e.target.value)} required>
               <option value="" disabled>Seçiniz...</option>
               {GRADE_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+            </Select>
+            <Select label="Alan (opsiyonel)" value={field} onChange={(e) => setField(e.target.value)}>
+              <option value="">Bilinmiyor (sonra girilebilir)</option>
+              {FIELD_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
             </Select>
             <Input label="Sınıf (opsiyonel, ör. 12/A)" value={className} onChange={(e) => setClassName(e.target.value)} />
             <Select label="Koç" value={teacherId} onChange={(e) => setTeacherId(e.target.value)}>
@@ -649,8 +669,9 @@ function parseBulkText(text, role) {
       // 2. sütun e-posta ya da kullanıcı adı (öğrencide okul numarası) olabilir — "@" içeriyorsa e-posta.
       const identity = (v) => (v && v.includes("@") ? { email: v } : { username: v || undefined });
       if (role === "STUDENT") {
-        const [name, id, gradeLevel, className, teacherEmail] = parts;
-        return { name, ...identity(id), gradeLevel: gradeLevel || undefined, className: className || undefined, teacherEmail: teacherEmail || undefined };
+        // 6. sütun (opsiyonel) YKS alanı: "SAY", "EA", "SÖZ", "DİL" ya da tam adı — önizlemede doğrulanır.
+        const [name, id, gradeLevel, className, teacherEmail, fieldRaw] = parts;
+        return { name, ...identity(id), gradeLevel: gradeLevel || undefined, className: className || undefined, teacherEmail: teacherEmail || undefined, fieldRaw: fieldRaw || undefined };
       }
       const [name, id] = parts;
       return { name, ...identity(id) };
@@ -676,7 +697,9 @@ function BulkImportModal({ teachers, onClose, onDone }) {
   const resolvedRows = useMemo(() => rows.map((r) => {
     // Yalnızca 11/12 kabul ediliyor (sunucu da bunu doğrular) — diğer değerler önizlemede geçersiz görünür.
     const gradeTrack = role === "STUDENT" && GRADE_LEVELS.includes(Number(r.gradeLevel)) ? trackForGrade(Number(r.gradeLevel)) : null;
-    const base = { ...r, gradeTrack };
+    // Tanınmayan alan yazısı olduğu gibi gönderilir: sunucu o satırı açık bir hatayla reddeder, diğerleri eklenir.
+    const field = role === "STUDENT" ? normalizeField(r.fieldRaw) : null;
+    const base = { ...r, gradeTrack, field: field === undefined ? r.fieldRaw : field || undefined, fieldInvalid: field === undefined };
     if (role !== "STUDENT" || !r.teacherEmail) return { ...base, teacherId: undefined, teacherMatch: null };
     const match = teachersByEmail && teachersByEmail[r.teacherEmail.toLowerCase()];
     return { ...base, teacherId: match?.id, teacherMatch: match ? match.name : "eşleşme yok" };
@@ -686,7 +709,7 @@ function BulkImportModal({ teachers, onClose, onDone }) {
     setImporting(true);
     setImportError("");
     try {
-      const payloadRows = resolvedRows.map(({ teacherMatch, teacherEmail, gradeTrack, ...rest }) => rest);
+      const payloadRows = resolvedRows.map(({ teacherMatch, teacherEmail, gradeTrack, fieldRaw, fieldInvalid, ...rest }) => rest);
       const res = await api.adminBulkImport(role, payloadRows);
       setResults(res.results);
     } catch (e) {
@@ -705,13 +728,13 @@ function BulkImportModal({ teachers, onClose, onDone }) {
             <option value="TEACHER">Öğretmen</option>
           </Select>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>
-            Her satıra bir kullanıcı — Excel/Sheets'ten kopyalayıp yapıştırabilirsin. Sütunlar: {role === "STUDENT" ? "Ad Soyad, Okul No veya E-posta, Sınıf Düzeyi (11 veya 12, zorunlu), Sınıf (opsiyonel), Koçun E-postası / Kullanıcı Adı (opsiyonel)" : "Ad Soyad, E-posta"}.
+            Her satıra bir kullanıcı — Excel/Sheets'ten kopyalayıp yapıştırabilirsin. Sütunlar: {role === "STUDENT" ? "Ad Soyad, Okul No veya E-posta, Sınıf Düzeyi (11 veya 12, zorunlu), Sınıf (opsiyonel), Koçun E-postası / Kullanıcı Adı (opsiyonel), Alan (opsiyonel: SAY, EA, SÖZ ya da DİL)" : "Ad Soyad, E-posta"}.
           </div>
           <textarea
             value={text}
             onChange={(e) => setText(e.target.value)}
             rows={8}
-            placeholder={role === "STUDENT" ? "Ayşe Yılmaz\tayse@ornek.com\t8\t8/A\tkoc@ornek.com" : "Mehmet Kaya\tmehmet@ornek.com"}
+            placeholder={role === "STUDENT" ? "Ayşe Yılmaz\tayse@ornek.com\t12\t12/A\tkoc@ornek.com\tSAY" : "Mehmet Kaya\tmehmet@ornek.com"}
             style={{ width: "100%", boxSizing: "border-box", fontFamily: "monospace", fontSize: 12.5, padding: 10, borderRadius: 10, border: `1px solid ${C.border}`, background: C.surface2, marginBottom: 12 }}
           />
           {rows.length > 0 && (
@@ -722,6 +745,9 @@ function BulkImportModal({ teachers, onClose, onDone }) {
                   <span style={{ display: "flex", gap: 8 }}>
                     {role === "STUDENT" && (
                       <span style={{ color: r.gradeTrack ? C.muted : C.red }}>{r.gradeTrack ? `${r.gradeLevel}. sınıf` : "sınıf düzeyi geçersiz (11 veya 12 olmalı)"}</span>
+                    )}
+                    {role === "STUDENT" && r.fieldRaw && (
+                      <span style={{ color: r.fieldInvalid ? C.red : C.muted }}>{r.fieldInvalid ? "alan geçersiz (SAY, EA, SÖZ, DİL)" : FIELD_SHORT[r.field]}</span>
                     )}
                     {role === "STUDENT" && r.teacherEmail && (
                       <span style={{ color: r.teacherMatch === "eşleşme yok" ? C.red : C.muted }}>{r.teacherMatch}</span>

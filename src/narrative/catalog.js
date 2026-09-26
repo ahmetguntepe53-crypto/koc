@@ -84,6 +84,19 @@ export const CATALOG = {
     fields: { gunler: "en yoğun 1–2 gün adı dizisi (ör. ['Salı','Perşembe'])", haftaSonuPay: "hafta sonu soru payı %", aktifGun: "aktif gün" },
     samples: [{ gunler: ["Salı", "Perşembe"], haftaSonuPay: 8, aktifGun: 17 }, { gunler: ["Pazar"], haftaSonuPay: 55, aktifGun: 9 }],
   },
+  "ozet.deneme": {
+    section: "ozet", doc: "Ayın son deneme sınavı (toplam GERÇEK net) ve aynı türün bir önceki denemesine göre değişim. Puan/sıralama tahmini yok.",
+    fields: {
+      sinav: "'TYT' | 'AYT'", net: "son denemenin toplam neti (ham; 0,25'in katı)", tarih: "tarih metni (ör. '14 Eki')", ad: "yayın/deneme adı (serbest metin, tırnakla yazılır; ek yapıştırılmaz)?",
+      fark: "bir önceki denemeye göre net farkı (+/−; 0 = aynı)? — null ise bu türün ilk denemesi", oncekiNet: "bir önceki denemenin neti?", sayi: "bu ay bu türde girilen deneme sayısı", soru: "denemede girilen derslerin toplam sorusu (TYT 120)",
+    },
+    samples: [
+      { sinav: "TYT", net: 78.5, tarih: "14 Eki", ad: "Kurgu Yayınları TYT-4", fark: 4.25, oncekiNet: 74.25, sayi: 3, soru: 120 },
+      { sinav: "AYT", net: 41.75, tarih: "2 Kas", ad: null, fark: -2.5, oncekiNet: 44.25, sayi: 1, soru: 80 },
+      { sinav: "TYT", net: 62, tarih: "20 Eyl", ad: null, fark: null, oncekiNet: null, sayi: 1, soru: 120 },
+      { sinav: "TYT", net: 70, tarih: "5 Eki", ad: "Okul Denemesi", fark: 0, oncekiNet: 70, sayi: 2, soru: 120 },
+    ],
+  },
 
   // ---------------------------------------------------------------- GÜÇLÜ YÖNLER (her kalıp TEK madde cümlesi)
   "guclu.ders": {
@@ -168,6 +181,18 @@ export const CATALOG = {
     section: "guclu", doc: "Bu ay, izlenen aylar içinde en yüksek net oranı.",
     fields: { sinav: "'TYT' | 'AYT'", ay: "ay nesnesi", NO: "net oranı", aySayisi: "karşılaştırılan ay sayısı" },
     samples: [{ sinav: "TYT", ay: EKIM, NO: 64.2, aySayisi: 4 }, { sinav: "AYT", ay: KASIM, NO: 38, aySayisi: 3 }],
+  },
+  "guclu.deneme": {
+    section: "guclu", doc: "Deneme sınavlarında belirgin yükseliş (son üç deneme düşmeden, toplam ≥ 4 net) ya da kişisel rekor (en az 3 deneme içinde en yüksek). Gerçek net.",
+    fields: {
+      sinav: "'TYT' | 'AYT'", tip: "'yukselis' | 'rekor'", net: "son denemenin neti", ilkNet: "yükselişin ilk denemesinin neti (yalnız yukselis)?",
+      artis: "net artışı (yukselis: son − ilk; rekor: son − önceki en iyi)", sayi: "yukselis: 3 · rekor: karşılaştırılan deneme sayısı (son dahil)",
+      oncekiEnIyi: "önceki en iyi net (yalnız rekor)?", degerler: "yükselişteki netler, eskiden yeniye (yalnız yukselis)?",
+    },
+    samples: [
+      { sinav: "TYT", tip: "yukselis", net: 81.25, ilkNet: 72.5, artis: 8.75, sayi: 3, oncekiEnIyi: null, degerler: [72.5, 76, 81.25] },
+      { sinav: "AYT", tip: "rekor", net: 48.5, ilkNet: null, artis: 3.25, sayi: 5, oncekiEnIyi: 45.25, degerler: null },
+    ],
   },
 
   // ---------------------------------------------------------------- GELİŞİM ALANLARI (alan / kanit / oneri ayrı bankalar)
@@ -254,9 +279,17 @@ export const CATALOG = {
     samples: [{ ders: "TYT Matematik", konu: "Sayılar", gun: 63, oran: 25, soru: 40 }, { ders: "TYT Fizik", konu: "Basınç", gun: 24, oran: 41, soru: 30 }],
   },
   "gelisim.denge": {
-    section: "gelisim", doc: "TYT/AYT dengesizliği (12. sınıf): küçük tarafın payı < %25.",
-    fields: { kucuk: "'TYT' | 'AYT'", oran: "küçük tarafın payı %", toplam: "toplam soru", kucukSoru: "küçük tarafın sorusu", hedef: "bu hafta eklenecek soru" },
-    samples: [{ kucuk: "AYT", oran: 9, toplam: 1167, kucukSoru: 100, hedef: 70 }, { kucuk: "TYT", oran: 18, toplam: 640, kucukSoru: 115, hedef: 40 }],
+    section: "gelisim", doc: "TYT/AYT dengesizliği (12. sınıf): küçük tarafın payı < %25. DİL alanında üretilmez (AYT yerine YDT).",
+    fields: {
+      kucuk: "'TYT' | 'AYT'", oran: "küçük tarafın payı %", toplam: "toplam soru", kucukSoru: "küçük tarafın sorusu", hedef: "bu hafta eklenecek soru",
+      alan: "öğrencinin YKS alanının adı ('Sayısal' / 'Eşit Ağırlık' / 'Sözel'; ek yapıştırılmaz)?",
+    },
+    samples: [
+      { kucuk: "AYT", oran: 9, toplam: 1167, kucukSoru: 100, hedef: 70, alan: null },
+      { kucuk: "TYT", oran: 18, toplam: 640, kucukSoru: 115, hedef: 40, alan: null },
+      { kucuk: "AYT", oran: 14, toplam: 820, kucukSoru: 115, hedef: 50, alan: "Eşit Ağırlık" },
+      { kucuk: "TYT", oran: 21, toplam: 900, kucukSoru: 189, hedef: 60, alan: "Sayısal" },
+    ],
   },
   "gelisim.kapsam": {
     section: "gelisim", doc: "Okulda işlenmiş ama öğrencinin hiç kaydı olmayan konular.",
@@ -292,6 +325,18 @@ export const CATALOG = {
     samples: [
       { konu: "AYT", ilk: { ay: EYLUL, NO: 40 }, son: { ay: KASIM, NO: 31 }, delta: -9, aySayisi: 3 },
       { konu: "TYT Geometri", ilk: { ay: EYLUL, NO: 61 }, son: { ay: EKIM, NO: 50 }, delta: -11, aySayisi: 2 },
+    ],
+  },
+  "gelisim.denemeDers": {
+    section: "gelisim", doc: "Denemelerde en çok net kaçan ders: son (en fazla 3) denemede, dersin soru sayısına göre ortalama kaçan net (soru − net) en büyük olan; en az 2 denemede girilmiş. Gerçek net; fırsat diliyle.",
+    fields: {
+      ders: "ders ('TYT Matematik', 'AYT Felsefe Grubu'; ek yapıştırılmaz)", soru: "dersin denemedeki soru sayısı", deneme: "hesaba giren deneme sayısı (2–3)",
+      ortNet: "ortalama net", kayip: "ortalama kaçan net (soru − net)", sonNet: "son denemedeki net", yanlisPay: "kaçan netin yanlışlardan gelen payı %",
+      yanlisKaybi: "yanlışlardan kaçan ortalama net (1,25·Y)", bosKaybi: "boş ya da girilmeyen sorulardan kaçan ortalama net",
+    },
+    samples: [
+      { ders: "TYT Matematik", soru: 30, deneme: 3, ortNet: 12.5, kayip: 17.5, sonNet: 14.25, yanlisPay: 31, yanlisKaybi: 5.42, bosKaybi: 12.08 },
+      { ders: "AYT Fizik", soru: 14, deneme: 2, ortNet: 4.75, kayip: 9.25, sonNet: 5.5, yanlisPay: 64, yanlisKaybi: 5.9, bosKaybi: 3.35 },
     ],
   },
 

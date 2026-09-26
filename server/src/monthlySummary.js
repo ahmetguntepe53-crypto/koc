@@ -1,9 +1,10 @@
 // Bir öğrencinin bir ayının KİMLİKSİZ özeti — yapay zekâ incelemesine (routes/aiAnalysis.js) giden tek veri.
-// İçinde ad, kullanıcı adı, okul numarası, sınıf şubesi, koç adı YOK; yalnızca sınıf düzeyi (11/12), ders/konu
+// İçinde ad, kullanıcı adı, okul numarası, sınıf şubesi, koç adı YOK; yalnızca sınıf düzeyi (11/12), YKS alanı, ders/konu
 // adları ve sayılar. Branş ödevlerinde okulla karşılaştırma yalnızca toplu: aynı ödevi çözen DİĞER öğrencilerin medyanı,
 // en az 10 kişi (k-anonimlik; bkz. routes/stats.js > full-report). Oranlar raporla aynı: net oranı = Σw·r/Σw, w = min(Q, 40).
 import { prisma } from "./db.js";
 import { recipientStatus, questionCountOf } from "./weekStats.js";
+import { practiceExamMax, practiceExamTotals } from "./practiceExams.js";
 
 const DAY = 24 * 60 * 60 * 1000;
 const TR_END_OF_DAY_GRACE_MS = 21 * 60 * 60 * 1000;
@@ -87,11 +88,46 @@ async function nameTokens() {
 }
 const safeTopic = (topic, schoolWide, tokens) => (schoolWide || !foldWords(topic).some((w) => tokens.has(w)) ? topic : "kişisel ödev konusu");
 
+// Ayın deneme sınavları (tarihi ay içinde olanlar, eskiden yeniye). Deneme neti GERÇEK sınav netidir — ödevlerin net
+// oranıyla karıştırılmaz. Yayın/deneme adı gönderilmez: serbest metin, bir kişinin adını içerebilir ve incelemeye bir şey
+// katmaz. Her denemede ders ders D/Y/B/net ve resmî soru sayısı; toplam netin aynı türün BİR ÖNCEKİ denemesine (önceki
+// aydan da olabilir) göre farkı.
+const r2 = (v) => Math.round(v * 100) / 100;
+async function monthExams(studentId, b) {
+  const exams = await prisma.practiceExam.findMany({
+    where: { studentId, examType: { in: EXAMS }, date: { lte: b.end } },
+    include: { results: true },
+    orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+  });
+  const lastNet = {};
+  const out = [];
+  for (const e of exams) {
+    const t = practiceExamTotals(e.results);
+    if (e.date >= b.start) {
+      out.push({
+        tur: e.examType,
+        tarih: e.date.toISOString().slice(0, 10),
+        toplamNet: r2(t.net),
+        soru: e.results.reduce((s, r) => s + (practiceExamMax(e.examType, r.subject) ?? 0), 0),
+        oncekiDenemeyeGoreNetFarki: lastNet[e.examType] != null ? r2(t.net - lastNet[e.examType]) : null,
+        dersler: e.results.map((r) => ({
+          ders: `${e.examType} ${r.subject === "Felsefe" && e.examType === "AYT" ? "Felsefe Grubu" : r.subject}`,
+          soruSayisi: practiceExamMax(e.examType, r.subject),
+          dogru: r.correct, yanlis: r.wrong, bos: r.blank, net: r2(r.correct - r.wrong / 4),
+        })),
+      });
+    }
+    lastNet[e.examType] = t.net;
+  }
+  return out;
+}
+
 export async function buildMonthlySummary(studentId, month, now = new Date()) {
-  const student = await prisma.user.findUnique({ where: { id: studentId }, select: { gradeLevel: true, lastSeenAt: true } });
+  const student = await prisma.user.findUnique({ where: { id: studentId }, select: { gradeLevel: true, field: true, lastSeenAt: true } });
   const settings = await prisma.schoolSettings.findUnique({ where: { id: "singleton" } });
   const cur = await monthData(studentId, month, now);
   const prev = await monthData(studentId, prevMonth(month), now);
+  const denemeler = await monthExams(studentId, cur.b);
 
   const tokens = await nameTokens();
   // Okul karşılaştırması (yalnızca toplu, rapordaki kuralla aynı): aynı sınıf düzeyinde bu ödevi GEÇERLİ teslim etmiş
@@ -204,6 +240,9 @@ export async function buildMonthlySummary(studentId, month, now = new Date()) {
   return {
     ay: month,
     sinifDuzeyi: student?.gradeLevel ?? null,
+    // YKS alanı (SAY/EA/SOZ/DIL, null = bilinmiyor) — kimlik değil (dört değerden biri); inceleme alan dışı AYT
+    // dersini odak diye önermesin, DİL öğrencisine AYT dengesi önermesin diye (bkz. aiAnalysis.js > SYSTEM).
+    alan: student?.field ?? null,
     yksyeKalanGun: ykskalan != null && ykskalan > 0 ? ykskalan : null,
     sonGiristenBuyanaGun: student?.lastSeenAt ? Math.floor((now.getTime() - student.lastSeenAt.getTime()) / DAY) : null,
     odevDuzeni: { verilen: cur.recipients.length, suresiDolan: due, cozulen: done, zamanindaCozulen: onTime, pastanDonen: fromSkip, pasGecilen: skipped, yapilmayan: missed, suresiDolmayan: open, pasSebepleri: skipReasons },
@@ -215,5 +254,7 @@ export async function buildMonthlySummary(studentId, month, now = new Date()) {
     konuyuBilmiyorumDenilenKonular: konular.filter((t) => t.konuyuBilmiyorumPas > 0).map((t) => `${t.ders} — ${t.konu}`),
     serbestCalisma: { kayit: cur.sessions.length, ...derive(study), dersDagilimiSoru: studyBySubject },
     aktifGunSayisi: activeDays.size,
+    // Ayın deneme sınavları (boş dizi = bu ay deneme girilmedi) — bkz. monthExams.
+    denemeler,
   };
 }

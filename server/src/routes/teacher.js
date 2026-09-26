@@ -4,6 +4,7 @@ import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
 import { trWeekRange, recipientStatus, netOf } from "../weekStats.js";
 import { buildMonthlySummary, monthBounds } from "../monthlySummary.js";
+import { normalizeField } from "../subjects.js";
 
 // server/src/app.js'de requireAuth + requireRole("TEACHER") ile mount edilir.
 export const teacherRouter = Router();
@@ -12,7 +13,7 @@ teacherRouter.get("/students", async (req, res) => {
   try {
     const students = await prisma.user.findMany({
       where: { teacherId: req.userId, role: "STUDENT" },
-      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, banned: true, lastSeenAt: true, createdAt: true },
+      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, field: true, banned: true, lastSeenAt: true, createdAt: true },
       orderBy: { name: "asc" },
     });
 
@@ -112,7 +113,7 @@ teacherRouter.get("/students/:id/overview", async (req, res) => {
   try {
     const student = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, banned: true, teacherId: true, role: true, lastSeenAt: true, createdAt: true },
+      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, field: true, banned: true, teacherId: true, role: true, lastSeenAt: true, createdAt: true },
     });
     assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
     const [recipients, studySessions, notes] = await Promise.all([
@@ -214,6 +215,22 @@ teacherRouter.put("/students/:id/note", async (req, res) => {
     if (latest && latest.text !== text) await prisma.coachNote.update({ where: { id: latest.id }, data: { text } });
     else await prisma.coachNote.create({ data: { studentId: student.id, teacherId: req.userId, text } });
     res.json({ coachNote: text });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Öğrencinin YKS alanı (SAY / EA / SOZ / DIL) — koç yalnızca KENDİ öğrencisininkini girer/değiştirir (admin de
+// routes/admin.js > PATCH /users/:id ile). Gövde { field }: null ya da "" alanı siler (bilinmiyor). Rapor bu alana
+// göre AYT derslerini izler (bkz. src/reportModel.js > FIELD_AYT).
+teacherRouter.patch("/students/:id/field", async (req, res) => {
+  try {
+    const student = await assertMyStudent(req);
+    assert(req.body && Object.prototype.hasOwnProperty.call(req.body, "field"), "field gerekli");
+    const field = normalizeField(req.body.field);
+    assert(field !== undefined, "Geçersiz YKS alanı — SAY, EA, SÖZ ya da DİL olmalı");
+    const updated = await prisma.user.update({ where: { id: student.id }, data: { field }, select: { id: true, field: true } });
+    res.json({ student: updated });
   } catch (e) {
     handleErr(res, e);
   }

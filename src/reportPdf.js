@@ -431,7 +431,7 @@ function titleBlock(w, model) {
 
   // Kimlik şeridi
   const st = model.student || {};
-  const parts = [st.className, st.coach ? `Koç: ${st.coach}` : null, `Aralık: ${model.rangeText} (${model.window?.label || ""})`, `Oluşturma: ${stampText(model.generatedAt)}`].filter(Boolean);
+  const parts = [st.className, model.fieldLabel ? `Alan: ${model.fieldLabel}` : null, st.coach ? `Koç: ${st.coach}` : null, `Aralık: ${model.rangeText} (${model.window?.label || ""})`, `Oluşturma: ${stampText(model.generatedAt)}`].filter(Boolean);
   w.font(false, 8, GREY);
   const lines = doc.splitTextToSize(w.t(parts.join(" · ")), CW - 8);
   const h = 9 + lines.length * 3.6;
@@ -614,6 +614,123 @@ function renderSparseSummary(w, model) {
   }
 }
 
+// ---------------------------------------------------------------- 1b. Denemeler (deneme sınavları — gerçek net)
+// Ekrandaki "Denemeler" bölümünün tam hâli: tür başına özet satırı, toplam net çizgisi (son 12 deneme, net ölçeği),
+// aralıktaki denemeler tablosu, ders ders tablo ve en çok net kaçan ders. Sayılar modelden (model.denemeler) gelir.
+const r2 = (v) => Math.round(v * 100) / 100;
+const signedNet = (v) => (v == null ? "—" : `${r2(v) > 0 ? "+" : r2(v) < 0 ? "−" : ""}${fmtNet(Math.abs(r2(v)))}`);
+// Ders neti hücresi: negatifse kırmızı.
+const subjNetCell = (v) => (v != null && v < 0 ? colored(fmtNet(r2(v)), RED) : fmtNet(r2(v)));
+// Değişim hücresi: artış yeşil, düşüş amber (kırmızı değil — odak), değişmedi nötr. Öğrenci nüshasında düşüş nötr gri
+// (ekrandaki Denemeler bölümüyle aynı kural: öğrenciye olumsuz vurgu yapılmaz ama sayı gizlenmez).
+const netDeltaCell = (v, student = false) => (v == null ? colored("ilk deneme", SOFT) : r2(v) > 0 ? colored(`${signedNet(v)} net`, GREEN) : r2(v) < 0 ? colored(`${signedNet(v)} net`, student ? GREY : AMBER) : colored("aynı", GREY));
+function denemeTrendCell(tr, student = false) {
+  if (!tr || !tr.enough) return colored("en az 3 deneme", SOFT);
+  if (tr.dir === "flat") return colored(TREND_LABEL.flat, GREY);
+  const color = tr.dir === "up" ? GREEN : student ? GREY : AMBER;
+  return {
+    content: `${signedNet(tr.delta)} net`, styles: { textColor: color, cellPadding: { top: 0.85, right: 1.1, bottom: 0.85, left: 4.4 } },
+    draw: (doc, cell) => drawArrow(doc, cell.x + 1.2, cell.y + cell.height / 2, tr.dir, color),
+  };
+}
+function drawDenemeChart(w, exam, s) {
+  const { doc } = w;
+  const exams = s.history.slice(-12);
+  const H = 42;
+  w.ensure(H + 2);
+  const y0 = w.y;
+  w.font(true, 9, INK);
+  w.text(`${exam} — toplam net (son ${exams.length} deneme)`, M, y0 + 3.6);
+  w.font(false, 7.2, GREY);
+  const tr = s.trend;
+  const trendText = !tr.enough ? "eğilim için en az 3 deneme" : w.student && tr.dir === "down" ? "" : `${TREND_LABEL[tr.dir]}${tr.dir !== "flat" ? ` (${signedNet(tr.delta)} net)` : ""} · son 2 deneme ile öncekiler`;
+  if (trendText) w.text(trendText, M + CW, y0 + 3.6, { align: "right" });
+  const px = M + 11, pw = CW - 16, py = y0 + 7.5, ph = H - 16;
+  const nets = exams.map((e) => e.net);
+  // Üst sınır kitapçık toplamı (TYT 120; AYT girilen derslerin toplamı), 10'a yuvarlanmış — 150'ye şişmesin.
+  const hi = Math.ceil(Math.max(s.scaleMax || 0, ...nets) / 10) * 10;
+  const lo = Math.min(0, ...nets.map((v) => Math.floor(v / 10) * 10));
+  const Y = (v) => py + ph - ((v - lo) / (hi - lo)) * ph;
+  const X = (i) => px + (exams.length === 1 ? pw / 2 : (i / (exams.length - 1)) * pw);
+  doc.setLineWidth(0.1);
+  for (const g of [lo, ...(lo < 0 ? [0] : []), hi / 2, hi].filter((v, i, a) => a.indexOf(v) === i)) {
+    doc.setDrawColor(...(g === 0 ? SOFT : RULE));
+    doc.line(px, Y(g), px + pw, Y(g));
+    w.font(false, 6, GREY);
+    w.text(fmtNet(g), px - 1.5, Y(g) + 1, { align: "right" });
+  }
+  doc.setDrawColor(...INK);
+  doc.setLineWidth(0.5);
+  for (let i = 0; i < exams.length - 1; i++) doc.line(X(i), Y(nets[i]), X(i + 1), Y(nets[i + 1]));
+  exams.forEach((e, i) => {
+    doc.setFillColor(...(e.net < 0 ? RED : INK));
+    doc.circle(X(i), Y(e.net), 0.85, "F");
+    w.font(false, 6, GREY);
+    w.text(fmtDay(e.day), X(i), py + ph + 3.6, { align: i === 0 && exams.length > 1 ? "left" : i === exams.length - 1 && exams.length > 1 ? "right" : "center" });
+  });
+  const li = exams.length - 1;
+  w.font(true, 7.5, nets[li] < 0 ? RED : INK);
+  const ly = Y(nets[li]) - 2;
+  w.text(fmtNet(r2(nets[li])), X(li), ly < py + 2 ? Y(nets[li]) + 4 : ly, { align: exams.length > 1 ? "right" : "center" });
+  w.y = y0 + H;
+}
+function renderDenemeler(w, model, { onlyWindow = false } = {}) {
+  const d = model.denemeler;
+  if (!d || !d.all || (onlyWindow && !d.count)) return;
+  w.h1("Denemeler", "Deneme neti gerçek sınav netidir: Net = D − Y/4, ders başına resmî soru sayısıyla (TYT 120, AYT 160 soru). Ödevlerdeki net oranıyla karıştırılmaz; puan ya da sıralama tahmini yapılmaz. Kaçan net = dersin soru sayısı − net.", { newPage: "soft", keep: 60 });
+  for (const e of ["TYT", "AYT"]) {
+    const s = d[e];
+    if (!s.history.length || (onlyWindow && !s.n)) continue;
+    w.h2(`${e} denemeleri`, { keep: 40, note: s.n ? `bu aralıkta ${fmtInt(s.n)} deneme · toplam ${fmtInt(s.history.length)}` : `bu aralıkta deneme yok · toplam ${fmtInt(s.history.length)}` });
+    const L = s.last;
+    if (L) {
+      const change = s.deltaVsPrev == null ? "ilk deneme" : r2(s.deltaVsPrev) === 0 ? "önceki denemeyle aynı" : `önceki denemeye göre ${signedNet(s.deltaVsPrev)} net`;
+      w.block([{
+        text: `Son deneme ${fmtDay(L.day, { year: true })}${L.name ? ` (${L.name})` : ""}: ${fmtNet(r2(L.net))} net, ${change}. Aralıktaki en iyi ${fmtNet(r2(s.best.net))} net · son ${fmtInt(s.avgCount)} deneme ortalaması ${fmtNet(r2(s.avgLast3))} net${s.record ? " · kişisel rekor" : ""}.`,
+        size: 8.2, gap: 1.2,
+      }]);
+    } else {
+      const le = s.history[s.history.length - 1];
+      w.note(`Seçili aralıkta ${e} denemesi yok; son deneme ${fmtDay(le.day, { year: true })}: ${fmtNet(r2(le.net))} net.`);
+    }
+    if (s.history.length >= 2) drawDenemeChart(w, e, s);
+    if (s.list.length) {
+      const prevOf = (x) => { const i = s.history.indexOf(x); return i > 0 ? s.history[i - 1] : null; };
+      const num = { halign: "right" };
+      w.table({
+        head: ["Tarih", "Deneme", "D", "Y", "B", "Soru", "Net", "Önceki denemeye göre"],
+        body: [...s.list].reverse().map((x) => {
+          const p = prevOf(x);
+          return [
+            fmtDay(x.day, { year: true }), x.name || "—", dCell(x.D), yCell(x.Y), fmtInt(x.B), `${fmtInt(x.Q)}/${fmtInt(x.max)}`,
+            x.net < 0 ? colored(fmtNet(r2(x.net)), RED, true) : colored(fmtNet(r2(x.net)), INK, true), netDeltaCell(p ? x.net - p.net : null, w.student),
+          ];
+        }),
+        columnStyles: { 0: { cellWidth: 22 }, 2: { cellWidth: 9, ...num }, 3: { cellWidth: 9, ...num }, 4: { cellWidth: 9, ...num }, 5: { cellWidth: 16, ...num }, 6: { cellWidth: 14, ...num }, 7: { cellWidth: 32 } },
+        fontSize: 7.2,
+      });
+    }
+    if (s.bySubject.length) {
+      const num = { halign: "right" };
+      w.table({
+        head: ["Ders", "Soru", "Deneme", "Son net", "Ort. net", "En iyi", "Ort. kaçan net", "Eğilim"],
+        body: s.bySubject.map((r) => [
+          r.label, fmtInt(r.max), fmtInt(r.n), subjNetCell(r.lastNet), subjNetCell(r.avgNet), fmtNet(r2(r.bestNet)), fmtNet(r2(r.avgLost)), denemeTrendCell(r.trend, w.student),
+        ]),
+        columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 12, ...num }, 2: { cellWidth: 15, ...num }, 3: { cellWidth: 17, ...num }, 4: { cellWidth: 17, ...num }, 5: { cellWidth: 15, ...num }, 6: { cellWidth: 24, ...num } },
+        fontSize: 7.2,
+      });
+    }
+    const lt = s.lossTop;
+    if (lt) {
+      const parts = [lt.wrongLost >= 0.25 ? `yanlıştan ${fmtNet(r2(lt.wrongLost))}` : null, lt.blankLost >= 0.25 ? `boştan ${fmtNet(r2(lt.blankLost))}` : null].filter(Boolean);
+      w.block([{
+        label: "En çok net kaçan ders", labelW: 40, labelColor: AMBER, size: 7.8,
+        text: `${e} ${lt.label}: son ${fmtInt(lt.n)} denemede ${fmtInt(lt.max)} sorudan ortalama ${fmtNet(r2(lt.avgNet))} net; ${fmtNet(r2(lt.avgLost))} net kazanma fırsatı${parts.length ? ` (${parts.join(", ")})` : ""}.`,
+      }]);
+    }
+  }
+}
 // ---------------------------------------------------------------- 2. Koç eki (yalnız koç nüshası)
 function renderCoachAppendix(w, model, { ai, narrative, withAi = true } = {}) {
   const c = model.coach;
@@ -781,7 +898,9 @@ function renderKarne(w, model, { newPage = "soft" } = {}) {
   if (!any) w.note(fewLine(model.totalRecords, model.kpi.questions.Q));
   const untracked = model.subjects.filter((s) => !s.tracked);
   if (untracked.length) {
-    w.note(`Takip dışı AYT dersleri (son 56 günde teslim, serbest çalışma ya da kişisel ödev yok; alan bilgisi olmadığından hesaplara girmez): ${untracked.map((s) => s.name).join(", ")}.`);
+    w.note(model.fieldLabel
+      ? `Takip dışı AYT dersleri (${model.fieldLabel} alanının dışında ve son 56 günde teslim, serbest çalışma ya da kişisel ödev yok; hesaplara girmez): ${untracked.map((s) => s.name).join(", ")}.`
+      : `Takip dışı AYT dersleri (son 56 günde teslim, serbest çalışma ya da kişisel ödev yok; alan bilgisi olmadığından hesaplara girmez): ${untracked.map((s) => s.name).join(", ")}.`);
   }
 
   // Etiket gerekçeleri — her etiketin sayılarla "Neden?" açıklaması
@@ -1501,6 +1620,8 @@ function normalizeVariant(model, variant) {
 function renderStudentReport(w, model, { ai, narrative, monthly = false }) {
   w.full = !monthly && model.enough;
   renderSummary(w, model);
+  // Denemeler ekrandaki gibi özetin hemen ardından; aylık toplu PDF'te yalnızca o ay deneme varsa (dosya şişmesin).
+  renderDenemeler(w, model, { onlyWindow: monthly });
   if (w.coach) renderCoachAppendix(w, model, { ai, narrative, withAi: !monthly });
   if (monthly) {
     if (narrative) renderNarrative(w, narrative, { asSection: true });

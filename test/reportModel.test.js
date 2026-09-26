@@ -317,3 +317,114 @@ describe("gizlilik ve bölümler", () => {
     }
   });
 });
+
+describe("YKS alanı (student.field)", () => {
+  const withField = (r, field) => ({ ...r, student: { ...r.student, field } });
+  const tyt = () => [2, 9, 16].map((d) => item({ correct: 30, wrong: 5, blank: 5, endAgo: d }));
+  // Kaydı olmayan okul ödevleri: AYT Fizik (SAY alanında) ve AYT Tarih-1 (SAY dışı, EA alanında) — ikisi de sessiz.
+  const aytSchool = () => [
+    item({ examType: "AYT", subject: "Fizik", topic: "Çembersel Hareket", endAgo: 5 }),
+    item({ examType: "AYT", subject: "Fizik", topic: "Basit Harmonik Hareket", endAgo: 12 }),
+    item({ examType: "AYT", subject: "Tarih-1", topic: "Tarih ve Zaman", endAgo: 6 }),
+  ];
+
+  it("alan bilinmiyorsa kaydı olmayan AYT dersleri takip dışı (eski davranış)", () => {
+    const m = buildReport(raw([...tyt(), ...aytSchool()]), { now: NOW });
+    expect(m.field).toBeNull();
+    expect(m.fieldLabel).toBeNull();
+    expect(m.subjectMap.get("AYT|Fizik").tracked).toBe(false);
+    expect(m.subjectMap.get("AYT|Tarih-1").tracked).toBe(false);
+    expect(m.discipline.total).toMatchObject({ V: 3, silent: 0 });
+    expect(m.coach.dataNotes.untracked.map((u) => u.name).sort()).toEqual(["AYT Fizik", "AYT Tarih-1"]);
+  });
+
+  it("SAY: alanın AYT dersleri kaydı olmasa da izlenir; alan dışı ders yine yalnızca etkinlik varsa", () => {
+    const m = buildReport(withField(raw([...tyt(), ...aytSchool()]), "SAY"), { now: NOW });
+    expect(m.field).toBe("SAY");
+    expect(m.fieldLabel).toBe("Sayısal");
+    for (const s of ["Matematik", "Geometri", "Fizik", "Kimya", "Biyoloji"]) expect(m.tracked.has(`AYT|${s}`)).toBe(true);
+    expect(m.subjectMap.get("AYT|Fizik").tracked).toBe(true);
+    expect(m.subjectMap.get("AYT|Tarih-1").tracked).toBe(false);
+    // Sessiz kalan alan ödevleri artık düzene yansır; alan dışı Tarih-1 ödevi yansımaz.
+    expect(m.discipline.total).toMatchObject({ V: 5, silent: 2 });
+    expect(m.coach.dataNotes.untracked.map((u) => u.name)).toEqual(["AYT Tarih-1"]);
+    // Alan dışı derste kayıt varsa (son 56 gün) eskisi gibi izlenir.
+    const withRecord = buildReport(withField(raw([...tyt(), ...aytSchool()], [session({ examType: "AYT", subject: "Tarih-1", topic: "Tarih ve Zaman", ago: 3, c: 12, w: 4, b: 4 })]), "SAY"), { now: NOW });
+    expect(withRecord.subjectMap.get("AYT|Tarih-1").tracked).toBe(true);
+  });
+
+  it("EA ve SÖZ alanlarının AYT dersleri; DİL'de AYT listesi boş", () => {
+    const ea = buildReport(withField(raw([...tyt(), ...aytSchool()]), "EA"), { now: NOW });
+    expect(ea.subjectMap.get("AYT|Tarih-1").tracked).toBe(true);
+    expect(ea.subjectMap.get("AYT|Fizik").tracked).toBe(false);
+    const soz = buildReport(withField(raw(tyt()), "SOZ"), { now: NOW });
+    for (const s of ["Edebiyat", "Tarih-1", "Coğrafya-1", "Tarih-2", "Coğrafya-2", "Felsefe", "Mantık", "Psikoloji", "Sosyoloji", "Din Kültürü ve Ahlak Bilgisi"]) {
+      expect(soz.tracked.has(`AYT|${s}`)).toBe(true);
+    }
+    expect(soz.tracked.has("AYT|Matematik")).toBe(false);
+    const dil = buildReport(withField(raw([...tyt(), ...aytSchool()]), "DIL"), { now: NOW });
+    expect([...dil.tracked].filter((k) => k.startsWith("AYT|"))).toEqual([]);
+    expect(dil.fieldLabel).toBe("Dil");
+  });
+
+  it("alan null, alan hiç yok ya da tanınmayan değer: model birebir aynı", () => {
+    const sig = (m) => JSON.stringify({
+      tracked: [...m.tracked].sort(), recs: m.recs.all.map((r) => [r.id, r.subjectKey, r.text.coach, r.text.student]),
+      disc: m.discipline.total, untracked: m.coach.dataNotes.untracked, status: m.coach.status, share: m.coverage.share,
+    });
+    for (const seed of [1, 7, 42]) {
+      const f = makeFixture({ seed });
+      const base = sig(buildReport(f, { now: FIXTURE_NOW }));
+      expect(sig(buildReport(withField(f, null), { now: FIXTURE_NOW }))).toBe(base);
+      expect(sig(buildReport(withField(f, "XYZ"), { now: FIXTURE_NOW }))).toBe(base);
+      expect(buildReport(withField(f, "XYZ"), { now: FIXTURE_NOW }).field).toBeNull();
+    }
+  });
+
+  describe("R21 — TYT/AYT dengesi", () => {
+    // Son 28 günde 240 TYT + 20 AYT sorusu: AYT payı %8 < %25 (12. sınıf).
+    const heavyTyt = () => [
+      ...[1, 3, 5, 8, 11, 14].map((ago) => session({ ago, c: 30, w: 6, b: 4 })),
+      session({ examType: "AYT", subject: "Matematik", topic: "Limit", ago: 4, c: 10, w: 5, b: 5 }),
+    ];
+    const r21 = (m) => m.recs.all.find((r) => r.id === "R21");
+
+    it("alan bilinmiyorsa karar koça bırakılır (metin değişmedi)", () => {
+      const r = r21(buildReport(raw([], heavyTyt()), { now: NOW }));
+      expect(r).toBeTruthy();
+      expect(r.text.coach).toMatch(/Sistemde alan bilgisi olmadığından kararı siz verin\. Gerekiyorsa kişisel ödevlerin bir kısmını AYT tarafına kaydırın \(bu hafta yaklaşık \d+ soru\)\.$/);
+      expect(r.data.alan).toBeNull();
+    });
+
+    it("alan biliniyorsa 'alan bilgisi yok' denmez, puan türündeki pay söylenir", () => {
+      const r = r21(buildReport(withField(raw([], heavyTyt()), "SAY"), { now: NOW }));
+      expect(r).toBeTruthy();
+      expect(r.text.coach).not.toMatch(/alan bilgisi/);
+      expect(r.text.coach).toMatch(/Öğrencinin alanı Sayısal: bu puan türünde AYT oturumu puanın %60 kadarını belirler\./);
+      expect(r.text.coach).toMatch(/Sayısal alanının AYT derslerine kaydırın/);
+      expect(r.data.alan).toBe("Sayısal");
+      // Küçük taraf TYT ise TYT'nin payı anlatılır.
+      const aytHeavy = [
+        ...[1, 3, 5, 8, 11, 14].map((ago) => session({ examType: "AYT", subject: "Edebiyat", topic: "Divan Edebiyatı", ago, c: 30, w: 6, b: 4 })),
+        session({ ago: 4, c: 10, w: 5, b: 5 }),
+      ];
+      const t = r21(buildReport(withField(raw([], aytHeavy), "EA"), { now: NOW }));
+      expect(t.data.kucuk).toBe("TYT");
+      expect(t.text.coach).toMatch(/Öğrencinin alanı Eşit Ağırlık: bu puan türünde TYT de puanın %40 kadarını belirler\./);
+    });
+
+    it("DİL öğrencisinde TYT/AYT dengesi önerilmez", () => {
+      const m = buildReport(withField(raw([], heavyTyt()), "DIL"), { now: NOW });
+      expect(m.coverage.share.flag).toBe(false);
+      expect(r21(m)).toBeUndefined();
+    });
+
+    it("yasak kelime ve eklenmiş yer tutucu yok", () => {
+      for (const field of [null, "SAY", "EA", "SOZ"]) {
+        const r = r21(buildReport(withField(raw([], heavyTyt()), field), { now: NOW }));
+        expect(r.text.coach).not.toMatch(/zayıf|kötü|başarısız|geride|tembel|hile/i);
+        expect(r.text.coach).not.toMatch(/%\d+'/);
+      }
+    });
+  });
+});

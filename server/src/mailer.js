@@ -126,3 +126,26 @@ export async function sendPasswordResetEmail(to, token) {
     `,
   });
 }
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Yöneticiye düz metin uyarı e-postası (bkz. alerts.js — hız sınırı, alıcı seçimi ve kişisel veri maskelemesi orada).
+// Dönüş: gönderildiyse true, e-posta yapılandırılmamışsa false (fırlatmaz). Resend sonunda da başarısız olursa diğer
+// gönderimler gibi reddeder — alerts.js yakalar. Gövde HTML'de <pre> içinde KAÇIŞLANARAK gider: hata mesajları "<" vb.
+// içerebilir, e-posta istemcisinde işaretleme olarak yorumlanmasın.
+export async function sendAlertEmail({ to, subject, text }) {
+  if (!resend) {
+    console.error(`[mailer] RESEND_API_KEY tanımlı değil — uyarı e-postası gönderilmedi: ${subject}`);
+    return false;
+  }
+  await send({
+    from: FROM,
+    to,
+    subject,
+    text,
+    html: `<pre style="font-family: Menlo, Consolas, monospace; font-size: 13px; white-space: pre-wrap;">${escapeHtml(text)}</pre>`,
+  });
+  return true;
+}

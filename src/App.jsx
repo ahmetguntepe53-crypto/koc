@@ -7,6 +7,8 @@ import { api } from "./api.js";
 import { registerPush, unregisterPush, ensurePushRegistered } from "./native/push.js";
 import { setAppBadge } from "./native/badge.js";
 import { onBackButton, exitApp, setStatusBarTheme } from "./native/index.js";
+import { studyPrefillFromNotification } from "./notificationTargets.js";
+import { clearStudentStatusCache } from "./studentStatus.js";
 import LoginScreen from "./screens/LoginScreen.jsx";
 import ForcePasswordScreen from "./screens/ForcePasswordScreen.jsx";
 import ProfileScreen from "./screens/ProfileScreen.jsx";
@@ -150,6 +152,8 @@ export default function App() {
     setCoachNoteOpen(false);
     setAssignmentCreateInitialStudentId(null);
     setAssignmentCreateReturnTo("assignments");
+    // Öğrencilerim'deki durum çipleri bellekte 5 dk saklanır (src/studentStatus.js) — önceki hesabınki kalmasın.
+    clearStudentStatusCache();
   }, [authUser]);
 
   // logout() kasıtlı olarak screen'i "login"a çeker (LoginScreen zaten !authUser'a bakarak
@@ -225,6 +229,26 @@ export default function App() {
     } else if (data?.screen === "monthlyReports" && authUser?.role === "TEACHER") {
       setMonthlyMonth(typeof data.month === "string" ? data.month : null);
       setScreen("monthlyReports");
+    } else if (data?.screen === "reports" && authUser?.role === "STUDENT") {
+      // Haftalık özet (Pazar akşamı) → öğrencinin Gelişim sekmesi, sekmeden açılmış gibi (geri tuşu yok, son 4 hafta).
+      setReturnToReport(false);
+      setReportMonth(null);
+      setReportReturnTo("tab");
+      setScreen("reports");
+    } else if (data?.screen === "students" && authUser?.role === "TEACHER") {
+      // Koçun haftalık özeti (Pazartesi sabahı) → Öğrencilerim.
+      setScreen("students");
+    } else if (data?.screen === "studyLog" && authUser?.role === "STUDENT") {
+      // Tekrar hatırlatması (server/src/reviewReminders.js) → Çalışma Kaydı, ilk konunun dersi ve konusu dolu (kaydetmez;
+      // öğrenci sonucunu girip onaylar). Rapordan açılmadı: geri tuşu rapora değil, sekme kökü gibi davranır.
+      // Burada yalnızca state setter'ları kullanılır, aşağıdaki openStudyLogPrefilled DEĞİL: push dinleyicisi bu
+      // fonksiyonu authUser'ın geldiği render'dan yakalar; o render erken return'le (token'dan oturum geri yüklenirken
+      // authChecked henüz false / screen henüz null / şifre değiştirme ekranı) biterse, return'ün altındaki const'lar o
+      // kapanışta hiç ilklenmez → dokununca ReferenceError (test/AppNotificationRouting.test.jsx).
+      const prefill = studyPrefillFromNotification(data.prefill);
+      setStudyPrefill(prefill ? { ...prefill, key: Date.now() } : null);
+      setReturnToReport(false);
+      setScreen("studyLog");
     } else if (data?.screen === "home") {
       // Gruplanmış bildirim (ör. "Ayşe Yılmaz sana 6 ödev gönderdi") tek bir ödeve değil listeye gider.
       setScreen(DEFAULT_SCREEN_BY_ROLE[authUser?.role] || "profile");

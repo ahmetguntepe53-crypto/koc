@@ -23,9 +23,11 @@ if (SERVICE_ACCOUNT_PATH && fs.existsSync(SERVICE_ACCOUNT_PATH)) {
   console.log("[push] FIREBASE_SERVICE_ACCOUNT_PATH tanımlı değil/dosya yok — push bildirimi gönderilmeyecek (yalnızca uygulama içi bildirim yazılacak).");
 }
 
+// FCM data alanları yalnız düz metin taşır. İç içe nesne (ör. tekrar hatırlatmasının prefill'i) JSON metni olarak gider
+// — String(v) "[object Object]" yazıyordu; istemci metni geri çözer (bkz. src/notificationTargets.js).
 function stringifyData(data) {
   if (!data) return undefined;
-  return Object.fromEntries(Object.entries(data).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]));
+  return Object.fromEntries(Object.entries(data).filter(([, v]) => v != null).map(([k, v]) => [k, typeof v === "object" ? JSON.stringify(v) : String(v)]));
 }
 
 // FCM v1'in ham hata detayındaki errorCode (ör. "SENDER_ID_MISMATCH") — firebase-admin bunu kendi
@@ -72,6 +74,10 @@ export function pushTitle(type, data) {
     case "assignment_overdue":
     case "assignment_overdue_summary": return "Süresi geçen ödev";
     case "monthly_report": return "Aylık raporlar hazır";
+    case "weekly_digest": return "Haftanın özeti";
+    case "weekly_digest_coach": return "Geçen haftanın özeti";
+    // Metin zaten "Tekrar zamanı: …" diye başlıyor — başlık aynı sözü tekrarlamasın.
+    case "review_reminder": return "Konu tekrarı";
     default: return APP_TITLE;
   }
 }

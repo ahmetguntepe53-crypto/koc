@@ -94,6 +94,11 @@ model User {
   // TYT/AYT mi (9-12) gösterileceğini bu alan belirler (bkz. server/src/subjects.js). Nullable:
   // admin henüz girmemiş eski kayıtlarda geçici olarak boş kalabilir, o durumda YKS'ye düşülür.
   gradeLevel Int?
+  // Öğrencinin YKS alanı (puan türü): SAY | EA | SOZ | DIL — Prisma enum DEĞİL, düz metin (bkz. subjects.js >
+  // STUDENT_FIELDS; liste değişirse migration gerekmesin). null = bilinmiyor: rapor o zaman AYT derslerini son 8
+  // haftanın kayıtlarından tahmin eder (eski davranış). Admin (tekil/toplu/liste betiği) ve öğrencinin kendi koçu
+  // girer. Rapor (src/reportModel.js > FIELD_AYT) alanın AYT derslerini her zaman izler; DİL AYT'ye değil YDT'ye girer.
+  field String?
   // Öğrencinin sabit (1'e-çok) koçu — yalnızca admin atar/değiştirir. Koç tüm derslerde bu
   // öğrenciye ödev verebilir (derse göre yetki kısıtlaması yok).
   teacherId String?
@@ -106,6 +111,9 @@ model User {
   notesAbout   CoachNote[] @relation("NoteStudent")
   aiAnalyses   AiAnalysis[] @relation("AiAnalysisStudent")
   notesWritten CoachNote[] @relation("NoteAuthor")
+  // Deneme sınavları (bkz. PracticeExam): öğrencinin kendi denemeleri ve bu kullanıcının (öğrenci ya da koç) girdikleri.
+  practiceExams        PracticeExam[] @relation("PracticeExamStudent")
+  practiceExamsCreated PracticeExam[] @relation("PracticeExamCreator")
   // --- Yalnızca role=TEACHER için anlamlı ters ilişki ---
   students User[] @relation("CoachAssignment")
   // --- Yalnızca role=TEACHER için anlamlı ---
@@ -130,6 +138,8 @@ model User {
   notifications        Notification[]
   pushSubscriptions    PushSubscription[]
   planEntries          PlanEntry[]
+  // Aralıklı tekrar hatırlatmalarının günlüğü (bkz. ReviewReminderLog) — yalnızca öğrencide dolu.
+  reviewReminders      ReviewReminderLog[]
 
   @@index([role])
   @@index([teacherId])
@@ -420,6 +430,21 @@ model MonthlyReportRun {
   completedAt DateTime?
 }
 
+// Haftalık özet bildirimi turu (bkz. weeklyDigest.js) — özetlenen hafta × tür başına bir satır: "student" (Pazar
+// 19:00'dan sonra öğrencilere) ve "coach" (Pazartesi 08:00'den sonra koçlara, geçen hafta). Birincil anahtar aynı
+// haftanın ikinci kez gönderilmesini engeller; MonthlyReportRun ile aynı sahiplenme/devralma deseni.
+model WeeklyDigestRun {
+  // ISO hafta ("2026-W39") — özetlenen hafta (koç özetinde bir önceki hafta).
+  week        String
+  kind        String
+  // Gönderimi üstlenen turun başladığı an (15 dakikadır bitmediyse başka tur devralır).
+  sentAt      DateTime  @default(now())
+  // Herkese gönderim bitti — null ise yarıda kalmış olabilir (kullanıcı başına tekrar Notification.data.week ile engelli).
+  completedAt DateTime?
+
+  @@id([week, kind])
+}
+
 // Aylık raporun yapay zekâ incelemesi (öğrenci × ay) — yalnızca öğrencinin koçu ve admin görür. Üretim
 // ücretli olduğu için saklanır; aynı ay için yeniden üretim sınırlı (bkz. routes/aiAnalysis.js).
 model AiAnalysis {
@@ -433,4 +458,66 @@ model AiAnalysis {
   updatedAt DateTime @updatedAt
 
   @@unique([studentId, month])
+}
+
+// Deneme sınavı (TYT ya da AYT) — YKS'nin en önemli ölçüsü: öğrencinin tam bir denemede ders ders doğru/yanlış/boş
+// sayıları. Ödevden farklı olarak deneme neti GERÇEK sınav netidir (Net = D − Y/4, ders başına resmî soru sayısıyla
+// sınırlı; bkz. server/src/practiceExams.js > PRACTICE_EXAM_LAYOUT). Öğrenci kendisi için, koç yalnızca kendi
+// öğrencisi için girer; admin yalnızca okur. Rapor (src/reportModel.js > denemeler) istemcide hesaplanır.
+model PracticeExam {
+  id        String   @id @default(cuid())
+  studentId String
+  student   User     @relation("PracticeExamStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  examType  ExamType // yalnızca TYT | AYT kabul edilir (LGS enum'da eski kayıtlar için duruyor)
+  // Denemenin yapıldığı takvim günü — saat yok, UTC gece yarısı saklanır (planEntries.js > parseDateOnly ile aynı).
+  date      DateTime
+  // Yayın / deneme adı (ör. "3D Yayınları TYT-4") — isteğe bağlı serbest metin.
+  name      String?
+  // Kaydı giren kullanıcı (öğrencinin kendisi ya da koçu). Öğrenci yalnızca KENDİ girdiği denemeyi düzenleyip
+  // silebilir; koçun girdiği (ör. okulun resmî deneme sonucu) kaydı koçu düzeltir. Giren hesap silinirse kayıt kalır.
+  createdById String?
+  createdBy   User?    @relation("PracticeExamCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  results PracticeExamResult[]
+
+  @@index([studentId, date])
+}
+
+// Denemenin tek bir dersteki sonucu. subject, sınav türünün deneme ders listesinden biri (Prisma enum değil, uygulamada
+// doğrulanır). AYT'de Felsefe Grubu'nun 12 sorusu (Felsefe + Mantık + Psikoloji + Sosyoloji) TEK satırda "Felsefe"
+// adıyla tutulur — kitapçıkta ayrı bölüm değil, öğrenci karnesinde de tek sayı olarak görünür.
+model PracticeExamResult {
+  id      String       @id @default(cuid())
+  examId  String
+  exam    PracticeExam @relation(fields: [examId], references: [id], onDelete: Cascade)
+  subject String
+  correct Int
+  wrong   Int
+  blank   Int
+
+  @@unique([examId, subject])
+}
+
+// Aralıklı tekrar hatırlatması günlüğü (bkz. reviewReminders.js) — düşük sonuçlu bir konuya 7. ve 21. günde giden
+// "Tekrar zamanı" bildiriminin kaydı: öğrenci × konu anahtarı × aşama başına TEK satır (tekil kısıt aynı hatırlatmanın
+// ikinci kez gitmesini engeller; bildirimden ÖNCE yazılır = sahiplenme). Aynı konuda yeni bir döngü başlarsa (sonraki
+// kayıt da düşük) satır yeniden kullanılır: baseDate ileri alınır. "Bugün bildirim aldı mı" (günde en fazla bir) sentAt'ten
+// okunur — süreç yeniden başlasa da aynı gün ikinci bildirim gitmez.
+model ReviewReminderLog {
+  id        String   @id @default(cuid())
+  studentId String
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  // "TYT|Matematik|mutlak değer" — sınav türü | ders | konu metni (tr-TR küçük harf, boşluklar sadeleşmiş, en çok 200
+  // karakter). Konunun kendisi (öğrencinin yazdığı biçimiyle) bildirim metninde; burada yalnız eşleştirme için.
+  key       String
+  // 7 ya da 21 — taban kayıttan kaç gün sonraki hatırlatma.
+  stage     Int
+  // Taban kaydın Türkiye takvim günü (UTC gece yarısı, tarih-yalnız alanlarla aynı biçim) — hangi döngünün hatırlatıldığı.
+  baseDate  DateTime
+  sentAt    DateTime @default(now())
+
+  @@unique([studentId, key, stage])
+  @@index([sentAt])
 }

@@ -7,7 +7,14 @@
 //  • Tüm gün/hafta sınırları Türkiye saati (UTC+3); hafta Pazartesi–Pazar.
 //  • Asgari örneklemin altında etiket/öneri üretilmez ("Veri az").
 //  • Ödev neti deneme neti değildir; puan, sıralama ya da "tahmini net" hiçbir yerde üretilmez.
+//  • Deneme sınavları (raw.practiceExams) ayrı bölümdür (model.denemeler, bkz. practiceExams.js): gerçek net, ödev
+//    kayıtlarına ve net oranına karışmaz.
 import { TOPICS_BY_EXAM } from "./topics.js";
+import { FIELD_AYT, FIELD_LABELS, isField } from "./studentField.js";
+import { buildDenemeler } from "./practiceExams.js";
+
+// Alanın AYT dersleri (SAY/EA/SOZ/DIL) — liste studentField.js'te (admin/koç ekranlarıyla ortak); burada da dışa açık.
+export { FIELD_AYT };
 
 export const DAY = 24 * 60 * 60 * 1000;
 const TR_OFFSET = 3 * 60 * 60 * 1000;
@@ -276,6 +283,8 @@ export function buildReport(raw, opts = {}) {
   const viewer = raw.viewer === "coach" ? "coach" : "student";
   const student = raw.student || {};
   const grade12 = student.gradeLevel === 12;
+  // YKS alanı (SAY/EA/SOZ/DIL) — yoksa ya da tanınmıyorsa null: eski sunucu yanıtı ve alanı girilmemiş öğrenci aynı yoldan.
+  const field = isField(student.field) ? student.field : null;
 
   // --- ödevler (alıcı kayıtları)
   const items = (raw.items || []).filter((it) => EXAMS.includes(it.examType)).map((it) => {
@@ -333,8 +342,15 @@ export function buildReport(raw, opts = {}) {
   const inRange = (day, a, b) => day >= a && day <= b;
   const recsIn = (a, b, filter) => records.filter((r) => inRange(r.day, a, b) && (!filter || filter(r)));
 
-  // --- takip edilen dersler: tüm TYT; AYT'de son 56 günde teslim, serbest çalışma ya da kişisel koç ödevi olan
+  // --- deneme sınavları: istatistikler pencereden, trend grafiği asOf'a kadarki tüm geçmişten. "Tüm dönem" ödev
+  // kayıtlarından önceki denemeleri de kapsar (pencere başı ödev verisinden hesaplanıyor).
+  const denemeler = buildDenemeler(raw.practiceExams, { start: win.key === "all" ? -Infinity : win.start, end: win.end, asOf });
+
+  // --- takip edilen dersler: tüm TYT; AYT'de son 56 günde teslim, serbest çalışma ya da kişisel koç ödevi olan.
+  // Alan biliniyorsa alanın AYT dersleri kaydı olmasa da izlenir (okul ödevi sessiz kalırsa düzene yansır); alan dışı
+  // AYT dersleri yine yalnızca etkinlik varsa. Alan bilinmiyorsa (null) davranış eskisiyle birebir aynı.
   const tracked = new Set(TYT_SUBJECTS.map((s) => `TYT|${s}`));
+  if (field) for (const s of FIELD_AYT[field]) tracked.add(`AYT|${s}`);
   for (const r of recsIn(asOf - 55, asOf)) tracked.add(r.key);
   for (const it of items) if (!it.isSchool && (inRange(it.endDay, asOf - 55, asOf) || inRange(it.schedDay, asOf - 55, asOf))) tracked.add(it.key);
   const isTracked = (key) => tracked.has(key);
@@ -731,9 +747,10 @@ export function buildReport(raw, opts = {}) {
   for (const r of recsIn(asOf - 27, asOf)) q28[r.examType] += r.Q;
   const qSum = q28.TYT + q28.AYT;
   const smallSide = q28.TYT <= q28.AYT ? "TYT" : "AYT";
+  // DİL öğrencisi AYT'ye değil YDT'ye girer: TYT/AYT dengesi onun için anlamsız, uyarı (R21) üretilmez.
   const share = {
     tyt: qSum ? (q28.TYT / qSum) * 100 : null, ayt: qSum ? (q28.AYT / qSum) * 100 : null, total: qSum, small: smallSide, smallQ: q28[smallSide],
-    flag: grade12 && qSum >= 200 && (q28[smallSide] / qSum) * 100 < 25,
+    flag: grade12 && field !== "DIL" && qSum >= 200 && (q28[smallSide] / qSum) * 100 < 25,
   };
   const unmatchedCount = winRecords.filter((r) => r.topicUnmatched).length;
 
@@ -753,7 +770,7 @@ export function buildReport(raw, opts = {}) {
   // ================================================================ öneri motoru
   const ctx = {
     today, asOf, ref, winRecords, items, records, subjects, subjectMap, konuSkips, comparable, tracked, grade12, weeksLeft, curWeek, goalsFor, g2Target,
-    d28, d28School, d28Coach, k, g, createdDay, streak, share, isTracked, recsIn, weekAgg, V28, labelsAt, trendOf,
+    d28, d28School, d28Coach, k, g, createdDay, streak, share, isTracked, recsIn, weekAgg, V28, labelsAt, trendOf, field,
   };
   const recs = buildRecommendations(ctx);
 
@@ -841,9 +858,13 @@ export function buildReport(raw, opts = {}) {
   const totalRecords = winRecords.length;
   return {
     viewer, student: { ...student, grade12 }, generatedAt: now, today, window: win, rangeText: fmtRange(win.start, win.end),
+    // Doğrulanmış YKS alanı (null = bilinmiyor) ve başlıkta gösterilecek adı ("Sayısal").
+    field, fieldLabel: field ? FIELD_LABELS[field] : null,
     daysToYks: grade12 ? daysToYks : null, weeksLeft: grade12 ? weeksLeft : null,
     totalRecords, enough: totalRecords >= 3, allRecordCount: records.length,
     exams, kpi, subjects, subjectMap, tracked,
+    // Deneme sınavları (TYT/AYT ayrı): { TYT, AYT, all, count, latestType } — bkz. practiceExams.js > buildDenemeler.
+    denemeler,
     chips: { strongTitle: strongList.length ? "Güçlü yanların" : "En iyi gidenler", strong: best, focus: focusList.slice(0, 2), focusAll: focusList },
     week: {
       week: curWeek, isoNo: isoWeekNo(curWeek), items: weekItems, handled: weekHandled, done: weekItems.filter((it) => it.completed).length, skip: weekItems.filter((it) => it.state === "skip").length,
@@ -1292,16 +1313,23 @@ function buildRecommendations(c) {
     });
   }
 
-  // R21 — TYT/AYT dengesi (12. sınıf)
+  // R21 — TYT/AYT dengesi (12. sınıf). Alan biliniyorsa karar koça bırakılmaz: puan türündeki payı söylenir (SAY/EA/SÖZ
+  // puanında TYT %40, AYT %60). DİL öğrencisinde hiç üretilmez (share.flag — AYT yerine YDT'ye girer).
   if (c.share.flag) {
     const sh = c.share;
     const weeklyAvg = sh.total / 4;
     const hedef = Math.max(40, round10(0.25 * weeklyAvg));
     const p = (sh.smallQ / sh.total) * 100;
+    const alan = c.field ? FIELD_LABELS[c.field] : null;
+    const karar = !alan
+      ? `Sistemde alan bilgisi olmadığından kararı siz verin. Gerekiyorsa kişisel ödevlerin bir kısmını ${sh.small} tarafına kaydırın`
+      : sh.small === "AYT"
+        ? `Öğrencinin alanı ${alan}: bu puan türünde AYT oturumu puanın ${fmtPct(60)} kadarını belirler. Kişisel ödevlerin bir kısmını ${alan} alanının AYT derslerine kaydırın`
+        : `Öğrencinin alanı ${alan}: bu puan türünde TYT de puanın ${fmtPct(40)} kadarını belirler. Kişisel ödevlerin bir kısmını TYT tarafına kaydırın`;
     add("R21", {
       student: `Son 4 haftada çözdüğün soruların yalnızca ${fmtPct(p)} kadarı ${sh.small}. Puanını iki oturum birlikte belirler. Bu hafta ${sh.small} tarafına en az ${hedef} soru ekle.`,
-      coach: `Son 28 günde ${sh.small} payı ${fmtPct(p)} (${fmtInt(sh.total)} sorunun ${fmtInt(sh.smallQ)} tanesi). Sistemde alan bilgisi olmadığından kararı siz verin. Gerekiyorsa kişisel ödevlerin bir kısmını ${sh.small} tarafına kaydırın (bu hafta yaklaşık ${hedef} soru).`,
-      data: { kucuk: sh.small, oran: p, toplam: sh.total, kucukSoru: sh.smallQ, hedef },
+      coach: `Son 28 günde ${sh.small} payı ${fmtPct(p)} (${fmtInt(sh.total)} sorunun ${fmtInt(sh.smallQ)} tanesi). ${karar} (bu hafta yaklaşık ${hedef} soru).`,
+      data: { kucuk: sh.small, oran: p, toplam: sh.total, kucukSoru: sh.smallQ, hedef, alan },
       evidence: `${sh.small} payı ${fmtPct(p)} · ${plural(sh.total, "soru")}`, count: 1, owner: "Koç", section: "kapsam", short: `${sh.small} payı düşük`,
     });
   }

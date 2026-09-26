@@ -45,6 +45,10 @@ test("Çalışmam, Gelişim, Ben, Bildirimler", async ({ golden, page }) => {
 test("Gelişim raporu: ders dökümü ve PDF sayfası", async ({ golden, page }) => {
   await golden.open("ogrenci");
   await golden.tab("Gelişim");
+  // "Ayın değerlendirmesi" kartı ilk çizimden sonra hesaplanır ve karnenin üstünde yer alır; tıklamadan önce
+  // beklenmezse kaydırma konumu (dolayısıyla alttan açılan pencerenin tam sayfa görüntüdeki yeri) değişir.
+  await page.getByText("Bu hafta yapabileceklerin").waitFor();
+  await golden.settle();
   await page.locator("#rapor-karne").getByRole("button", { name: /Türkçe/ }).first().click();
   await golden.settle();
   await golden.snap("gelisim-ders");
