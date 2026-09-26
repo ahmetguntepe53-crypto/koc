@@ -2,6 +2,7 @@ import { initializeApp, cert } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
 import fs from "fs";
 import { prisma } from "./db.js";
+import { isQuietHours } from "./quietHours.js";
 
 // Firebase Admin SDK, servis hesabı anahtarıyla başlatılır (Firebase Console > Proje Ayarları >
 // Servis Hesapları > Yeni özel anahtar oluştur). Bu proje kendi Firebase projesine bağlanmalı —
@@ -57,22 +58,46 @@ function isDeadToken(e) {
   }
 }
 
+const APP_TITLE = "Koçluk";
+// Android bildirim kanalı — istemci (src/native/push.js) aynı kimlikle "Ödev bildirimleri" adıyla
+// oluşturur; kanalı henüz oluşturmamış eski sürümlerde Android manifest'teki varsayılana düşer.
+export const ANDROID_CHANNEL_ID = "odevler";
+
+// Push başlığı bildirimin türünden türetilir (Notification tablosunda ayrıca saklanmaz) — sabah
+// gönderilen bekletilmiş push'lar da aynı başlığı alsın diye.
+export function pushTitle(type, data) {
+  switch (type) {
+    case "assignment": return data?.subject ? `Yeni ödev · ${data.subject}` : "Yeni ödev";
+    case "assignment_due": return "Bugün son gün";
+    case "assignment_overdue":
+    case "assignment_overdue_summary": return "Süresi geçen ödev";
+    default: return APP_TITLE;
+  }
+}
+
+// FCM mesajı — badge: iOS'ta uygulama ikonundaki sayı (okunmamış bildirim sayısı; uygulama açılınca
+// istemci kendisi günceller/sıfırlar, bkz. src/native/badge.js).
+export function buildPushMessage(token, { title, body, data }, badge) {
+  return {
+    token,
+    notification: { title, body },
+    data: stringifyData(data),
+    android: { priority: "high", notification: { channelId: ANDROID_CHANNEL_ID } },
+    apns: {
+      headers: { "apns-priority": "10", "apns-push-type": "alert" },
+      payload: { aps: { alert: { title, body }, sound: "default", ...(badge != null ? { badge } : {}) } },
+    },
+  };
+}
+
 async function pushToUser(userId, payload) {
   if (!messaging) return;
   const subs = await prisma.pushSubscription.findMany({ where: { userId } });
   if (!subs.length) return;
+  const badge = await prisma.notification.count({ where: { userId, read: false } });
   await Promise.all(subs.map(async (sub) => {
     try {
-      await messaging.send({
-        token: sub.token,
-        notification: { title: payload.title, body: payload.body },
-        data: stringifyData(payload.data),
-        android: { priority: "high" },
-        apns: {
-          headers: { "apns-priority": "10", "apns-push-type": "alert" },
-          payload: { aps: { alert: { title: payload.title, body: payload.body }, sound: "default" } },
-        },
-      });
+      await messaging.send(buildPushMessage(sub.token, payload, badge));
     } catch (e) {
       if (isDeadToken(e)) {
         await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
@@ -85,17 +110,61 @@ async function pushToUser(userId, payload) {
 
 // Uygulamadaki HER bildirim bu iki fonksiyondan (notifyUser/notifyUsers) geçmeli — Notification
 // tablosuna kalıcı satır yazmanın yanında, varsa gerçek push aboneliklerine de bildirim gönderir.
-export async function notifyUser(userId, text, { type = "info", data = null } = {}) {
-  const notification = await prisma.notification.create({ data: { userId, text, type, data } });
-  pushToUser(userId, { title: "Kocluk", body: text, data }).catch((e) => console.error("[push] notifyUser:", e.message));
+// Sessiz saatlerde (23:00-07:00, ör. öğretmen gece planı elle yayınladı) satır hemen yazılır ama
+// push bekletilir; sabah flushPendingPushes kullanıcı başına tek push olarak gönderir.
+export async function notifyUser(userId, text, { type = "info", data = null, now = new Date() } = {}) {
+  const hold = isQuietHours(now);
+  const notification = await prisma.notification.create({ data: { userId, text, type, data, pushPending: hold } });
+  if (!hold) pushToUser(userId, { title: pushTitle(type, data), body: text, data }).catch((e) => console.error("[push] notifyUser:", e.message));
   return notification;
 }
 
-export async function notifyUsers(userIds, text, { type = "info", data = null } = {}) {
+export async function notifyUsers(userIds, text, { type = "info", data = null, now = new Date() } = {}) {
   const ids = [...new Set((userIds || []).filter(Boolean))];
   if (!ids.length) return;
-  await prisma.notification.createMany({ data: ids.map((userId) => ({ userId, text, type, data })) });
+  const hold = isQuietHours(now);
+  await prisma.notification.createMany({ data: ids.map((userId) => ({ userId, text, type, data, pushPending: hold })) });
+  if (hold) return;
   await Promise.all(ids.map((userId) =>
-    pushToUser(userId, { title: "Kocluk", body: text, data }).catch((e) => console.error("[push] notifyUsers:", e.message))
+    pushToUser(userId, { title: pushTitle(type, data), body: text, data }).catch((e) => console.error("[push] notifyUsers:", e.message))
   ));
+}
+
+// Gece bekletilen bildirimlerin tek push'u: tek bildirimse kendisi, birden çoksa özet — yalnızca
+// yeni ödevlerse dersleriyle birlikte ("3 yeni ödev: Matematik, Fizik, Tarih") ödev listesine,
+// karışıksa Bildirimler ekranına gider.
+export function pendingPushPayload(list) {
+  if (list.length === 1) {
+    const [n] = list;
+    return { title: pushTitle(n.type, n.data), body: n.text, data: n.data };
+  }
+  if (list.every((n) => n.type === "assignment")) {
+    const subjects = [...new Set(list.map((n) => n.data?.subject).filter(Boolean))];
+    return { title: `${list.length} yeni ödev`, body: `Gece gelen ödevlerin${subjects.length ? `: ${subjects.join(", ")}` : ""}`, data: { screen: "home" } };
+  }
+  return { title: APP_TITLE, body: `Gece ${list.length} yeni bildirimin geldi — görmek için dokun.`, data: { screen: "notifications" } };
+}
+
+// scheduler.js sessiz saatler bitince (ilk tick'te) çağırır.
+export async function flushPendingPushes() {
+  const pending = await prisma.notification.findMany({
+    where: { pushPending: true },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, userId: true, text: true, type: true, data: true },
+  });
+  if (!pending.length) return;
+  const byUser = new Map();
+  for (const n of pending) {
+    if (!byUser.has(n.userId)) byUser.set(n.userId, []);
+    byUser.get(n.userId).push(n);
+  }
+  for (const [userId, list] of byUser) {
+    try {
+      // Önce işaretlenir: push best-effort'tur, bir hata aynı özeti her dakika yeniden göndermesin.
+      await prisma.notification.updateMany({ where: { id: { in: list.map((n) => n.id) } }, data: { pushPending: false } });
+      await pushToUser(userId, pendingPushPayload(list));
+    } catch (e) {
+      console.error(`[push] bekletilen bildirimler gönderilemedi (user ${userId}):`, e.message);
+    }
+  }
 }

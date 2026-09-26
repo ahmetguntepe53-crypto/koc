@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, Check, ChevronRight, ClipboardList, AlertTriangle, Users } from "lucide-react";
+import { Bell, Check, ChevronRight, ClipboardList, AlertTriangle, Users, AlarmClock } from "lucide-react";
 import { C, bodyFont, monoFont } from "../theme.js";
 import { Card, Button, EmptyState, LoadingState } from "../components/common.jsx";
 import { api } from "../api.js";
@@ -11,12 +11,13 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 // Gönderen ve ders bildirimde ayrı bir alan değil, yalnızca metinde — sunucudaki metinlerle birebir
 // (bkz. server/src/routes/assignments.js ve scheduler.js). Kalıba uymayan metin gruplanmaz/vurgulanmaz.
-const NEW_ASSIGNMENT_RE = /^(.+?) sana yeni bir ödev gönderdi: (.+?) — ([\s\S]*)$/;
+// Yeni metinlerin sonunda " (son gün: 27 Eylül)" var; eski bildirimlerde yok — ikisi de ayrıştırılır.
+const NEW_ASSIGNMENT_RE = /^(.+?) sana yeni bir ödev gönderdi: (.+?) — ([\s\S]*?)(?: \(son gün: ([^)]+)\))?$/;
 const OVERDUE_RE = /^"([\s\S]+)" ödevinin süresi geçti([\s\S]*)$/;
 
 function parseNewAssignment(text) {
   const m = NEW_ASSIGNMENT_RE.exec(text || "");
-  return m ? { sender: m[1], subject: m[2], topic: m[3] } : null;
+  return m ? { sender: m[1], subject: m[2], topic: m[3], due: m[4] || null } : null;
 }
 
 function startOfDay(ms) {
@@ -93,7 +94,14 @@ function Highlight({ color, children }) {
 function notificationText(n, toneColor) {
   if (n.type === "assignment") {
     const p = parseNewAssignment(n.text);
-    if (p) return <>{p.sender} sana yeni bir ödev gönderdi: <Highlight color={toneColor}>{p.subject} — {p.topic}</Highlight></>;
+    if (p) {
+      return (
+        <>
+          {p.sender} sana yeni bir ödev gönderdi: <Highlight color={toneColor}>{p.subject} — {p.topic}</Highlight>
+          {p.due && <span style={{ fontWeight: 500, color: C.muted }}> · son gün {p.due}</span>}
+        </>
+      );
+    }
   }
   if (n.type === "assignment_overdue" || n.type === "assignment_overdue_summary") {
     const m = OVERDUE_RE.exec(n.text || "");
@@ -279,6 +287,7 @@ export default function NotificationsScreen({ onOpenTarget }) {
 // (bkz. server/src/scheduler.js, routes/assignments.js).
 const NOTIFICATION_STYLE = {
   get assignment() { return { icon: ClipboardList, tone: { bg: C.accentSoft, fg: C.accent } }; },
+  get assignment_due() { return { icon: AlarmClock, tone: { bg: C.amberSoft, fg: C.amber } }; },
   get assignment_overdue() { return { icon: AlertTriangle, tone: { bg: C.redSoft, fg: C.red } }; },
   get assignment_overdue_summary() { return { icon: Users, tone: { bg: C.amberSoft, fg: C.amber } }; },
   get info() { return { icon: Bell, tone: { bg: C.surface2, fg: C.muted } }; },

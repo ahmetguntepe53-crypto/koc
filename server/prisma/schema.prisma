@@ -256,6 +256,9 @@ model AssignmentRecipient {
   // hatırlatma bildiriminin zamanı — scheduler.js > notifyOverdueRecipients bunu null olan kayıtları
   // arar, bildirimi atıp hemen doldurur, aynı öğrenciye aynı ödev için asla ikinci kez atılmaz.
   overdueReminderSentAt DateTime?
+  // Bitiş günü 18:00'de (Türkiye) "bugün son gün" hatırlatması gönderildiği an — scheduler.js >
+  // notifyDueToday; gecikme hatırlatmasından ayrı, her ikisi de alıcı başına en fazla bir kez gider.
+  dueReminderSentAt DateTime?
 
   submission Submission?
   // Submission'dan bağımsız — öğrenci sonucu girmeden ÖNCE de kanıt fotoğrafı ekleyebilir.
@@ -330,9 +333,14 @@ model Notification {
   read   Boolean @default(false)
   // Bildirime dokununca nereye gidileceği (ör. {"recipientId":"...","screen":"assignmentSubmit"}).
   data      Json?
-  createdAt DateTime @default(now())
+  // Sessiz saatlerde (23:00-07:00) oluşan bildirim uygulamada hemen görünür ama telefona push'u
+  // bekletilir — sabah ilk scheduler tick'inde kullanıcı başına tek push olarak gider (notify.js >
+  // flushPendingPushes).
+  pushPending Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
   @@index([userId, createdAt])
+  @@index([pushPending])
 }
 
 // Bir kullanıcının bir cihazdaki FCM kayıt token'ı — upsert edilir. Bu proje kendi Firebase

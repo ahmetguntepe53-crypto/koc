@@ -1,6 +1,8 @@
 import { prisma } from "./db.js";
-import { notifyUser } from "./notify.js";
+import { notifyUser, flushPendingPushes } from "./notify.js";
 import { publishPlanEntry } from "./routes/planEntries.js";
+import { notifyRecipientsAssignmentSent } from "./routes/assignments.js";
+import { isQuietHours, trHour, trStartOfToday, trTodayAsDateOnly } from "./quietHours.js";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 // endDate UTC gece yarısı olarak saklanır (bkz. planEntries.js > parseDateOnly, assignments.js'in
@@ -10,22 +12,13 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 // bitiş gününün TÜRKİYE'deki sonunu (bir sonraki günün Türkiye 00:00'ı = aynı UTC gün 21:00) geçmiş
 // olmalı — bu da `endDate < (now - 21 saat)` ile eşdeğer.
 const TR_END_OF_DAY_GRACE_MS = 21 * 60 * 60 * 1000;
-const TR_UTC_OFFSET_MS = 3 * 60 * 60 * 1000;
+// "Bugün son gün" hatırlatmasının saati (Türkiye) — okul çıkışından sonra, sessiz saatlerden önce.
+const DUE_REMINDER_TR_HOUR = 18;
 
-// Sessiz saatler (Türkiye saatiyle 23:00-07:00): tarihler UTC gece yarısı saklandığı için otomatik
-// yayınlar (ve yüksek öncelikli push'ları) Türkiye'de ~03:00'te, gecikme hatırlatmaları ~00:00'da
-// öğrencilerin telefonunu çaldırıyordu. Bu aralıkta tick hiçbir şey yapmaz; sorgular "vakti gelmiş
-// ya da geçmiş" diye yazıldığı için bekleyen her şey 07:00'deki ilk tick'te yetişir.
-function isQuietHours(now) {
-  const trHour = (now.getUTCHours() + 3) % 24;
-  return trHour >= 23 || trHour < 7;
-}
-
-// Bugünün Türkiye'deki başlangıcı (00:00 TR = önceki UTC günün 21:00'ı), Date olarak.
-function trStartOfToday(now) {
-  const tr = new Date(now.getTime() + TR_UTC_OFFSET_MS);
-  return new Date(Date.UTC(tr.getUTCFullYear(), tr.getUTCMonth(), tr.getUTCDate()) - TR_UTC_OFFSET_MS);
-}
+// Sessiz saatler (Türkiye saatiyle 23:00-07:00, bkz. quietHours.js): tarihler UTC gece yarısı
+// saklandığı için otomatik yayınlar (ve yüksek öncelikli push'ları) Türkiye'de ~03:00'te, gecikme
+// hatırlatmaları ~00:00'da öğrencilerin telefonunu çaldırıyordu. Bu aralıkta tick hiçbir şey yapmaz;
+// sorgular "vakti gelmiş ya da geçmiş" diye yazıldığı için bekleyen her şey 07:00'deki ilk tick'te yetişir.
 
 // Ödev, bitiş gününün Türkiye'deki sonundan SONRA yayınlandıysa (ör. koç geçmiş tarihli bir ödevi
 // bugün gönderdiyse) öğrenciye/koça "süresi geçti" bildirimi anlamsız ve kafa karıştırıcı — atlanır.
@@ -55,12 +48,9 @@ async function publishDueAssignments(now) {
       // ya da ödevi sildiyse count 0 döner ve bildirim İKİNCİ kez gitmez / P2025 fırlamaz.
       const claim = await prisma.assignment.updateMany({ where: { id: assignment.id, status: "DRAFT" }, data: { status: "SENT", sentAt: now } });
       if (claim.count === 0) continue;
-      const text = `${assignment.teacher.name} sana yeni bir ödev gönderdi: ${assignment.subject} — ${assignment.topic}`;
       // Her öğrenciye KENDİ AssignmentRecipient.id'siyle bildirim gider — öğrenci tarafındaki
       // AssignmentSubmitScreen recipientId ile açılır (assignment.id ile değil), bkz. App.jsx.
-      await Promise.all(assignment.recipients.map((r) =>
-        notifyUser(r.studentId, text, { type: "assignment", data: { screen: "assignmentSubmit", recipientId: r.id } })
-      ));
+      await notifyRecipientsAssignmentSent(assignment, assignment.teacher.name);
     } catch (e) {
       // Tek bir ödevin hatası partinin geri kalanını durdurmasın.
       console.error(`[scheduler] ödev otomatik yayınlanamadı (${assignment.id}):`, e.message);
@@ -106,28 +96,76 @@ async function publishDuePlanEntries(now) {
   }
 }
 
+// Öğrencinin satırlarını gruplar — Pazartesi sabahı 7 dersin gecikmesi ya da Pazar akşamı 5 dersin
+// son günü ayrı ayrı 7 push olarak değil, öğrenci başına tek bildirim olarak gider.
+function groupByStudent(rows) {
+  const map = new Map();
+  for (const r of rows) {
+    if (!map.has(r.studentId)) map.set(r.studentId, []);
+    map.get(r.studentId).push(r);
+  }
+  return map;
+}
+
+function subjectList(rows) {
+  return [...new Set(rows.map((r) => r.assignment.subject))].join(", ");
+}
+
+// Bitiş günü BUGÜN olan, hâlâ tamamlanmamış ödevler için 18:00'den sonra öğrenciye BİR KEZ "bugün son
+// gün" hatırlatması. Bugün yayınlanmış ödev atlanır (yeni ödev bildirimi zaten "son gün" diyordu).
+async function notifyDueToday(now) {
+  if (trHour(now) < DUE_REMINDER_TR_HOUR) return;
+  const today = trTodayAsDateOnly(now);
+  const todayStart = trStartOfToday(now);
+  const rows = await prisma.assignmentRecipient.findMany({
+    where: {
+      completed: false, dueReminderSentAt: null, overdueReminderSentAt: null,
+      assignment: { status: "SENT", endDate: { gte: today, lt: new Date(today.getTime() + ONE_DAY_MS) } },
+    },
+    include: { assignment: { select: { subject: true, topic: true, sentAt: true } } },
+    orderBy: { createdAt: "asc" },
+  });
+  for (const [studentId, list] of groupByStudent(rows)) {
+    try {
+      const remind = list.filter((r) => !r.assignment.sentAt || r.assignment.sentAt < todayStart);
+      if (remind.length === 1) {
+        const [r] = remind;
+        await notifyUser(studentId, `Bugün son gün: "${r.assignment.subject} — ${r.assignment.topic}" ödevini henüz bitirmedin.`, { type: "assignment_due", data: { screen: "assignmentSubmit", recipientId: r.id }, now });
+      } else if (remind.length > 1) {
+        await notifyUser(studentId, `Bugün son gün — ${remind.length} ödevin henüz bitmedi: ${subjectList(remind)}.`, { type: "assignment_due", data: { screen: "home" }, now });
+      }
+      // Atlananlar da işaretlenir, her tick'te yeniden sorgulanmasın.
+      await prisma.assignmentRecipient.updateMany({ where: { id: { in: list.map((r) => r.id) } }, data: { dueReminderSentAt: now } });
+    } catch (e) {
+      console.error(`[scheduler] son gün hatırlatması gönderilemedi (student ${studentId}):`, e.message);
+    }
+  }
+}
+
 // Süresi (endDate) geçmiş ama hâlâ tamamlanmamış (completed=false) ödevler için öğrenciye BİR KEZ
-// hatırlatma bildirimi gönderir — overdueReminderSentAt null olan kayıtlar aranır, bildirim atılınca
-// hemen doldurulur ki bir sonraki tick'te (60sn sonra) aynı öğrenciye tekrar tekrar gitmesin.
+// hatırlatma — overdueReminderSentAt null olan kayıtlar aranır, bildirim atılınca hemen doldurulur ki
+// bir sonraki tick'te (60sn sonra) aynı öğrenciye tekrar tekrar gitmesin. Aynı anda birden çok ödevi
+// gecikmişse tek bildirimde toplanır.
 async function notifyOverdueRecipients(now) {
   const cutoff = new Date(now.getTime() - TR_END_OF_DAY_GRACE_MS);
   const overdue = await prisma.assignmentRecipient.findMany({
     where: { completed: false, overdueReminderSentAt: null, assignment: { status: "SENT", endDate: { lt: cutoff } } },
     include: { assignment: { select: { subject: true, topic: true, sentAt: true, endDate: true } } },
+    orderBy: { createdAt: "asc" },
   });
-  for (const r of overdue) {
-    const text = `"${r.assignment.subject} — ${r.assignment.topic}" ödevinin süresi geçti, henüz tamamlamadın — unutmadan bitirebilirsin.`;
+  for (const [studentId, list] of groupByStudent(overdue)) {
     try {
       // Geç yayınlanmış ödevde bildirim atlanır ama satır yine işaretlenir, tekrar sorgulanmasın.
-      if (!publishedAfterDeadline(r.assignment)) {
-        await notifyUser(r.studentId, text, { type: "assignment_overdue", data: { screen: "assignmentSubmit", recipientId: r.id } });
+      const remind = list.filter((r) => !publishedAfterDeadline(r.assignment));
+      if (remind.length === 1) {
+        const [r] = remind;
+        await notifyUser(studentId, `"${r.assignment.subject} — ${r.assignment.topic}" ödevinin süresi geçti, henüz tamamlamadın — unutmadan bitirebilirsin.`, { type: "assignment_overdue", data: { screen: "assignmentSubmit", recipientId: r.id }, now });
+      } else if (remind.length > 1) {
+        await notifyUser(studentId, `${remind.length} ödevinin süresi geçti, henüz tamamlamadın: ${subjectList(remind)} — unutmadan bitirebilirsin.`, { type: "assignment_overdue", data: { screen: "home" }, now });
       }
-      // Her satır kendi bildirimi gönderilir gönderilmez işaretlenir — toplu updateMany sona
-      // bırakılırsa, ortadaki bir satır patladığında zaten bildirim gitmiş öncekiler bir sonraki
-      // tick'te (60sn sonra) tekrar bildirim alırdı.
-      await prisma.assignmentRecipient.update({ where: { id: r.id }, data: { overdueReminderSentAt: now } });
+      await prisma.assignmentRecipient.updateMany({ where: { id: { in: list.map((r) => r.id) } }, data: { overdueReminderSentAt: now } });
     } catch (e) {
-      console.error(`[scheduler] gecikme hatırlatması gönderilemedi (recipient ${r.id}):`, e.message);
+      console.error(`[scheduler] gecikme hatırlatması gönderilemedi (student ${studentId}):`, e.message);
     }
   }
 }
@@ -146,7 +184,7 @@ async function notifyTeachersOfOverdueAssignments(now) {
       const missing = a.recipients.filter((r) => !r.completed).length;
       if (missing > 0 && !publishedAfterDeadline(a)) {
         const text = `"${a.subject} — ${a.topic}" ödevinin süresi geçti — ${missing}/${a.recipients.length} öğrenci hâlâ tamamlamadı.`;
-        await notifyUser(a.teacherId, text, { type: "assignment_overdue_summary", data: { screen: "assignmentDetail", assignmentId: a.id } });
+        await notifyUser(a.teacherId, text, { type: "assignment_overdue_summary", data: { screen: "assignmentDetail", assignmentId: a.id }, now });
       }
       // Bildirim gerekmese bile (herkes tamamlamış ya da ödev geç yayınlanmış) işaretlenir — aksi
       // halde bu ödev her tick'te yeniden sorgulanmaya devam eder.
@@ -160,16 +198,17 @@ async function notifyTeachersOfOverdueAssignments(now) {
 let running = false;
 // Her N saniyede bir server/src/index.js'ten çağrılır. Bir tick hâlâ sürüyorsa üst üste binmesin
 // diye basit bir kilit — PP'deki scheduler.js ile aynı desen (bkz. runMatchLifecycleTick).
-export async function runSchedulerTick() {
+// now: testler için — üretimde her zaman şimdiki an.
+export async function runSchedulerTick(now = new Date()) {
   if (running) return;
   running = true;
   try {
-    const now = new Date();
     if (isQuietHours(now)) return;
     // Her adım kendi try/catch'i içinde — biri patlarsa (ör. geçici DB hatası) diğerleri yine de
     // çalışır, aksi halde tek bir hata o tick'teki TÜM zamanlanmış işleri (ör. öğretmen özet
     // bildirimini) sessizce atlatırdı.
-    const steps = [publishDueAssignments, publishDuePlanEntries, notifyOverdueRecipients, notifyTeachersOfOverdueAssignments];
+    // Önce gece bekletilen push'lar (sabahın ilk tick'i), sonra yeni yayınlar ve hatırlatmalar.
+    const steps = [flushPendingPushes, publishDueAssignments, publishDuePlanEntries, notifyDueToday, notifyOverdueRecipients, notifyTeachersOfOverdueAssignments];
     for (const step of steps) {
       try {
         await step(now);

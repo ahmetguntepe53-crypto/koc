@@ -4,6 +4,7 @@ import { C, bodyFont, monoFont, completionTone } from "../../theme.js";
 import { Card, Pill, Chip, EmptyState, Avatar, LoadingState, ProgressBar } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { GRADE_LEVELS, gradeLabel } from "../../subjects.js";
+import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
 // Filtre çipleri — varsayılan "Tümü". "Geciken var" başta: koçun listeye bakınca ilk sorduğu soru.
 const FILTERS = [
@@ -125,6 +126,7 @@ export default function TeacherStudentsScreen({ onOpen }) {
 
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+      <PushPermissionBanner reason="Öğrencilerinin geciken ödev özetlerini kaçırmamak için." />
       {loading ? (
         <LoadingState />
       ) : loadError ? (

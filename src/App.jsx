@@ -4,7 +4,8 @@ import { C, THEMES, bodyFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID } from "./components/common.jsx";
 import { api } from "./api.js";
-import { registerPush, unregisterPush } from "./native/push.js";
+import { registerPush, unregisterPush, ensurePushRegistered } from "./native/push.js";
+import { setAppBadge } from "./native/badge.js";
 import { onBackButton, exitApp, setStatusBarTheme } from "./native/index.js";
 import LoginScreen from "./screens/LoginScreen.jsx";
 import ForcePasswordScreen from "./screens/ForcePasswordScreen.jsx";
@@ -97,7 +98,7 @@ export default function App() {
 
   // Çıkışta cihazın push token'ı sunucudan silinir; aksi halde telefon, çıkmış kullanıcının
   // bildirimlerini almaya devam ederdi. Ağ hatası çıkışı ENGELLEMEZ.
-  const logout = () => { unregisterPush().catch(() => {}); endSession(); };
+  const logout = () => { unregisterPush().catch(() => {}); setAppBadge(0); endSession(); };
 
   const retryAuth = () => {
     if (authRetrying) return;
@@ -147,6 +148,12 @@ export default function App() {
     api.listNotifications().then(({ unreadCount }) => setUnreadCount(unreadCount)).catch(() => {});
   }, [authUser, screen, notificationsRefreshKey]);
 
+  // Uygulama ikonundaki sayı okunmamış sayısını izler — bildirimler uygulamada okununca ikonda takılı
+  // kalmasın; oturum kapanınca (elle ya da sunucu sonlandırınca) sıfırlanır.
+  useEffect(() => {
+    setAppBadge(authUser && !authUser.mustChangePassword ? unreadCount : 0);
+  }, [authUser, unreadCount]);
+
   // Push aboneliği giriş yapıldıktan SONRA kurulur: /api/push/subscribe kimlik doğrulaması ister
   // ve token oturum sahibi kullanıcıya yazılır. Web'de no-op.
   useEffect(() => {
@@ -164,6 +171,8 @@ export default function App() {
     // halde öğrenci ana ekranı eski ödevlerle ve bayat "X gün kaldı" rozetleriyle kalıyordu. Sayaçlar
     // yalnızca o an ekranda olan liste bileşenini yeniden yükletir.
     const refreshAll = () => {
+      // Öğrenci bildirim iznini Ayarlar'dan yeni açtıysa token hemen sunucuya yazılsın.
+      ensurePushRegistered().catch(() => {});
       refresh();
       setMyAssignmentsRefreshKey((k) => k + 1);
       setAssignmentsRefreshKey((k) => k + 1);

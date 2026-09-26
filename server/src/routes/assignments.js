@@ -32,11 +32,18 @@ export const recipientInclude = {
 // route'un try/catch'i bunu yakalayıp istemciye 500 dönerdi, oysa ödev zaten gönderilmiş olurdu —
 // öğretmen "hata oldu" sanıp tekrar denerse aynı ödev ikinci kez oluşturulup gönderilirdi. Bildirim
 // best-effort'tur (push gönderimi zaten aynı şekilde sessizce yutuluyor, bkz. notify.js).
+// Metin istemcide ayrıştırılıyor (src/screens/NotificationsScreen.jsx > NEW_ASSIGNMENT_RE) — biçim
+// değişirse orası da güncellenmeli. Son gün, tarihlerin saklandığı UTC gece yarısından okunur.
+export function newAssignmentText(teacherName, assignment) {
+  const due = new Date(assignment.endDate).toLocaleDateString("tr-TR", { day: "numeric", month: "long", timeZone: "UTC" });
+  return `${teacherName} sana yeni bir ödev gönderdi: ${assignment.subject} — ${assignment.topic} (son gün: ${due})`;
+}
+
 export async function notifyRecipientsAssignmentSent(assignment, teacherName) {
-  const text = `${teacherName} sana yeni bir ödev gönderdi: ${assignment.subject} — ${assignment.topic}`;
+  const text = newAssignmentText(teacherName, assignment);
   try {
     await Promise.all(assignment.recipients.map((r) =>
-      notifyUser(r.studentId, text, { type: "assignment", data: { screen: "assignmentSubmit", recipientId: r.id } })
+      notifyUser(r.studentId, text, { type: "assignment", data: { screen: "assignmentSubmit", recipientId: r.id, subject: assignment.subject } })
     ));
   } catch (e) {
     console.error(`[assignments] gönderim bildirimi yazılamadı (assignment ${assignment.id}):`, e.message);

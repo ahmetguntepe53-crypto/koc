@@ -13,7 +13,17 @@
 // eder (uygulama içi bildirimler zaten Notification tablosundan geliyor).
 import { FirebaseMessaging } from "@capacitor-firebase/messaging";
 import { api } from "../api.js";
-import { isNative } from "./index.js";
+import { isNative, platform } from "./index.js";
+
+// Android bildirim kanalı — sunucu (server/src/notify.js > ANDROID_CHANNEL_ID) ve AndroidManifest'teki
+// varsayılan kanal kimliğiyle aynı. Kullanıcı telefon ayarlarında "Ödev bildirimleri" adını görür.
+const ANDROID_CHANNEL = {
+  id: "odevler",
+  name: "Ödev bildirimleri",
+  description: "Yeni ödevler, son gün ve gecikme hatırlatmaları",
+  importance: 4, // High: sesli + ekranın üstünde görünür
+  visibility: 1, // Public
+};
 
 let currentToken = null;
 let listenersBound = false;
@@ -23,6 +33,7 @@ let listenersBound = false;
 export async function registerPush() {
   if (!isNative) return null;
   try {
+    if (platform === "android") await FirebaseMessaging.createChannel(ANDROID_CHANNEL).catch(() => {});
     let { receive } = await FirebaseMessaging.checkPermissions();
     if (receive === "prompt" || receive === "prompt-with-rationale") {
       ({ receive } = await FirebaseMessaging.requestPermissions());
@@ -39,6 +50,24 @@ export async function registerPush() {
     // Tipik sebep: GoogleService-Info.plist yok ya da Push Notifications capability açılmamış.
     console.warn("[push] kayıt yapılamadı:", e?.message || e);
     return null;
+  }
+}
+
+// Uygulama arka plandan dönünce: kullanıcı bildirim iznini Ayarlar'dan yeni açtıysa token hemen
+// sunucuya yazılsın (yoksa bir sonraki girişe kadar push gelmezdi). Zaten kayıtlıysa istek atılmaz.
+export async function ensurePushRegistered() {
+  if (!isNative || currentToken) return;
+  await registerPush();
+}
+
+// "granted" | "denied" | "prompt" | "prompt-with-rationale" | "unsupported" (web) | "unknown" (hata).
+export async function pushPermissionState() {
+  if (!isNative) return "unsupported";
+  try {
+    const { receive } = await FirebaseMessaging.checkPermissions();
+    return receive;
+  } catch (_) {
+    return "unknown";
   }
 }
 

@@ -5,6 +5,7 @@ import { Select, Pill, EmptyState, StatCard, StatGrid, SectionHeader, Assignment
 import { api } from "../../api.js";
 import { ALL_SUBJECTS, subjectIconUrl } from "../../subjects.js";
 import { daysUntil } from "../../dates.js";
+import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
 // Geciken/Bekleyen: başta en fazla 2 satır, "N tane daha" her basışta 5 tane daha açar.
 // Tamamlanan: başta 1 satır — başlıktaki "Tümü" hepsini açar, "Daha az" yeniden 1'e indirir.
@@ -204,6 +205,7 @@ export default function StudentHomeScreen({ onOpen, refreshKey }) {
 
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+      <PushPermissionBanner reason="Yeni ödevleri ve son gün hatırlatmalarını kaçırmamak için." />
       {examDates && <ExamCountdownCard examDate={examDate} />}
 
       <Select

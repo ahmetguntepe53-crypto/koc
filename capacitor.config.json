@@ -1,6 +1,6 @@
 {
   "appId": "com.kocluk.app",
-  "appName": "Kocluk",
+  "appName": "Koçluk",
   "webDir": "dist",
   "ios": {
     "contentInset": "never",
