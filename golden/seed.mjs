@@ -81,15 +81,16 @@ const firstLogin = await prisma.user.create({
 });
 await prisma.schoolSettings.upsert({ where: { id: "singleton" }, update: { yksExamDate: new Date("2027-06-19T00:00:00Z") }, create: { id: "singleton", yksExamDate: new Date("2027-06-19T00:00:00Z") } });
 
-// --- Yıllık planlar: her branş öğretmenine 8 hafta (3 geçmiş + bu hafta yayınlanmış, 4 taslak) ---
+// --- Yıllık planlar: her branş öğretmenine 12 hafta (7 geçmiş + bu hafta yayınlanmış, 4 taslak) — gelişim raporunun
+// trendi (son 4 hafta / önceki 4 hafta) ve konu dökümü için en az 8 haftalık geçmiş gerekiyor.
 const TOPICS = {
-  Matematik: ["Temel Kavramlar", "Sayı Basamakları", "Bölünebilme", "Rasyonel Sayılar", "Üslü Sayılar", "Köklü Sayılar", "Mutlak Değer", "Oran Orantı"],
-  Türkçe: ["Sözcükte Anlam", "Cümlede Anlam", "Paragrafta Anlatım", "Paragrafta Yapı", "Ses Bilgisi", "Yazım Kuralları", "Noktalama", "Sözcük Türleri"],
-  Fizik: ["Fizik Bilimine Giriş", "Madde ve Özellikleri", "Basınç", "Kaldırma Kuvveti", "Isı ve Sıcaklık", "Hareket", "Kuvvet", "Enerji"],
-  Biyoloji: ["Canlıların Özellikleri", "İnorganik Bileşikler", "Karbonhidratlar", "Lipitler", "Proteinler", "Enzimler", "Nükleik Asitler", "Hücre"],
-  Tarih: ["Tarih ve Zaman", "İlk Çağ Uygarlıkları", "Orta Çağ'da Dünya", "İlk Türk Devletleri", "İslam Medeniyeti", "Türk-İslam Devletleri", "Selçuklu Türkiyesi", "Beylikten Devlete"],
-  Coğrafya: ["Doğa ve İnsan", "Dünyanın Şekli", "Yer ve Zaman", "Harita Bilgisi", "İklim Bilgisi", "Yerin Şekillenmesi", "Nüfus", "Göç"],
-  Felsefe: ["Felsefeyi Tanıma", "Felsefe ile Düşünme", "Varlık Felsefesi", "Bilgi Felsefesi", "Bilim Felsefesi", "Ahlak Felsefesi", "Din Felsefesi", "Sanat Felsefesi"],
+  Matematik: ["Kümeler", "Mantık", "Fonksiyonlar", "Problemler", "Temel Kavramlar", "Sayı Basamakları", "Bölünebilme", "Rasyonel Sayılar", "Üslü Sayılar", "Köklü Sayılar", "Mutlak Değer", "Oran Orantı"],
+  Türkçe: ["Anlatım Bozuklukları", "Fiilimsi", "Cümlenin Öğeleri", "Ek Fiil", "Sözcükte Anlam", "Cümlede Anlam", "Paragrafta Anlatım", "Paragrafta Yapı", "Ses Bilgisi", "Yazım Kuralları", "Noktalama", "Sözcük Türleri"],
+  Fizik: ["Elektrik", "Manyetizma", "Optik", "Dinamik", "Fizik Bilimine Giriş", "Madde ve Özellikleri", "Basınç", "Kaldırma Kuvveti", "Isı ve Sıcaklık", "Hareket", "Kuvvet", "Enerji"],
+  Biyoloji: ["Kalıtım", "Mitoz ve Eşeysiz Üreme", "Mayoz ve Eşeyli Üreme", "Ekosistem Ekolojisi", "Canlıların Özellikleri", "İnorganik Bileşikler", "Karbonhidratlar", "Lipitler", "Proteinler", "Enzimler", "Nükleik Asitler", "Hücre"],
+  Tarih: ["Türk İnkılabı", "Türk Dış Politikası", "Türkiye Tarihi", "Arayış Yılları", "Tarih ve Zaman", "İlk Çağ Uygarlıkları", "Orta Çağ'da Dünya", "İlk Türk Devletleri", "İslam Medeniyeti", "Türk-İslam Devletleri", "Selçuklu Türkiyesi", "Beylikten Devlete"],
+  Coğrafya: ["Ekonomik Faaliyetler", "Ülkeler ve Bölgeler", "Çevre ve Toplum", "Coğrafi Konum", "Doğa ve İnsan", "Dünyanın Şekli", "Yer ve Zaman", "Harita Bilgisi", "İklim Bilgisi", "Yerin Şekillenmesi", "Nüfus", "Göç"],
+  Felsefe: ["Siyaset Felsefesi", "Sanat Felsefesi", "Bilim Felsefesi", "Ahlak Felsefesi", "Felsefeyi Tanıma", "Felsefe ile Düşünme", "Varlık Felsefesi", "Bilgi Felsefesi", "Bilim Felsefesi", "Ahlak Felsefesi", "Din Felsefesi", "Sanat Felsefesi"],
 };
 const QUESTIONS = { Matematik: 120, Türkçe: 90, Fizik: 60, Biyoloji: 50, Tarih: 80, Coğrafya: 40, Felsefe: 30 };
 const SKIPS = ["KONU", "KONU", "ZAMAN", "KAYNAK", "DIGER"];
@@ -99,11 +100,11 @@ const diligence = (no) => ({ "1201": 0.25, "1202": 0.55, "1204": 0.85, "1205": 0
 
 for (const [username, subject] of Object.entries(branchOf)) {
   const teacher = teachers[username];
-  for (let w = -3; w <= 4; w++) {
+  for (let w = -7; w <= 4; w++) {
     const entry = await prisma.planEntry.create({
       data: {
         teacherId: teacher.id, examType: "TYT", date: weekStart(w), endDate: new Date(weekStart(w).getTime() + 6 * DAY),
-        kind: "TOPIC", subject, topic: TOPICS[subject][w + 3], sourceBook: "Golden Yayınları", questionCount: QUESTIONS[subject], schoolWide: true,
+        kind: "TOPIC", subject, topic: TOPICS[subject][w + 7], sourceBook: "Golden Yayınları", questionCount: QUESTIONS[subject], schoolWide: true,
       },
     });
     if (w > 0) continue;
@@ -118,9 +119,14 @@ for (const [username, subject] of Object.entries(branchOf)) {
         const answered = Math.round(q * (0.85 + rnd() * 0.15));
         const correct = Math.round(answered * (0.25 + diligence(no) * 0.45 + rnd() * 0.15));
         const wrong = Math.round((answered - correct) * (0.3 + rnd() * 0.5));
+        // Bazı teslimlerde yanlış/boş soru numaraları (rapordaki tekrar listesi) ve kısa bir not.
+        const numbers = rnd() < 0.35 ? [4, 9, 13, 21].slice(0, 2 + Math.floor(rnd() * 3)) : [];
         await prisma.assignmentRecipient.update({
           where: { id: r.id },
-          data: { completed: true, completedAt: new Date(weekStart(w).getTime() + (1 + Math.floor(rnd() * 5)) * DAY + 15 * 3600e3), submission: { create: { correctCount: correct, wrongCount: wrong, blankCount: q - correct - wrong } } },
+          data: {
+            completed: true, completedAt: new Date(weekStart(w).getTime() + (1 + Math.floor(rnd() * 5)) * DAY + 15 * 3600e3),
+            submission: { create: { correctCount: correct, wrongCount: wrong, blankCount: q - correct - wrong, questionNumbers: numbers, note: rnd() < 0.08 ? "Son sayfadaki sorularda zorlandım." : null } },
+          },
         });
       } else if (x < doneChance + 0.15) {
         await prisma.assignmentRecipient.update({ where: { id: r.id }, data: { skippedAt: new Date(weekStart(w).getTime() + 4 * DAY), skipReason: SKIPS[Math.floor(rnd() * SKIPS.length)] } });
@@ -154,7 +160,7 @@ await coachAssignment("Limit tekrarı", "Matematik", day(-1), day(3), "25 soru",
 
 // --- Zeynep Kaya: serbest çalışma + koçunun tarihli notları ---
 const zeynep = students["1204"];
-for (const [topic, c, w, b, d] of [["Paragraf", 30, 6, 4, 0], ["Cümle Yorumu", 25, 3, 2, 1], ["Sözcükte Anlam", 28, 8, 4, 2]]) {
+for (const [topic, c, w, b, d] of [["Paragraf", 30, 6, 4, 0], ["Cümle Yorumu", 25, 3, 2, 1], ["Sözcükte Anlam", 28, 8, 4, 2], ["Paragraf", 32, 5, 3, 9], ["Paragraf", 27, 7, 6, 16], ["Cümlede Anlam", 24, 4, 2, 23]]) {
   await prisma.studySession.create({ data: { studentId: zeynep.id, examType: "TYT", subject: "Türkçe", topic, correctCount: c, wrongCount: w, blankCount: b, studyDate: new Date(NOW.getTime() - d * DAY) } });
 }
 await prisma.coachNote.create({ data: { studentId: zeynep.id, teacherId: ayse.id, text: "Türkçe'de çok iyi gidiyor, paragrafta 31 net. Buradan güven kazandırıyorum.", createdAt: new Date(NOW.getTime() - 9 * DAY), updatedAt: new Date(NOW.getTime() - 9 * DAY) } });

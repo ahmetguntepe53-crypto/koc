@@ -397,7 +397,8 @@ adminRouter.delete("/photos/:photoId", async (req, res) => {
 adminRouter.get("/settings", async (req, res) => {
   try {
     const settings = await prisma.schoolSettings.findUnique({ where: { id: "singleton" } });
-    res.json({ yksExamDate: settings?.yksExamDate ?? null, lgsExamDate: settings?.lgsExamDate ?? null });
+    // aiConfigured: sunucuda Anthropic API anahtarı tanımlı mı (anahtarın kendisi asla dönmez).
+    res.json({ yksExamDate: settings?.yksExamDate ?? null, lgsExamDate: settings?.lgsExamDate ?? null, aiEnabled: !!settings?.aiEnabled, aiConfigured: !!process.env.ANTHROPIC_API_KEY });
   } catch (e) {
     handleErr(res, e);
   }
@@ -405,8 +406,9 @@ adminRouter.get("/settings", async (req, res) => {
 
 adminRouter.put("/settings", async (req, res) => {
   try {
-    const { yksExamDate, lgsExamDate } = req.body || {};
+    const { yksExamDate, lgsExamDate, aiEnabled } = req.body || {};
     const data = {};
+    if (aiEnabled !== undefined) data.aiEnabled = !!aiEnabled;
     if (yksExamDate !== undefined) {
       if (yksExamDate === null || yksExamDate === "") data.yksExamDate = null;
       else {
@@ -426,7 +428,7 @@ adminRouter.put("/settings", async (req, res) => {
       create: { id: "singleton", ...data },
       update: data,
     });
-    res.json({ yksExamDate: settings.yksExamDate, lgsExamDate: settings.lgsExamDate });
+    res.json({ yksExamDate: settings.yksExamDate, lgsExamDate: settings.lgsExamDate, aiEnabled: settings.aiEnabled, aiConfigured: !!process.env.ANTHROPIC_API_KEY });
   } catch (e) {
     handleErr(res, e);
   }

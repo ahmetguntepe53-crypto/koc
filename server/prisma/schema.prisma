@@ -104,6 +104,7 @@ model User {
   lastSeenAt DateTime?
   // Koçun bu öğrenci hakkındaki tarihli özel notları (bkz. CoachNote) ve bir koçun yazdığı notlar.
   notesAbout   CoachNote[] @relation("NoteStudent")
+  aiAnalyses   AiAnalysis[] @relation("AiAnalysisStudent")
   notesWritten CoachNote[] @relation("NoteAuthor")
   // --- Yalnızca role=TEACHER için anlamlı ters ilişki ---
   students User[] @relation("CoachAssignment")
@@ -375,6 +376,9 @@ model SchoolSettings {
   id          String    @id @default("singleton")
   yksExamDate DateTime?
   lgsExamDate DateTime?
+  // Yapay zekâ incelemesi (aylık raporda koça öneriler) — varsayılan KAPALI: anonimleştirilmiş sonuç
+  // özetleri yurt dışındaki bir hizmete (Anthropic) gider; okul KVKK açısından onaylayınca admin açar.
+  aiEnabled   Boolean   @default(false)
   updatedAt   DateTime  @updatedAt
 }
 
@@ -393,4 +397,30 @@ model CoachNote {
   updatedAt DateTime @updatedAt
 
   @@index([studentId, teacherId, createdAt])
+}
+
+// Aylık rapor bildirimi — her ay (YYYY-MM, raporu hazırlanan ay) için bir kez, ayın ilk haftasında saat
+// 08:00'den sonraki ilk zamanlayıcı turunda koçlara gider (bkz. scheduler.js > notifyMonthlyReports).
+// Satırın varlığı "bu ayın bildirimi gönderildi" demek — birden çok sunucu kopyası olsa da tek gönderim.
+model MonthlyReportRun {
+  month  String   @id
+  // Gönderimi üstlenen turun başladığı an (15 dakikadır bitmediyse başka tur devralır).
+  sentAt DateTime @default(now())
+  // Tüm koçlara gönderim bitti — null ise yarıda kalmış olabilir (koç başına tekrar gönderim engelli).
+  completedAt DateTime?
+}
+
+// Aylık raporun yapay zekâ incelemesi (öğrenci × ay) — yalnızca öğrencinin koçu ve admin görür. Üretim
+// ücretli olduğu için saklanır; aynı ay için yeniden üretim sınırlı (bkz. routes/aiAnalysis.js).
+model AiAnalysis {
+  id        String   @id @default(cuid())
+  studentId String
+  student   User     @relation("AiAnalysisStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  month     String
+  content   Json
+  model     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([studentId, month])
 }

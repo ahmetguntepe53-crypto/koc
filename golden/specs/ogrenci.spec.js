@@ -41,3 +41,14 @@ test("Çalışmam, Gelişim, Ben, Bildirimler", async ({ golden, page }) => {
   await page.getByRole("button", { name: "Bildirimler" }).click();
   await golden.snap("bildirimler");
 });
+
+test("Gelişim raporu: ders dökümü ve PDF sayfası", async ({ golden, page }) => {
+  await golden.open("ogrenci");
+  await golden.tab("Gelişim");
+  await page.locator("#rapor-karne").getByRole("button", { name: /Türkçe/ }).first().click();
+  await golden.settle();
+  await golden.snap("gelisim-ders");
+  await page.getByRole("button", { name: "Kapat" }).click();
+  await page.getByRole("button", { name: "PDF", exact: true }).click();
+  await golden.snap("gelisim-pdf");
+});

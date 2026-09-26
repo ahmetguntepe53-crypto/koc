@@ -192,6 +192,12 @@ export const api = {
   // --- özet istatistikler ---
   teacherStats: () => request("/stats/teacher"),
   studentStats: () => request("/stats/student"),
+  // Ayrıntılı başarı raporu (ders karnesi, konu analizi, düzen, sınıf karşılaştırması, öneriler) — bkz. src/reportModel.js.
+  teacherMonthlyReports: (month) => request(`/teacher/monthly-reports?month=${encodeURIComponent(month)}`),
+  // Yapay zekâ incelemesi (yalnızca koç/admin; okulda açık ve sunucuda yapılandırılmışsa).
+  getAiAnalysis: (studentId, month) => request(`/ai/analysis?studentId=${encodeURIComponent(studentId)}&month=${encodeURIComponent(month)}`),
+  createAiAnalysis: (studentId, month, refresh) => request("/ai/analysis", { method: "POST", body: { studentId, month, refresh } }),
+  getFullReport: (studentId) => request(`/stats/full-report${studentId ? `?studentId=${encodeURIComponent(studentId)}` : ""}`),
   getReport: (params = {}) => {
     const qs = new URLSearchParams(Object.entries(params).filter(([, v]) => v)).toString();
     return request(`/stats/report${qs ? `?${qs}` : ""}`);

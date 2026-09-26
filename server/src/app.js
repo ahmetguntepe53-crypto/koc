@@ -14,6 +14,7 @@ import { statsRouter } from "./routes/stats.js";
 import { planEntriesRouter } from "./routes/planEntries.js";
 import { settingsRouter } from "./routes/settings.js";
 import { branchRouter } from "./routes/branch.js";
+import { aiAnalysisRouter } from "./routes/aiAnalysis.js";
 import { requireAuth, requireRole } from "./middleware/auth.js";
 
 export const app = express();
@@ -59,6 +60,7 @@ app.use("/api/stats", requireAuth, statsRouter);
 app.use("/api/plan-entries", requireAuth, requireRole("TEACHER"), planEntriesRouter);
 app.use("/api/settings", requireAuth, settingsRouter);
 app.use("/api/branch", requireAuth, requireRole("TEACHER"), branchRouter);
+app.use("/api/ai", requireAuth, requireRole("TEACHER", "ADMIN"), aiAnalysisRouter);
 
 // Bilinmeyen /api/* rotaları için genel 404 — istemci tarafında "sunucudan boş HTML döndü" gibi
 // anlaşılması güç hatalar yerine net bir JSON hata mesajı görülsün diye.

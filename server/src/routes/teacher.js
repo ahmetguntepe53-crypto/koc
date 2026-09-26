@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
 import { trWeekRange, recipientStatus, netOf } from "../weekStats.js";
+import { buildMonthlySummary, monthBounds } from "../monthlySummary.js";
 
 // server/src/app.js'de requireAuth + requireRole("TEACHER") ile mount edilir.
 export const teacherRouter = Router();
@@ -70,6 +71,38 @@ teacherRouter.get("/students", async (req, res) => {
     });
 
     res.json({ students: withRates });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Aylık raporlar ekranı (koç): her öğrencinin o ayki özeti — yapay zekâ incelemesiyle AYNI hesap
+// (monthlySummary.js), ekran ve inceleme aynı sayıları görsün. Ayrıntı öğrenci raporunda.
+teacherRouter.get("/monthly-reports", async (req, res) => {
+  try {
+    const { month } = req.query || {};
+    assert(monthBounds(month), "Geçersiz ay");
+    const students = await prisma.user.findMany({
+      where: { teacherId: req.userId, role: "STUDENT", banned: false },
+      select: { id: true, name: true, className: true },
+      orderBy: { name: "asc" },
+    });
+    const analyses = await prisma.aiAnalysis.findMany({ where: { month, studentId: { in: students.map((s) => s.id) } }, select: { studentId: true } });
+    const withAi = new Set(analyses.map((a) => a.studentId));
+    const rows = [];
+    for (const st of students) {
+      const s = await buildMonthlySummary(st.id, month);
+      rows.push({
+        id: st.id, name: st.name, className: st.className,
+        toplam: s.toplam, oncekiAyToplam: s.oncekiAyToplam, odevDuzeni: s.odevDuzeni, aktifGunSayisi: s.aktifGunSayisi,
+        serbestCalisma: { kayit: s.serbestCalisma.kayit, soru: s.serbestCalisma.soru },
+        // Ham net oranı eşikleri (65 / 40) — ayrıntılı etiket (küçültme + okul düzeltmesi) öğrenci raporunda.
+        odakDersler: s.dersler.filter((d) => !d.veriAz && d.netOrani != null && d.netOrani < 40).map((d) => d.ders),
+        gucluDersler: s.dersler.filter((d) => !d.veriAz && d.netOrani != null && d.netOrani >= 65).map((d) => d.ders),
+        aiHazir: withAi.has(st.id),
+      });
+    }
+    res.json({ month, students: rows });
   } catch (e) {
     handleErr(res, e);
   }

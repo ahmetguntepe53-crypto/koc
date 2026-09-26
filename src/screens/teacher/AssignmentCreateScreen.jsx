@@ -84,13 +84,17 @@ function shortDateRange(start, end) {
   return `${s.getDate()} ${month(s)}${year(s)} – ${e.getDate()} ${month(e)}${year(e)}`;
 }
 
-export default function AssignmentCreateScreen({ onCreated, initialStudentId }) {
+export default function AssignmentCreateScreen({ onCreated, initialStudentId, prefill }) {
   const [students, setStudents] = useState([]);
   const [manualTrack, setManualTrack] = useState(null); // roster karma sınav türlerinden oluşuyorsa koçun elle seçtiği
   const [checkedIds, setCheckedIds] = useState(() => new Set());
-  const [examType, setExamType] = useState("TYT");
-  const [subject, setSubject] = useState(SUBJECTS_BY_EXAM.TYT[0]);
-  const [topic, setTopic] = useState("");
+  // Rapordaki kısayoldan açıldıysa ders ve konu dolu gelir (kaydetmez — kullanıcı onaylar).
+  const [examType, setExamType] = useState(() => (SUBJECTS_BY_EXAM[prefill?.examType] ? prefill.examType : "TYT"));
+  const [subject, setSubject] = useState(() => {
+    const ex = SUBJECTS_BY_EXAM[prefill?.examType] ? prefill.examType : "TYT";
+    return SUBJECTS_BY_EXAM[ex].includes(prefill?.subject) ? prefill.subject : SUBJECTS_BY_EXAM[ex][0];
+  });
+  const [topic, setTopic] = useState(() => prefill?.topic || "");
   const [sourceBook, setSourceBook] = useState("");
   const [sourceBooks, setSourceBooks] = useState([]);
   const [pageRange, setPageRange] = useState("");

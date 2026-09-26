@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Bell, Check, ChevronRight, ClipboardList, AlertTriangle, Users, AlarmClock } from "lucide-react";
+import { Bell, Check, ChevronRight, ClipboardList, AlertTriangle, Users, AlarmClock, BarChart3 } from "lucide-react";
 import { C, bodyFont, monoFont } from "../theme.js";
 import { Card, Button, EmptyState, LoadingState } from "../components/common.jsx";
 import { api } from "../api.js";
@@ -290,5 +290,6 @@ const NOTIFICATION_STYLE = {
   get assignment_due() { return { icon: AlarmClock, tone: { bg: C.amberSoft, fg: C.amber } }; },
   get assignment_overdue() { return { icon: AlertTriangle, tone: { bg: C.redSoft, fg: C.red } }; },
   get assignment_overdue_summary() { return { icon: Users, tone: { bg: C.amberSoft, fg: C.amber } }; },
+  get monthly_report() { return { icon: BarChart3, tone: { bg: C.surface2, fg: C.text2 } }; },
   get info() { return { icon: Bell, tone: { bg: C.surface2, fg: C.muted } }; },
 };

@@ -170,6 +170,50 @@ async function notifyOverdueRecipients(now) {
   }
 }
 
+// Aylık rapor bildirimi: ayın ilk haftasında (08:00'den sonra) önceki ayın raporları hazır diye her koça
+// BİR bildirim — dokununca "Aylık raporlar" ekranı açılır (öğrenci öğrenci inceleme + PDF). Ayda bir kez:
+// MonthlyReportRun satırı "sahiplenilir" (birincil anahtar), ikinci kez oluşturulamaz. Sunucu 1'inde kapalı
+// olsa bile ilk hafta içinde yetişir.
+const MONTHS_TR = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"];
+async function notifyMonthlyReports(now) {
+  const tr = new Date(now.getTime() + 3 * 3600e3);
+  if (tr.getUTCDate() > 7 || trHour(now) < 8) return;
+  const prev = new Date(Date.UTC(tr.getUTCFullYear(), tr.getUTCMonth() - 1, 1));
+  const month = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}`;
+  // Ayı sahiplen: satır yoksa oluştur; varsa ve bitmediyse 15 dakikadır ilerlemiyorsa (çökme/yeniden başlatma) devral.
+  const run = await prisma.monthlyReportRun.findUnique({ where: { month } });
+  if (run?.completedAt) return;
+  if (!run) {
+    try {
+      await prisma.monthlyReportRun.create({ data: { month, sentAt: now } });
+    } catch (e) {
+      if (e?.code === "P2002") return; // başka bir tur az önce sahiplendi
+      throw e;
+    }
+  } else {
+    if (now.getTime() - run.sentAt.getTime() < 15 * 60 * 1000) return;
+    const taken = await prisma.monthlyReportRun.updateMany({ where: { month, completedAt: null, sentAt: run.sentAt }, data: { sentAt: now } });
+    if (!taken.count) return;
+  }
+  const coaches = await prisma.user.findMany({
+    where: { role: "TEACHER", banned: false, students: { some: { banned: false } } },
+    select: { id: true, _count: { select: { students: { where: { banned: false } } } } },
+  });
+  for (const c of coaches) {
+    try {
+      // Yarıda kalan bir turdan sonra devralınırsa aynı koça ikinci bildirim gitmez.
+      const already = await prisma.notification.findFirst({ where: { userId: c.id, type: "monthly_report", data: { path: ["month"], equals: month } }, select: { id: true } });
+      if (already) continue;
+      await notifyUser(c.id, `${MONTHS_TR[prev.getUTCMonth()]} ayı raporları hazır — ${c._count.students} öğrencinin aylık gelişim raporunu incele; hepsini tek PDF olarak da alabilirsin.`, {
+        type: "monthly_report", data: { screen: "monthlyReports", month }, now,
+      });
+    } catch (e) {
+      console.error(`[scheduler] aylık rapor bildirimi gönderilemedi (koç ${c.id}):`, e.message);
+    }
+  }
+  await prisma.monthlyReportRun.update({ where: { month }, data: { completedAt: now } });
+}
+
 // Süresi geçmiş bir ödevde hâlâ tamamlamamış öğrenci varsa koça BİR KEZ özet bildirimi gönderir —
 // teacherOverdueNotifiedAt null olan ödevler aranır; tamamlanma durumu ne olursa olsun (hepsi
 // bitirmiş olsa bile) işlendikten hemen sonra doldurulur, aynı ödev için ikinci kez kontrol edilmez.
@@ -209,7 +253,7 @@ export async function runSchedulerTick(now = new Date()) {
     // çalışır, aksi halde tek bir hata o tick'teki TÜM zamanlanmış işleri (ör. öğretmen özet
     // bildirimini) sessizce atlatırdı.
     // Önce gece bekletilen push'lar (sabahın ilk tick'i), sonra yeni yayınlar ve hatırlatmalar.
-    const steps = [flushPendingPushes, publishDueAssignments, publishDuePlanEntries, notifyDueToday, notifyOverdueRecipients, notifyTeachersOfOverdueAssignments];
+    const steps = [flushPendingPushes, publishDueAssignments, publishDuePlanEntries, notifyDueToday, notifyOverdueRecipients, notifyTeachersOfOverdueAssignments, notifyMonthlyReports];
     for (const step of steps) {
       try {
         await step(now);

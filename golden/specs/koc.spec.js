@@ -51,3 +51,28 @@ test("Ödev ata, ödevlerim, ödev detayı", async ({ golden, page }) => {
   await golden.settle();
   await golden.snap("odev-detay");
 });
+
+test("Öğrenci gelişim raporu (koç görünümü), ders dökümü, PDF", async ({ golden, page }) => {
+  await golden.open("koc");
+  await page.getByText("Zeynep Kaya").first().click();
+  await golden.settle();
+  await page.getByRole("button", { name: "Rapor", exact: true }).click();
+  await golden.settle();
+  await golden.snap("koc-rapor");
+  await page.locator("#rapor-karne").getByRole("button", { name: /Matematik/ }).first().click();
+  await golden.settle();
+  await golden.snap("koc-rapor-ders");
+  await page.getByRole("button", { name: "Kapat" }).click();
+  await page.getByRole("button", { name: "PDF", exact: true }).click();
+  await golden.snap("koc-rapor-pdf");
+});
+
+test("Aylık raporlar ve öğrencinin aylık raporu", async ({ golden, page }) => {
+  await golden.open("koc");
+  await page.getByRole("button", { name: "Aylık rapor", exact: true }).click();
+  await golden.settle();
+  await golden.snap("aylik-raporlar");
+  await page.getByText("Zeynep Kaya").first().click();
+  await golden.settle();
+  await golden.snap("aylik-rapor-ogrenci");
+});

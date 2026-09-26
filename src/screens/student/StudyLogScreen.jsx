@@ -15,15 +15,19 @@ function parseQuestionNumbers(text) {
   return text.split(",").map((s) => parseInt(s.trim(), 10)).filter((n) => Number.isInteger(n) && n > 0);
 }
 
-export default function StudyLogScreen({ user }) {
+export default function StudyLogScreen({ user, prefill }) {
   // Okul yalnızca YKS (TYT/AYT) hazırlığı yapıyor — sınıf düzeyi girilmemişse de TYT/AYT gösterilir.
   const track = trackForGrade(user?.gradeLevel);
 
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [examType, setExamType] = useState("TYT");
-  const [subject, setSubject] = useState(SUBJECTS_BY_EXAM.TYT[0]);
-  const [topic, setTopic] = useState("");
+  // Rapordaki kısayoldan açıldıysa ders ve konu dolu gelir (kaydetmez — kullanıcı onaylar).
+  const [examType, setExamType] = useState(() => (SUBJECTS_BY_EXAM[prefill?.examType] ? prefill.examType : "TYT"));
+  const [subject, setSubject] = useState(() => {
+    const ex = SUBJECTS_BY_EXAM[prefill?.examType] ? prefill.examType : "TYT";
+    return SUBJECTS_BY_EXAM[ex].includes(prefill?.subject) ? prefill.subject : SUBJECTS_BY_EXAM[ex][0];
+  });
+  const [topic, setTopic] = useState(() => prefill?.topic || "");
   const [sourceBook, setSourceBook] = useState("");
   const [pageRange, setPageRange] = useState("");
   const [correctCount, setCorrectCount] = useState("");

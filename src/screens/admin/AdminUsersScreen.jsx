@@ -257,6 +257,7 @@ export default function AdminUsersScreen() {
         <>
           <SectionHeader title="Dönem ayarları" style={{ marginTop: 4 }} />
           <ExamDatesCard />
+          <AiSettingsCard />
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               ["Bildirim sessiz saatleri", "23:00 – 07:00", "Bu aralıkta hiçbir bildirim telefona gitmez; gece yayınlanan ödevin bildirimi sabah 07:00'de tek özet olarak gider."],
@@ -374,6 +375,55 @@ function ExamDatesCard() {
         </div>
       </div>
       {msg && <div style={{ fontSize: 12.5, fontWeight: 600, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</div>}
+    </Card>
+  );
+}
+
+// Yapay zekâ incelemesi (aylık raporda koça öneriler) — varsayılan KAPALI. Açılınca koçun isteğiyle kimliği
+// çıkarılmış aylık sonuç özetleri (ders/konu adları ve sayılar; ad, numara, sınıf şubesi YOK) yurt dışındaki bir
+// hizmete (Anthropic) gider — okulun KVKK açısından onayı gerekir, bu yüzden açarken ayrıca onay istenir.
+function AiSettingsCard() {
+  const [state, setState] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  useEffect(() => {
+    api.adminGetSettings().then((s) => setState({ enabled: !!s.aiEnabled, configured: !!s.aiConfigured })).catch(() => setState(null));
+  }, []);
+  if (!state) return null;
+  const toggle = async () => {
+    const next = !state.enabled;
+    if (next) {
+      const ok = await confirmDialog({
+        title: "Yapay zekâ incelemesi açılsın mı?",
+        message: "Koçlar bir öğrencinin aylık raporu için inceleme istediğinde, öğrencinin kimliği çıkarılmış aylık sonuç özeti (ders ve konu adları, doğru/yanlış/boş sayıları, ödev düzeni) yurt dışındaki yapay zekâ hizmetine (Anthropic, ABD) gönderilir. Ad, okul numarası, sınıf şubesi ve koç adı gönderilmez.\n\nBu, kişisel verilerin yurt dışına aktarımı sayılabilir: açmadan önce okulun KVKK açısından onayını ve aydınlatma metninin güncellendiğini doğrulayın.",
+        confirmLabel: "Onaylıyorum, aç",
+      });
+      if (!ok) return;
+    }
+    setSaving(true);
+    setMsg(null);
+    try {
+      const s = await api.adminUpdateSettings({ aiEnabled: next });
+      setState({ enabled: !!s.aiEnabled, configured: !!s.aiConfigured });
+      setMsg({ type: "ok", text: next ? "Açıldı." : "Kapatıldı." });
+    } catch (e) {
+      setMsg({ type: "error", text: e.message || "Kaydedilemedi" });
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (
+    <Card style={{ padding: 18, marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 3 }}>
+        <div style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 800, color: C.text, flex: 1 }}>Yapay zekâ incelemesi</div>
+        <Pill tone={state.enabled ? "green" : "muted"}>{state.enabled ? "Açık" : "Kapalı"}</Pill>
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.muted, marginBottom: 12, lineHeight: 1.5 }}>
+        Aylık raporda koça öğrenci için güçlü yönler, gelişim alanları ve somut adımlar önerir. Kimliği çıkarılmış aylık özet yurt dışındaki hizmete gider; okul onayı olmadan açmayın.
+        {!state.configured && " Sunucuda yapay zekâ anahtarı tanımlı değil — açılsa da çalışmaz."}
+      </div>
+      <Button small variant={state.enabled ? "secondary" : "primary"} disabled={saving} onClick={toggle}>{saving ? "Kaydediliyor..." : state.enabled ? "Kapat" : "Aç"}</Button>
+      {msg && <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 8, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</div>}
     </Card>
   );
 }

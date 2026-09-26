@@ -71,6 +71,7 @@ export function pushTitle(type, data) {
     case "assignment_due": return "Bugün son gün";
     case "assignment_overdue":
     case "assignment_overdue_summary": return "Süresi geçen ödev";
+    case "monthly_report": return "Aylık raporlar hazır";
     default: return APP_TITLE;
   }
 }

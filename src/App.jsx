@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange, BarChart3, GraduationCap } from "lucide-react";
 import { C, THEMES, DEFAULT_THEME, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
-import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID } from "./components/common.jsx";
+import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID, LoadingState } from "./components/common.jsx";
 import { api } from "./api.js";
 import { registerPush, unregisterPush, ensurePushRegistered } from "./native/push.js";
 import { setAppBadge } from "./native/badge.js";
@@ -22,8 +22,10 @@ import AssignmentDetailScreen from "./screens/teacher/AssignmentDetailScreen.jsx
 import StudentHomeScreen from "./screens/student/StudentHomeScreen.jsx";
 import AssignmentSubmitScreen from "./screens/student/AssignmentSubmitScreen.jsx";
 import StudyLogScreen from "./screens/student/StudyLogScreen.jsx";
-import ReportScreen from "./screens/ReportScreen.jsx";
+// Rapor ekranı ve modeli (~120 KB) yalnızca açıldığında yüklenir — ilk açılış paketini büyütmesin.
+const ReportScreen = lazy(() => import("./screens/ReportScreen.jsx"));
 import BranchScreen from "./screens/teacher/BranchScreen.jsx";
+import MonthlyReportsScreen from "./screens/teacher/MonthlyReportsScreen.jsx";
 
 const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments" };
 
@@ -97,6 +99,14 @@ export default function App() {
   // Rapor artık kalıcı bir sekme değil — öğretmen bir öğrencinin özetinden, öğrenci ise kendi
   // profilinden açar; "geri" hangisinden açıldıysa oraya dönsün diye bu tutulur.
   const [reportReturnTo, setReportReturnTo] = useState("studentOverview");
+  // Aylık raporlardan açılan öğrenci raporu o ayın penceresiyle açılır; aylık raporlar ekranı hangi ayda kaldıysa oraya döner.
+  const [reportMonth, setReportMonth] = useState(null);
+  const [monthlyMonth, setMonthlyMonth] = useState(null);
+  // Rapordaki "Çalışma ekle" / "Bu konuya ödev ver" kısayolları formu ders ve konu dolu açar (kaydetmez).
+  const [studyPrefill, setStudyPrefill] = useState(null);
+  const [assignPrefill, setAssignPrefill] = useState(null);
+  // Öğrenci rapordaki "Sonucu gir" / "Çalışma ekle" ile ödev ya da serbest çalışma ekranına geçtiyse geri tuşu rapora döner.
+  const [returnToReport, setReturnToReport] = useState(false);
   // İlgili liste ekranları kendi useEffect'inde yükleniyor; bir kayıt oluşturulduğunda/güncellendiğinde
   // ya da detaydan dönüldüğünde listenin BAYAT veriyle kalmaması için bu sayaçlar artırılıp yeniden yükleme tetiklenir.
   const [assignmentsRefreshKey, setAssignmentsRefreshKey] = useState(0);
@@ -203,6 +213,7 @@ export default function App() {
   // ekranındaki bir satıra dokununca kullanılır. data: sunucudaki notifyUser'ın yazdığı { screen, ... }.
   function goToNotificationTarget(data) {
     if (data?.screen === "assignmentSubmit" && data?.recipientId) {
+      setReturnToReport(false);
       setSelectedRecipientId(data.recipientId);
       setScreen("assignmentSubmit");
     } else if (data?.screen === "assignmentDetail" && data?.assignmentId) {
@@ -211,6 +222,9 @@ export default function App() {
       // ekrana düşüyordu — bildirimden açılan ödev her zaman ödev listesine döner.
       setAssignmentDetailReturnTo("assignments");
       setScreen("assignmentDetail");
+    } else if (data?.screen === "monthlyReports" && authUser?.role === "TEACHER") {
+      setMonthlyMonth(typeof data.month === "string" ? data.month : null);
+      setScreen("monthlyReports");
     } else if (data?.screen === "home") {
       // Gruplanmış bildirim (ör. "Ayşe Yılmaz sana 6 ödev gönderdi") tek bir ödeve değil listeye gider.
       setScreen(DEFAULT_SCREEN_BY_ROLE[authUser?.role] || "profile");
@@ -226,6 +240,13 @@ export default function App() {
     return onBackButton(() => {
       // Açık bir pencere (form, fotoğraf, not) varsa geri tuşu önce onu kapatır.
       if (closeTopModal()) return;
+      if (screen === "assignmentCreate" && assignmentCreateReturnTo === "reports") {
+        setAssignPrefill(null);
+        setAssignmentCreateInitialStudentId(null);
+        setAssignmentCreateReturnTo("assignments");
+        setScreen("reports");
+        return;
+      }
       if (screen === "assignmentCreate" && assignmentCreateReturnTo === "studentOverview" && selectedStudentId) {
         // Öğrenci özetindeki "Yeni Ödev Ata"dan açıldıysa sekme kökü sayılmaz — özete geri döner,
         // uygulamadan çıkıp yarım formu kaybettirmez.
@@ -236,7 +257,7 @@ export default function App() {
       }
       if (screen === "assignmentDetail") {
         setSelectedAssignmentId(null);
-        if (assignmentDetailReturnTo === "studentOverview") { setScreen("studentOverview"); return; }
+        if (assignmentDetailReturnTo === "studentOverview" || assignmentDetailReturnTo === "reports") { setScreen(assignmentDetailReturnTo); return; }
         setAssignmentsRefreshKey((k) => k + 1);
         setScreen("assignments");
         return;
@@ -244,7 +265,14 @@ export default function App() {
       if (screen === "assignmentSubmit") {
         setSelectedRecipientId(null);
         setMyAssignmentsRefreshKey((k) => k + 1);
-        setScreen("myAssignments");
+        setScreen(returnToReport ? "reports" : "myAssignments");
+        setReturnToReport(false);
+        return;
+      }
+      if (screen === "studyLog" && returnToReport) {
+        setReturnToReport(false);
+        setStudyPrefill(null);
+        setScreen("reports");
         return;
       }
       if (screen === "studentOverview") {
@@ -253,7 +281,12 @@ export default function App() {
         return;
       }
       if (screen === "reports" && reportReturnTo !== "tab") {
+        setReportMonth(null);
         setScreen(reportReturnTo);
+        return;
+      }
+      if (screen === "monthlyReports") {
+        setScreen("students");
         return;
       }
       if (screen === "plan" && authUser.role === "TEACHER" && authUser.isSubjectTeacher) {
@@ -267,7 +300,7 @@ export default function App() {
       }
       setScreen(DEFAULT_SCREEN_BY_ROLE[authUser.role] || "profile");
     });
-  }, [authUser, screen, assignmentDetailReturnTo, reportReturnTo, assignmentCreateReturnTo, selectedStudentId]);
+  }, [authUser, screen, assignmentDetailReturnTo, reportReturnTo, assignmentCreateReturnTo, selectedStudentId, returnToReport]);
 
   if (!authChecked) {
     return <div style={{ minHeight: "100vh", background: C.bg }} />;
@@ -304,38 +337,58 @@ export default function App() {
   const openAssignment = (id, returnTo = "assignments") => { setSelectedAssignmentId(id); setAssignmentDetailReturnTo(returnTo); setScreen("assignmentDetail"); };
   const backToAssignments = () => {
     setSelectedAssignmentId(null);
-    if (assignmentDetailReturnTo === "studentOverview") { setScreen("studentOverview"); return; }
+    if (assignmentDetailReturnTo === "studentOverview" || assignmentDetailReturnTo === "reports") { setScreen(assignmentDetailReturnTo); return; }
     setAssignmentsRefreshKey((k) => k + 1);
     setScreen("assignments");
   };
   const onAssignmentCreated = () => {
     setAssignmentCreateInitialStudentId(null);
-    if (assignmentCreateReturnTo === "studentOverview") { setScreen("studentOverview"); return; }
+    setAssignPrefill(null);
+    if (assignmentCreateReturnTo === "studentOverview" || assignmentCreateReturnTo === "reports") { const to = assignmentCreateReturnTo; setAssignmentCreateReturnTo("assignments"); setScreen(to); return; }
     setAssignmentsRefreshKey((k) => k + 1);
     setScreen("assignments");
   };
 
-  const openRecipient = (id) => { setSelectedRecipientId(id); setScreen("assignmentSubmit"); };
-  const backToMyAssignments = () => { setSelectedRecipientId(null); setMyAssignmentsRefreshKey((k) => k + 1); setScreen("myAssignments"); };
+  const openRecipient = (id) => { setReturnToReport(false); setSelectedRecipientId(id); setScreen("assignmentSubmit"); };
+  const openRecipientFromReport = (id) => { setSelectedRecipientId(id); setReturnToReport(true); setScreen("assignmentSubmit"); };
+  const backToMyAssignments = () => {
+    setSelectedRecipientId(null);
+    setMyAssignmentsRefreshKey((k) => k + 1);
+    setScreen(returnToReport ? "reports" : "myAssignments");
+    setReturnToReport(false);
+  };
+  const backFromStudyLog = () => { setReturnToReport(false); setStudyPrefill(null); setScreen("reports"); };
 
   const openStudent = (id, name) => { setSelectedStudentId(id); setSelectedStudentName(name); setCoachNoteOpen(false); setScreen("studentOverview"); };
   const backToStudents = () => { setSelectedStudentId(null); setSelectedStudentName(null); setScreen("students"); };
   const createAssignmentForStudent = (studentId) => {
+    setAssignPrefill(null);
     setAssignmentCreateInitialStudentId(studentId);
     setAssignmentCreateReturnTo("studentOverview");
     setScreen("assignmentCreate");
   };
   // Rapor artık sekme değil — öğretmen tarafında bir öğrencinin özetinden (id/isim birlikte), öğrenci
   // tarafında ise doğrudan kendi profilinden (id/isim gerekmez, ReportScreen kendi verisini yükler) açılır.
-  const openReport = (returnTo, studentId, studentName) => {
+  const openReport = (returnTo, studentId, studentName, month = null) => {
     if (studentId) { setSelectedStudentId(studentId); setSelectedStudentName(studentName); }
     setReportReturnTo(returnTo);
+    setReportMonth(month);
     setScreen("reports");
   };
-  const backFromReport = () => setScreen(reportReturnTo);
+  const backFromReport = () => { setReportMonth(null); setScreen(reportReturnTo); };
+  const openMonthly = (month) => { if (month) setMonthlyMonth(month); setScreen("monthlyReports"); };
+  const openStudyLogPrefilled = (prefill) => { setStudyPrefill(prefill ? { ...prefill, key: Date.now() } : null); setReturnToReport(true); setScreen("studyLog"); };
+  const openAssignPrefilled = (prefill) => {
+    setAssignmentCreateInitialStudentId(prefill?.studentId || null);
+    setAssignPrefill(prefill ? { ...prefill, key: Date.now() } : null);
+    setAssignmentCreateReturnTo("reports");
+    setScreen("assignmentCreate");
+  };
   // Sekmelerden normal şekilde Ödev Oluştur'a gidilince az önceki "tek öğrenci" ön seçimi yapışıp kalmasın diye.
   const selectTab = (id) => {
-    if (id === "assignmentCreate") { setAssignmentCreateInitialStudentId(null); setAssignmentCreateReturnTo("assignments"); }
+    if (id === "assignmentCreate") { setAssignmentCreateInitialStudentId(null); setAssignmentCreateReturnTo("assignments"); setAssignPrefill(null); }
+    if (id === "studyLog") setStudyPrefill(null);
+    setReturnToReport(false);
     if (id === "reports") setReportReturnTo("tab");
     setScreen(id);
   };
@@ -343,22 +396,29 @@ export default function App() {
   const tabs = [...tabsFor(authUser), { id: "profile", label: "Ben", icon: UserCircle2 }];
   // Başlıktaki geri düğmesi — detay ekranlarında (sayfa içindeki "← … dön" bağlantılarının yerine).
   const backToOverviewFromCreate = () => {
+    const to = assignmentCreateReturnTo === "reports" ? "reports" : "studentOverview";
     setAssignmentCreateInitialStudentId(null);
+    setAssignPrefill(null);
     setAssignmentCreateReturnTo("assignments");
-    setScreen("studentOverview");
+    setScreen(to);
   };
   const headerBack = screen === "assignmentSubmit" ? backToMyAssignments
     : screen === "assignmentDetail" ? backToAssignments
     : screen === "studentOverview" ? backToStudents
     : screen === "reports" && reportReturnTo !== "tab" ? backFromReport
     : screen === "plan" && authUser.role === "TEACHER" && authUser.isSubjectTeacher ? () => setScreen("branch")
-    : screen === "assignmentCreate" && assignmentCreateReturnTo === "studentOverview" && selectedStudentId ? backToOverviewFromCreate
+    : screen === "assignmentCreate" && ((assignmentCreateReturnTo === "studentOverview" && selectedStudentId) || assignmentCreateReturnTo === "reports") ? backToOverviewFromCreate
+    : screen === "monthlyReports" ? () => setScreen("students")
+    : screen === "studyLog" && returnToReport ? backFromStudyLog
     : undefined;
   // Detay ekranlarındayken de ait olduğu liste sekmesi kenar çubuğunda aktif görünsün diye.
-  const activeTabId = screen === "assignmentDetail" ? (assignmentDetailReturnTo === "studentOverview" ? "students" : "assignments")
+  const activeTabId = screen === "assignmentDetail" ? (assignmentDetailReturnTo === "studentOverview" || assignmentDetailReturnTo === "reports" ? "students" : "assignments")
+    : screen === "monthlyReports" ? "students"
+    : screen === "assignmentCreate" && assignmentCreateReturnTo === "reports" ? "students"
+    : (screen === "assignmentSubmit" || screen === "studyLog") && returnToReport ? "reports"
     : screen === "assignmentSubmit" ? "myAssignments"
     : screen === "studentOverview" ? "students"
-    : screen === "reports" ? (reportReturnTo === "studentOverview" ? "students" : reportReturnTo === "tab" ? "reports" : "profile")
+    : screen === "reports" ? (reportReturnTo === "studentOverview" || reportReturnTo === "monthlyReports" ? "students" : reportReturnTo === "tab" ? "reports" : "profile")
     : screen === "plan" && authUser.isSubjectTeacher ? "branch"
     : screen;
 
@@ -379,6 +439,9 @@ export default function App() {
               )}
               {screen === "studentOverview" && (
                 <HeaderTextButton label="Notlar" onClick={() => setCoachNoteOpen(true)} />
+              )}
+              {screen === "students" && authUser.role === "TEACHER" && (
+                <HeaderTextButton label="Aylık rapor" onClick={() => openMonthly(null)} />
               )}
               {/* Ekranın kendi başlık düğmeleri için yuva — ör. ReportScreen PDF düğmesini buraya
                   createPortal ile yerleştirir (düğmenin durumu/işlevi ekranın içinde kalır). */}
@@ -408,8 +471,13 @@ export default function App() {
             coachNoteOpen, onCloseNote: () => setCoachNoteOpen(false),
             openNotificationTarget: goToNotificationTarget,
             setHeader: setHeaderOverride,
-            openStudyLog: () => setScreen("studyLog"),
+            openStudyLog: () => { setStudyPrefill(null); setReturnToReport(false); setScreen("studyLog"); },
+            openRecipientFromReport,
             openPlan: () => setScreen("plan"),
+            reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill,
+            openStudyLogPrefilled, openAssignPrefilled, openMonthly,
+            openHome: () => setScreen(DEFAULT_SCREEN_BY_ROLE[authUser.role] || "profile"),
+            exportMonthlyPdf: async (month, students) => (await import("./monthlyExport.js")).exportMonthlyReportsPdf({ month, students, coachName: authUser.name }),
           })}
         </div>
       </div>
@@ -422,6 +490,7 @@ export default function App() {
 function screenTitle(screen, role, { selectedStudentName } = {}) {
   if (screen === "studentOverview" && selectedStudentName) return selectedStudentName;
   if (screen === "reports" && role === "TEACHER" && selectedStudentName) return `${selectedStudentName} — Rapor`;
+  if (screen === "monthlyReports") return "Aylık raporlar";
   const titles = {
     profile: "Ben", notifications: "Bildirimler", users: "Kurulum", photos: "Kanıt fotoğrafları",
     students: "Öğrencilerim", assignmentCreate: "Ödev ata", assignments: "Ödevlerim", branch: "Branş",
@@ -440,7 +509,7 @@ function screenSubtitle(screen, authUser) {
   if (screen === "users") return "Okul yönetimi · 2026–27 dönemi";
   if (screen === "students" || screen === "assignmentCreate" || screen === "assignments" || screen === "plan") return authUser.name;
   if (screen === "studyLog") return "Ödev dışı kendi çalışmaların";
-  if (screen === "reports" && authUser.role === "STUDENT") return "Ders ders doğru, yanlış ve net";
+  if (screen === "reports" && authUser.role === "STUDENT") return "Güçlü yanların, odak alanların ve gelişimin";
   return null;
 }
 
@@ -484,27 +553,47 @@ function renderScreen({
   selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
   selectedStudentName, reportReturnTo, openReport, backFromReport,
   coachNoteOpen, onCloseNote, openNotificationTarget, setHeader, openStudyLog, openPlan,
+  reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill, openStudyLogPrefilled, openAssignPrefilled,
+  openHome, exportMonthlyPdf, openRecipientFromReport,
 }) {
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
   if (screen === "reports" && (authUser.role !== "TEACHER" || selectedStudentId)) {
     return (
+      <Suspense fallback={<div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}><LoadingState /></div>}>
       <ReportScreen
+        key={`${selectedStudentId || "me"}-${reportMonth || ""}`}
         user={authUser}
         studentId={selectedStudentId}
         studentName={selectedStudentName}
-        onBack={backFromReport}
-        backLabel={reportReturnTo === "studentOverview" ? "Öğrenci Özetine Dön" : "Profilime Dön"}
+        month={reportMonth}
+        onOpenRecipient={authUser.role === "STUDENT" ? openRecipientFromReport : undefined}
+        onOpenStudyLog={authUser.role === "STUDENT" ? openStudyLogPrefilled : undefined}
+        onOpenHome={authUser.role === "STUDENT" ? openHome : undefined}
+        onAssign={authUser.role === "TEACHER" ? openAssignPrefilled : undefined}
+        onOpenAssignment={authUser.role === "TEACHER" ? (id) => openAssignment(id, "reports") : undefined}
       />
+      </Suspense>
     );
   }
   if (authUser.role === "ADMIN" && screen === "users") return <AdminUsersScreen />;
   if (authUser.role === "ADMIN" && screen === "photos") return <AdminPhotosScreen />;
   if (authUser.role === "TEACHER") {
     if (screen === "students") return <TeacherStudentsScreen user={authUser} onOpen={openStudent} setHeader={setHeader} />;
+    if (screen === "monthlyReports") {
+      return (
+        <MonthlyReportsScreen
+          month={monthlyMonth}
+          onMonthChange={setMonthlyMonth}
+          setHeader={setHeader}
+          onOpenStudent={(id, name, month) => { setMonthlyMonth(month); openReport("monthlyReports", id, name, month); }}
+          onExportAll={exportMonthlyPdf}
+        />
+      );
+    }
     if (screen === "branch" && authUser.isSubjectTeacher) return <BranchScreen user={authUser} setHeader={setHeader} onOpenPlan={openPlan} />;
     if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={createAssignmentForStudent} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} setHeader={setHeader} />;
-    if (screen === "assignmentCreate") return <AssignmentCreateScreen onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} />;
+    if (screen === "assignmentCreate") return <AssignmentCreateScreen key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} />;
     if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} backLabel={assignmentDetailReturnTo === "studentOverview" ? "Öğrenci özetine dön" : "Ödevlerime dön"} />;
     if (screen === "plan") return <PlanScreen user={authUser} />;
@@ -514,7 +603,7 @@ function renderScreen({
     // key: bildirimle başka bir ödeve geçilince bileşen yeniden kullanılıp önceki ödevin D/Y/B
     // değerleri ve notu formda kalıyor, yanlış ödeve gönderilebiliyordu — ödev değişince sıfırdan mount.
     if (screen === "assignmentSubmit" && selectedRecipientId) return <AssignmentSubmitScreen key={selectedRecipientId} user={authUser} recipientId={selectedRecipientId} onBack={backToMyAssignments} setHeader={setHeader} />;
-    if (screen === "studyLog") return <StudyLogScreen user={authUser} />;
+    if (screen === "studyLog") return <StudyLogScreen key={studyPrefill?.key || "log"} user={authUser} prefill={studyPrefill} />;
   }
   return (
     <div style={{ padding: 40, textAlign: "center", color: C.muted }}>
