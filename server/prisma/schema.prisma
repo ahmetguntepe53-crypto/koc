@@ -137,6 +137,9 @@ model Assignment {
   sourceBook String?
   // "Sayfa/Soru Aralığı" — tek serbest metin alanı (ör. "45-60" ya da "120 soru").
   pageRange String?
+  // Öğrenciye gösterilen serbest açıklama — şimdilik yalnızca Takvim'den yayınlanan kayıtların notu
+  // (PlanEntry.note) buraya taşınır; önceden yayınlarken sessizce kayboluyordu.
+  note String?
 
   period        Period // yalnızca sınıflandırma etiketi, otomatik tekrar üretmez
   // Ödevin başlangıç tarihi — takvimde/otomatik gönderim tetiklemesinde (AUTO_ON_DATE/AUTO_DAY_BEFORE)
@@ -194,6 +197,10 @@ model PlanEntry {
   examType  ExamType
   // Yalnızca takvim günü anlamlı — saat/dakika kısmı yok sayılır (00:00 olarak saklanır).
   date      DateTime
+  // Birden çok günü kapsayan kayıtlar için (ör. bir haftalık tatil ödevi) son gün — null ise tek
+  // günlük kayıt (bitiş = date). Yayınlanınca Assignment.endDate olur; aksi halde çok günlük bir
+  // ödev ertesi gün "gecikti" sayılıp öğrencilere gecikme bildirimi gidiyordu.
+  endDate   DateTime?
   kind      PlanWeekKind @default(TOPIC)
 
   // --- kind=TOPIC için anlamlı ---

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Send, Trash2, ChevronRight } from "lucide-react";
 import { C, bodyFont } from "../../theme.js";
-import { Card, Button, Select, Pill, EmptyState } from "../../components/common.jsx";
+import { Card, Button, Select, Pill, EmptyState, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { PERIOD_LABELS, STATUS_LABELS, ALL_SUBJECTS, subjectIconUrl } from "../../subjects.js";
 import { formatDateRange, daysUntil } from "../../dates.js";
@@ -33,7 +33,7 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
   }, [toast]);
 
   const sendNow = async (id) => {
-    if (!window.confirm("Bu ödev şimdi öğrencilere gönderilsin mi?")) return;
+    if (!(await confirmDialog({ title: "Ödev şimdi gönderilsin mi?", message: "Öğrencilere hemen bildirim gidecek. Gönderildikten sonra ödev düzenlenemez.", confirmLabel: "Şimdi Gönder" }))) return;
     setBusyId(id);
     try {
       await api.sendAssignmentNow(id);
@@ -46,7 +46,7 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
   };
 
   const remove = async (id) => {
-    if (!window.confirm("Bu taslak ödev silinsin mi?")) return;
+    if (!(await confirmDialog({ title: "Taslak silinsin mi?", message: "Bu taslak ödev kalıcı olarak silinecek.", confirmLabel: "Sil", danger: true }))) return;
     setBusyId(id);
     try {
       await api.deleteAssignment(id);
@@ -59,16 +59,16 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
   };
 
   return (
-    <div style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "center", marginBottom: 20, gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Select value={subject} onChange={(e) => setSubject(e.target.value)}>
+          <Select aria-label="Derse göre filtrele" value={subject} onChange={(e) => setSubject(e.target.value)}>
             <option value="">Tüm dersler</option>
             {ALL_SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <Select value={status} onChange={(e) => setStatus(e.target.value)}>
+          <Select aria-label="Duruma göre filtrele" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Tümü</option>
             <option value="DRAFT">Bekliyor</option>
             <option value="SENT">Gönderildi</option>
@@ -81,7 +81,7 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
       )}
 
       {loading ? (
-        <EmptyState text="Yükleniyor..." />
+        <LoadingState />
       ) : loadError ? (
         <EmptyState text={loadError} />
       ) : assignments.length === 0 ? (
@@ -129,6 +129,7 @@ function IconButton({ icon: Icon, onClick, title, danger, disabled }) {
   return (
     <button
       title={title}
+      aria-label={title}
       onClick={disabled ? undefined : onClick}
       disabled={disabled}
       className="k-icon-btn"

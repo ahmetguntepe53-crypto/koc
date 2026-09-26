@@ -9,7 +9,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { safeUser } from "../serialize.js";
 import { sendPasswordResetEmail } from "../mailer.js";
 import { handleErr } from "../handleErr.js";
-import { authLimiter, forgotPasswordLimiter, resetPasswordLimiter, setPasswordLimiter, deleteAccountLimiter } from "../middleware/rateLimiters.js";
+import { loginLimiter, loginIpLimiter, forgotPasswordLimiter, forgotPasswordIpLimiter, resetPasswordLimiter, setPasswordLimiter, deleteAccountLimiter } from "../middleware/rateLimiters.js";
 import { assert } from "../validators.js";
 import { recipientPhotosDir } from "../uploads.js";
 
@@ -30,22 +30,28 @@ function signToken(userId, tokenVersion) {
 // zamanlama ölçerek çıkarmasına izin verir — bu sahte hash'e karşı yapılan bir compare, süreyi eşitler.
 const DUMMY_PASSWORD_HASH = bcrypt.hashSync("timing-safety-dummy", 10);
 
-authRouter.post("/login", authLimiter, async (req, res) => {
+// "Hesap yok", "hesap var ama şifresi henüz belirlenmemiş" ve "şifre yanlış" durumlarının üçü de
+// AYNI mesajı döner — farklı mesajlar kayıtlı e-postaların (ve kimin hesabını etkinleştirmediğinin)
+// dışarıdan listelenmesine izin verirdi. Mesajın ikinci cümlesi, etkinleştirmemiş öğrenciyi yine de
+// doğru yöne yönlendirir.
+const LOGIN_FAILED_MESSAGE = "E-posta veya şifre hatalı. Hesabını henüz etkinleştirmediysen e-postana gelen kurulum bağlantısını kullan.";
+
+// loginLimiter (IP+e-posta) önce çalışır: kendi hesabında kilitlenmiş biri tekrar denedikçe ortak IP
+// kotasını (loginIpLimiter) tüketmesin diye.
+authRouter.post("/login", loginLimiter, loginIpLimiter, async (req, res) => {
   try {
     const { email, password } = req.body || {};
     if (!email || !password) return res.status(400).json({ error: "E-posta ve şifre gerekli" });
-    const cleanEmail = String(email).trim().toLowerCase();
+    // bcrypt string olmayan bir değerde fırlatır (500) — ör. {"password": 123} doğrudan 400 alsın.
+    if (typeof email !== "string" || typeof password !== "string") return res.status(400).json({ error: "E-posta ve şifre gerekli" });
+    const cleanEmail = email.trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
-    if (!user) {
-      await bcrypt.compare(password, DUMMY_PASSWORD_HASH); // sonuç kullanılmaz, yalnızca zamanlama eşitlensin diye
-      return res.status(401).json({ error: "E-posta veya şifre hatalı" });
-    }
+    // Hesap yoksa ya da şifresi henüz yoksa da sahte hash'e karşı compare yapılır — süre eşit kalsın.
+    const ok = await bcrypt.compare(password, user?.passwordHash || DUMMY_PASSWORD_HASH);
+    if (!user || !user.passwordHash || !ok) return res.status(401).json({ error: LOGIN_FAILED_MESSAGE });
+    // Askıya alınma bilgisi yalnızca şifre doğrulandıktan SONRA söylenir — aksi halde yanıt, şifreyi
+    // bilmeyen birine hesabın var olduğunu (ve banlı olduğunu) sızdırırdı.
     if (user.banned) return res.status(403).json({ error: "Hesabın askıya alınmış — okul yöneticinle iletişime geç." });
-    if (!user.passwordHash) {
-      return res.status(400).json({ error: "Bu hesap için henüz şifre belirlenmemiş — e-postana gelen kurulum bağlantısını kullan." });
-    }
-    const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) return res.status(401).json({ error: "E-posta veya şifre hatalı" });
     const token = signToken(user.id, user.tokenVersion);
     res.json({ token, user: safeUser(user) });
   } catch (e) {
@@ -53,11 +59,13 @@ authRouter.post("/login", authLimiter, async (req, res) => {
   }
 });
 
-authRouter.post("/forgot-password", forgotPasswordLimiter, async (req, res) => {
+authRouter.post("/forgot-password", forgotPasswordLimiter, forgotPasswordIpLimiter, async (req, res) => {
   try {
     const { email } = req.body || {};
-    if (!email) return res.status(400).json({ error: "E-posta gerekli" });
-    const cleanEmail = String(email).trim().toLowerCase();
+    // String zorunlu: ["x@y.com"] gibi bir dizi String() ile e-postaya dönüşüp IP+e-posta limitini
+    // (anahtar yalnızca string e-postadan üretilir) atlatabilirdi.
+    if (!email || typeof email !== "string") return res.status(400).json({ error: "E-posta gerekli" });
+    const cleanEmail = email.trim().toLowerCase();
     const user = await prisma.user.findUnique({ where: { email: cleanEmail } });
     // Hesap yoksa bile aynı genel mesajı döneriz — e-posta adresi kayıtlı mı diye dışarıdan anlaşılmasın.
     if (user && !user.banned) {
@@ -75,7 +83,7 @@ authRouter.post("/reset-password", resetPasswordLimiter, async (req, res) => {
   try {
     const { token, password, acceptedTerms } = req.body || {};
     if (!token || !password) return res.status(400).json({ error: "token ve password gerekli" });
-    if (password.length < 8) return res.status(400).json({ error: "Şifre en az 8 karakter olmalı" });
+    if (typeof password !== "string" || password.length < 8) return res.status(400).json({ error: "Şifre en az 8 karakter olmalı" });
     const user = await prisma.user.findUnique({ where: { resetToken: String(token) } });
     if (!user || !user.resetTokenExpires || user.resetTokenExpires < new Date()) {
       return res.status(400).json({ error: "Bağlantının süresi dolmuş — okul yöneticinden yeni bir bağlantı iste." });
@@ -116,49 +124,58 @@ authRouter.get("/reset-password-page", async (req, res) => {
     button:disabled{opacity:.5;cursor:not-allowed}
     #msg{font-size:13px;margin-top:12px;min-height:18px}</style></head>
     <body><div class="card">${body}</div></body></html>`);
-  const { token } = req.query || {};
-  const cleanToken = token ? String(token) : "";
-  const user = cleanToken ? await prisma.user.findUnique({ where: { resetToken: cleanToken } }) : null;
-  if (!user || !user.resetTokenExpires || user.resetTokenExpires < new Date()) {
-    return page(`<h1>Bağlantının süresi dolmuş</h1><p>Okul yöneticinden yeni bir bağlantı istemeni rica ederiz.</p>`);
-  }
-  // İlk şifre belirleme (passwordHash henüz null) sırasında onay kutusu gösterilir — "şifremi
-  // unuttum" akışında (kullanıcı zaten hesabı kurmuş, bir kez onay vermiş) tekrar sorulmaz.
-  const isFirstSetup = !user.passwordHash;
-  page(`
-    <h1>Şifre Belirle</h1>
-    <p>Hesabın için bir şifre gir.</p>
-    <input id="p1" type="password" placeholder="Şifre (en az 8 karakter)" autocomplete="new-password" />
-    <input id="p2" type="password" placeholder="Şifre (tekrar)" autocomplete="new-password" />
-    ${isFirstSetup ? `
-    <label class="terms">
-      <input type="checkbox" id="terms" onchange="document.getElementById('btn').disabled = !this.checked">
-      <span><a href="https://kocluk.maiakademi.com/terms.html" target="_blank" rel="noopener">Gizlilik Politikası, KVKK Aydınlatma Metni ve Kullanım Şartları</a>'nı okudum, kabul ediyorum.</span>
-    </label>` : ""}
-    <button id="btn" onclick="submitReset()" ${isFirstSetup ? "disabled" : ""}>Şifreyi Kaydet</button>
-    <div id="msg"></div>
-    <script>
-      async function submitReset() {
-        var p1 = document.getElementById('p1').value;
-        var p2 = document.getElementById('p2').value;
-        var msg = document.getElementById('msg');
-        var btn = document.getElementById('btn');
-        var termsEl = document.getElementById('terms');
-        if (termsEl && !termsEl.checked) { msg.textContent = 'Devam etmek için metni kabul etmelisin'; msg.style.color = '#FF6B6B'; return; }
-        if (p1.length < 8) { msg.textContent = 'Şifre en az 8 karakter olmalı'; msg.style.color = '#FF6B6B'; return; }
-        if (p1 !== p2) { msg.textContent = 'Şifreler eşleşmiyor'; msg.style.color = '#FF6B6B'; return; }
-        btn.disabled = true; btn.textContent = '...';
-        try {
-          var r = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: ${JSON.stringify(cleanToken)}, password: p1, acceptedTerms: termsEl ? termsEl.checked : undefined }) });
-          var data = await r.json();
-          if (!r.ok) { msg.textContent = data.error || 'Bir şeyler ters gitti'; msg.style.color = '#FF6B6B'; btn.disabled = false; btn.textContent = 'Şifreyi Kaydet'; return; }
-          document.querySelector('.card').innerHTML = '<h1>Şifren kaydedildi!</h1><p>Artık uygulamaya dönüp yeni şifrenle giriş yapabilirsin.</p>';
-        } catch (e) {
-          msg.textContent = 'Bağlantı hatası, tekrar dene'; msg.style.color = '#FF6B6B'; btn.disabled = false; btn.textContent = 'Şifreyi Kaydet';
+  // Express 4 async handler'daki bir hatayı (ör. DB'ye ulaşılamaması) yakalamaz — yanıt hiç gönderilmez,
+  // tarayıcı askıda kalırdı. Kullanıcı e-postadaki linkten geldiği için JSON değil basit bir sayfa döner.
+  try {
+    const { token } = req.query || {};
+    const cleanToken = token ? String(token) : "";
+    const user = cleanToken ? await prisma.user.findUnique({ where: { resetToken: cleanToken } }) : null;
+    if (!user || !user.resetTokenExpires || user.resetTokenExpires < new Date()) {
+      return page(`<h1>Bağlantının süresi dolmuş</h1><p>Okul yöneticinden yeni bir bağlantı istemeni rica ederiz.</p>`);
+    }
+    // İlk şifre belirleme (passwordHash henüz null) sırasında onay kutusu gösterilir — "şifremi
+    // unuttum" akışında (kullanıcı zaten hesabı kurmuş, bir kez onay vermiş) tekrar sorulmaz.
+    const isFirstSetup = !user.passwordHash;
+    page(`
+      <h1>Şifre Belirle</h1>
+      <p>Hesabın için bir şifre gir.</p>
+      <input id="p1" type="password" placeholder="Şifre (en az 8 karakter)" autocomplete="new-password" />
+      <input id="p2" type="password" placeholder="Şifre (tekrar)" autocomplete="new-password" />
+      ${isFirstSetup ? `
+      <label class="terms">
+        <input type="checkbox" id="terms" onchange="document.getElementById('btn').disabled = !this.checked">
+        <span><a href="https://kocluk.maiakademi.com/terms.html" target="_blank" rel="noopener">Gizlilik Politikası, KVKK Aydınlatma Metni ve Kullanım Şartları</a>'nı okudum, kabul ediyorum.</span>
+      </label>` : ""}
+      <button id="btn" onclick="submitReset()" ${isFirstSetup ? "disabled" : ""}>Şifreyi Kaydet</button>
+      <div id="msg"></div>
+      <script>
+        async function submitReset() {
+          var p1 = document.getElementById('p1').value;
+          var p2 = document.getElementById('p2').value;
+          var msg = document.getElementById('msg');
+          var btn = document.getElementById('btn');
+          var termsEl = document.getElementById('terms');
+          if (termsEl && !termsEl.checked) { msg.textContent = 'Devam etmek için metni kabul etmelisin'; msg.style.color = '#FF6B6B'; return; }
+          if (p1.length < 8) { msg.textContent = 'Şifre en az 8 karakter olmalı'; msg.style.color = '#FF6B6B'; return; }
+          if (p1 !== p2) { msg.textContent = 'Şifreler eşleşmiyor'; msg.style.color = '#FF6B6B'; return; }
+          btn.disabled = true; btn.textContent = '...';
+          try {
+            var r = await fetch('/api/auth/reset-password', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: ${JSON.stringify(cleanToken)}, password: p1, acceptedTerms: termsEl ? termsEl.checked : undefined }) });
+            var data = await r.json();
+            if (!r.ok) { msg.textContent = data.error || 'Bir şeyler ters gitti'; msg.style.color = '#FF6B6B'; btn.disabled = false; btn.textContent = 'Şifreyi Kaydet'; return; }
+            document.querySelector('.card').innerHTML = '<h1>Şifren kaydedildi!</h1><p>Artık uygulamaya dönüp yeni şifrenle giriş yapabilirsin.</p>';
+          } catch (e) {
+            msg.textContent = 'Bağlantı hatası, tekrar dene'; msg.style.color = '#FF6B6B'; btn.disabled = false; btn.textContent = 'Şifreyi Kaydet';
+          }
         }
-      }
-    </script>
-  `);
+      </script>
+    `);
+  } catch (e) {
+    console.error("[reset-password-page]", e);
+    if (res.headersSent) return;
+    res.status(500);
+    page(`<h1>Bir şeyler ters gitti</h1><p>Lütfen biraz sonra bağlantıyı tekrar aç.</p>`);
+  }
 });
 
 authRouter.get("/me", requireAuth, async (req, res) => {
@@ -176,10 +193,10 @@ authRouter.get("/me", requireAuth, async (req, res) => {
 authRouter.post("/set-password", setPasswordLimiter, requireAuth, async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body || {};
-    if (!newPassword || newPassword.length < 8) return res.status(400).json({ error: "Yeni şifre en az 8 karakter olmalı" });
+    if (typeof newPassword !== "string" || newPassword.length < 8) return res.status(400).json({ error: "Yeni şifre en az 8 karakter olmalı" });
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (user.passwordHash) {
-      if (!currentPassword) return res.status(400).json({ error: "Mevcut şifre gerekli" });
+      if (!currentPassword || typeof currentPassword !== "string") return res.status(400).json({ error: "Mevcut şifre gerekli" });
       const ok = await bcrypt.compare(currentPassword, user.passwordHash);
       if (!ok) return res.status(401).json({ error: "Mevcut şifre hatalı" });
     }
@@ -209,7 +226,7 @@ authRouter.delete("/me", deleteAccountLimiter, requireAuth, async (req, res) => 
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     assert(user, "Kullanıcı bulunamadı", 404);
     assert(user.passwordHash, "Bu hesap için henüz şifre belirlenmemiş, hesap silinemiyor", 400);
-    assert(password, "Şifre gerekli", 400);
+    assert(password && typeof password === "string", "Şifre gerekli", 400);
     const ok = await bcrypt.compare(password, user.passwordHash);
     assert(ok, "Şifre hatalı", 401);
 

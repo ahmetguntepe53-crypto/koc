@@ -25,22 +25,58 @@ export function setToken(token) {
 let tokenMirror = null;
 export function setTokenMirror(fn) { tokenMirror = fn; }
 
-async function request(path, { method = "GET", body } = {}) {
-  const headers = { "Content-Type": "application/json" };
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
+// Oturum sunucu tarafında geçersizleştiğinde (başka cihazda şifre değişti, admin şifre belirledi,
+// hesap askıya alındı, 30 günlük süre doldu) uygulama içinde "girişli" kalıp her ekranda hata metni
+// göstermek yerine tek noktadan çıkış yapılsın diye — useAuthSession buraya logout'u bağlar.
+let unauthorizedHandler = null;
+export function setUnauthorizedHandler(fn) { unauthorizedHandler = fn; }
+
+const REQUEST_TIMEOUT_MS = 20000;
+const UPLOAD_TIMEOUT_MS = 90000;
+export const NETWORK_ERROR_MESSAGE = "Sunucuya bağlanılamadı — internet bağlantını kontrol edip tekrar dene.";
+
+// fetch() ağ hatasında (uçak modu, zayıf okul Wi-Fi'ı, zaman aşımı) tarayıcının ham İngilizce
+// mesajıyla ("Failed to fetch" / "Load failed") reddeder — kullanıcıya Türkçe bir mesaj gösterilsin,
+// çağıran taraf da err.network ile bunu HTTP hatasından (401/500) ayırt edebilsin diye sarmalanır.
+async function fetchWithTimeout(url, options, timeoutMs) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } catch (_) {
+    throw Object.assign(new Error(NETWORK_ERROR_MESSAGE), { network: true });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function handleResponse(res, sentToken) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const err = new Error(data.error || "Sunucuyla iletişim kurulamadı");
     err.data = data;
+    err.status = res.status;
+    err.code = data.code;
+    // Yalnızca requireAuth'un işaretlediği yanıtlar oturumu kapatır — sıradan bir 403 ("bu işlem için
+    // yetkin yok") ya da girişteki "şifre hatalı" 401'i kullanıcıyı dışarı atmamalı.
+    if (sentToken && (data.code === "SESSION_INVALID" || data.code === "BANNED")) {
+      try { unauthorizedHandler?.(err); } catch (_) { /* çıkış akışı hatası isteğin hatasını gölgelemesin */ }
+    }
     throw err;
   }
   return data;
+}
+
+async function request(path, { method = "GET", body } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  }, REQUEST_TIMEOUT_MS);
+  return handleResponse(res, !!token);
 }
 
 export function photoUrl(photo) {
@@ -55,10 +91,8 @@ async function uploadFile(path, file) {
   formData.append("photo", file);
   // Content-Type kasıtlı olarak set edilmiyor — tarayıcı FormData için doğru multipart boundary'yi
   // kendisi ekler, elle "multipart/form-data" yazılırsa boundary eksik kalıp istek bozulur.
-  const res = await fetch(`${API_BASE}${path}`, { method: "POST", headers, body: formData });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || "Sunucuyla iletişim kurulamadı");
-  return data;
+  const res = await fetchWithTimeout(`${API_BASE}${path}`, { method: "POST", headers, body: formData }, UPLOAD_TIMEOUT_MS);
+  return handleResponse(res, !!token);
 }
 
 export const api = {

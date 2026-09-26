@@ -4,12 +4,15 @@ import path from "node:path";
 import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
-import { photoUpload, recipientPhotosDir } from "../uploads.js";
+import { photoUpload, recipientPhotosDir, hasValidImageSignature } from "../uploads.js";
 
 // server/src/app.js'de requireAuth ile mount edilir — sahiplik kontrolleri handler içinde yapılır.
 export const assignmentRecipientsRouter = Router();
 
 const MAX_PHOTOS_PER_RECIPIENT = 20;
+// Submission.correctCount/wrongCount/blankCount Int (32 bit) — çok büyük bir sayı DB'de taşıp 500'e
+// dönüşürdü; gerçekçi hiçbir ödev bu kadar soru içermez.
+const MAX_ANSWER_COUNT = 10000;
 
 const assignmentInclude = {
   assignment: { include: { teacher: { select: { id: true, name: true } } } },
@@ -66,8 +69,8 @@ async function submitHandler(req, res) {
 
     const { correctCount, wrongCount, blankCount, note, questionNumbers } = req.body || {};
     const nums = [correctCount, wrongCount, blankCount];
-    assert(nums.every((n) => Number.isInteger(n) && n >= 0), "Doğru/yanlış/boş sayıları geçerli birer tam sayı olmalı");
-    const cleanQuestionNumbers = Array.isArray(questionNumbers) ? questionNumbers.filter((n) => Number.isInteger(n)) : [];
+    assert(nums.every((n) => Number.isInteger(n) && n >= 0 && n <= MAX_ANSWER_COUNT), `Doğru/yanlış/boş sayıları 0-${MAX_ANSWER_COUNT} arasında birer tam sayı olmalı`);
+    const cleanQuestionNumbers = Array.isArray(questionNumbers) ? questionNumbers.filter((n) => Number.isInteger(n) && n >= 0 && n <= MAX_ANSWER_COUNT) : [];
 
     const submission = await prisma.$transaction(async (tx) => {
       await tx.assignmentRecipient.update({ where: { id: recipient.id }, data: { completed: true, completedAt: new Date() } });
@@ -109,6 +112,10 @@ assignmentRecipientsRouter.post("/:id/photos", async (req, res) => {
       });
     });
     assert(req.file, "Fotoğraf bulunamadı", 400);
+    if (!(await hasValidImageSignature(req.file))) {
+      await unlink(req.file.path).catch(() => {});
+      return res.status(400).json({ error: "Yalnızca JPG veya PNG fotoğraf yükleyebilirsin" });
+    }
 
     // Sayım kasıtlı olarak yükleme TAMAMLANDIKTAN hemen önce, create'e bitişik tekrar yapılır —
     // yükleme (ağ+disk I/O) süresince değil. Bu, iki eşzamanlı isteğin ikisinin de limitin altında

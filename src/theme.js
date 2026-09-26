@@ -10,8 +10,11 @@ export const THEMES = {
     border: "rgba(15,23,42,0.09)",
     borderStrong: "rgba(15,23,42,0.16)",
     text: "#0F1729",
-    muted: "#66708A",
-    mutedLight: "#94A0BE",
+    // Kontrast: eski mutedLight (#94A0BE) açık zeminlerde ~2.4:1'di — form etiketleri, bölüm başlıkları
+    // ve sayı kartı etiketleri okunmuyordu (WCAG AA küçük metin için 4.5:1 ister). İkisi de koyulaştırıldı,
+    // hiyerarşi renk yerine boyut/kalınlıkla korunuyor.
+    muted: "#5B6680",
+    mutedLight: "#646F88",
 
     accent: "#4338CA",
     accentHover: "#372DAF",
@@ -25,6 +28,7 @@ export const THEMES = {
     amberSoft: "#FDF6E9",
     red: "#B91C1C",
     redSoft: "#FDECEC",
+    onRed: "#FFFFFF",
 
     // Kenar çubuğu koyu paleti — içerik alanının aksine ayrı, sabit bir renk seti.
     sidebarBg: "#12142B",
@@ -52,7 +56,8 @@ export const THEMES = {
     borderStrong: "rgba(255,255,255,0.18)",
     text: "#F2F6F5",
     muted: "#9CB3B6",
-    mutedLight: "#6E888B",
+    mutedLight: "#86A0A3", // eski #6E888B yüzeylerde ~3.6:1'di
+
 
     accent: "#D4A72C",
     accentHover: "#E4BC4C",
@@ -66,6 +71,7 @@ export const THEMES = {
     amberSoft: "rgba(251,191,36,0.14)",
     red: "#F87171",
     redSoft: "rgba(248,113,113,0.14)",
+    onRed: "#2A0B0B", // açık kırmızı üzerinde beyaz metin okunmuyor
 
     // Kenar çubuğu ana zeminle aynı ailede (biraz daha koyu) — açık temadaki gibi apayrı, sabit bir
     // lacivert değil, tek bütün bir koyu tema hissi versin diye.

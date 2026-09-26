@@ -15,7 +15,11 @@ import { recipientPhotosDir } from "../uploads.js";
 // buradaki her uç nokta yalnızca kimlik doğrulanmış bir ADMIN tarafından çağrılabilir.
 export const adminRouter = Router();
 
-const ACCOUNT_SETUP_TOKEN_TTL_MS = 60 * 60 * 1000;
+// 7 gün: öğrenciler kurulum e-postasını çoğu zaman ertesi gün (ya da hafta sonu) açıyor — 1 saatlik
+// süre bu linklerin çoğunu kullanılamaz hale getiriyordu. "Şifremi unuttum" linki ise kullanıcının
+// kendisi o an istediği için 1 saat kalır (bkz. auth.js > RESET_TOKEN_TTL_MS).
+const ACCOUNT_SETUP_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const ROLES = ["ADMIN", "TEACHER", "STUDENT"];
 
 async function issueAccountSetupToken(userId) {
   const resetToken = crypto.randomBytes(32).toString("hex");
@@ -44,7 +48,11 @@ adminRouter.get("/users", async (req, res) => {
   try {
     const { role, q } = req.query || {};
     const where = {};
-    if (role) where.role = String(role);
+    if (role) {
+      // Enum dışı bir değer Prisma'da doğrulama hatasına (500) dönüşürdü.
+      assert(ROLES.includes(role), "Geçersiz rol");
+      where.role = role;
+    }
     if (q) {
       where.OR = [
         { name: { contains: String(q), mode: "insensitive" } },
@@ -92,10 +100,10 @@ async function createOneUser({ role, name, email, phone, className, teacherId, g
       assert(teacher && teacher.role === "TEACHER", "Geçersiz koç seçimi");
       resolvedTeacherId = teacherId;
     }
-    // LGS mi TYT/AYT mi gösterileceği bu alandan türetildiği için (bkz. subjects.js) kayıt
+    // Öğrencinin sınav grubu (TYT/AYT) bu alandan türetildiği için (bkz. subjects.js) kayıt
     // aşamasında zorunlu — sonradan admin panelinden düzeltilebilir ama boş bırakılamaz.
     const gradeLevelNum = Number(gradeLevel);
-    assert(GRADE_LEVELS.includes(gradeLevelNum), "Geçerli bir sınıf düzeyi seç (7-12)");
+    assert(GRADE_LEVELS.includes(gradeLevelNum), "Geçerli bir sınıf düzeyi seç (11 veya 12)");
     resolvedGradeLevel = gradeLevelNum;
   }
 
@@ -156,7 +164,7 @@ adminRouter.patch("/users/:id", async (req, res) => {
     if (className !== undefined) data.className = className ? String(className).trim() : null;
     if (gradeLevel !== undefined) {
       const gradeLevelNum = Number(gradeLevel);
-      assert(GRADE_LEVELS.includes(gradeLevelNum), "Geçerli bir sınıf düzeyi seç (7-12)");
+      assert(GRADE_LEVELS.includes(gradeLevelNum), "Geçerli bir sınıf düzeyi seç (11 veya 12)");
       data.gradeLevel = gradeLevelNum;
     }
     const user = await prisma.user.update({ where: { id: req.params.id }, data });
@@ -218,7 +226,7 @@ adminRouter.post("/users/:id/resend-activation", async (req, res) => {
 adminRouter.post("/users/:id/set-password", async (req, res) => {
   try {
     const { password } = req.body || {};
-    assert(password && password.length >= 8, "Şifre en az 8 karakter olmalı");
+    assert(typeof password === "string" && password.length >= 8, "Şifre en az 8 karakter olmalı");
     const passwordHash = await bcrypt.hash(password, 10);
     await prisma.user.update({
       where: { id: req.params.id },

@@ -2,12 +2,14 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
-import { isValidSubject, trackForGrade, trackForExamType } from "../subjects.js";
+import { isValidSubject, trackForGrade, trackForExamType, EXAM_TYPES } from "../subjects.js";
 
 // server/src/app.js'de requireAuth ile mount edilir — sahiplik kontrolleri handler içinde yapılır.
 export const studySessionsRouter = Router();
 
-const EXAM_TYPES = ["TYT", "AYT", "LGS"];
+// StudySession.correctCount/wrongCount/blankCount Int (32 bit) — çok büyük bir sayı DB'de taşıp 500'e
+// dönüşürdü; gerçekçi hiçbir çalışma bu kadar soru içermez.
+const MAX_ANSWER_COUNT = 10000;
 
 // Öğrenci kendi sınıf düzeyine ait olmayan bir sınav türünde (ör. 8. sınıfken AYT) kayıt
 // girmesin diye — gradeLevel henüz belirlenmemişse (null) serbest bırakılır.
@@ -23,15 +25,18 @@ function validateFields(body) {
   assert(isValidSubject(examType, subject), "Geçersiz ders");
   assert(topic && String(topic).trim(), "Konu gerekli");
   const nums = [correctCount, wrongCount, blankCount];
-  assert(nums.every((n) => Number.isInteger(n) && n >= 0), "Doğru/yanlış/boş sayıları geçerli birer tam sayı olmalı");
+  assert(nums.every((n) => Number.isInteger(n) && n >= 0 && n <= MAX_ANSWER_COUNT), `Doğru/yanlış/boş sayıları 0-${MAX_ANSWER_COUNT} arasında birer tam sayı olmalı`);
+  // Geçersiz bir tarih (Invalid Date) Prisma'da doğrulama hatasına (500) dönüşürdü.
+  const cleanStudyDate = studyDate ? new Date(studyDate) : null;
+  assert(!cleanStudyDate || !Number.isNaN(cleanStudyDate.getTime()), "Geçerli bir tarih gir");
   return {
     examType, subject, topic: String(topic).trim(),
     sourceBook: sourceBook ? String(sourceBook).trim() : null,
     pageRange: pageRange ? String(pageRange).trim() : null,
     correctCount, wrongCount, blankCount,
     note: note ? String(note).trim() : null,
-    questionNumbers: Array.isArray(questionNumbers) ? questionNumbers.filter((n) => Number.isInteger(n)) : [],
-    ...(studyDate ? { studyDate: new Date(studyDate) } : {}),
+    questionNumbers: Array.isArray(questionNumbers) ? questionNumbers.filter((n) => Number.isInteger(n) && n >= 0 && n <= MAX_ANSWER_COUNT) : [],
+    ...(cleanStudyDate ? { studyDate: cleanStudyDate } : {}),
   };
 }
 

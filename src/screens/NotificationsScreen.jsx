@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
+import { Bell, CheckCheck, ChevronRight, ClipboardList, AlertTriangle, Users } from "lucide-react";
 import { C, bodyFont } from "../theme.js";
-import { Card, Button, Pill, EmptyState } from "../components/common.jsx";
+import { Card, Button, EmptyState, LoadingState } from "../components/common.jsx";
 import { api } from "../api.js";
 
 function timeAgo(iso) {
@@ -14,59 +15,97 @@ function timeAgo(iso) {
   return `${days} gün önce`;
 }
 
-export default function NotificationsScreen() {
+export default function NotificationsScreen({ onOpenTarget }) {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  // Sunucu yalnızca son 50 bildirimi döner ama rozet TÜM okunmamışları sayar — "Tümünü okundu işaretle"
+  // yalnızca görünen 50'ye bakınca, daha eski okunmamışlar varken düğme gizleniyor ve rozet sonsuza
+  // kadar takılı kalıyordu. Sunucunun toplam sayısı da tutulur.
+  const [serverUnreadCount, setServerUnreadCount] = useState(0);
 
   const load = () => {
-    api.listNotifications().then(({ notifications }) => setNotifications(notifications)).catch((e) => setLoadError(e.message || "Bildirimler yüklenemedi")).finally(() => setLoading(false));
+    api.listNotifications()
+      .then(({ notifications, unreadCount }) => { setNotifications(notifications); setServerUnreadCount(unreadCount || 0); })
+      .catch((e) => setLoadError(e.message || "Bildirimler yüklenemedi"))
+      .finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, []);
 
   const markRead = async (id) => {
     setNotifications((ns) => ns.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    setServerUnreadCount((c) => Math.max(0, c - 1));
     api.markNotificationRead(id).catch(() => {});
   };
 
   const markAllRead = async () => {
     setNotifications((ns) => ns.map((n) => ({ ...n, read: true })));
+    setServerUnreadCount(0);
     api.markAllNotificationsRead().catch(() => {});
   };
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  const unreadCount = Math.max(serverUnreadCount, notifications.filter((n) => !n.read).length);
+
+  // Bildirime dokunmak okundu işaretler VE ilgili ödevi açar (push'a dokunmakla aynı hedef, bkz.
+  // App.jsx > goToNotificationTarget) — önceden yalnızca okundu işaretliyordu, öğrenci ödevi ayrıca
+  // listeden bulmak zorunda kalıyordu.
+  const openNotification = (n) => {
+    if (!n.read) markRead(n.id);
+    if (n.data?.screen && onOpenTarget) onOpenTarget(n.data);
+  };
 
   return (
-    <div style={{ padding: 28, maxWidth: 600, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 600, margin: "0 auto" }}>
       {unreadCount > 0 && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
-          <Button small variant="secondary" onClick={markAllRead}>Tümünü okundu işaretle</Button>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 14 }}>
+          <span style={{ fontFamily: bodyFont, fontSize: 13, fontWeight: 700, color: C.muted }}>{unreadCount} okunmamış</span>
+          <Button small variant="ghost" icon={CheckCheck} onClick={markAllRead}>Tümünü okundu yap</Button>
         </div>
       )}
       {loading ? (
-        <EmptyState text="Yükleniyor..." />
+        <LoadingState />
       ) : loadError ? (
         <EmptyState text={loadError} />
       ) : notifications.length === 0 ? (
-        <EmptyState text="Henüz bildirim yok." />
+        <EmptyState icon={Bell} text="Henüz bildirim yok. Yeni bir ödev geldiğinde burada görünecek." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {notifications.map((n) => (
-            <Card
-              key={n.id}
-              hover={!n.read}
-              style={{ padding: 14, cursor: n.read ? "default" : "pointer", borderColor: n.read ? C.border : C.accent, borderLeftWidth: n.read ? 1 : 3, borderLeftColor: n.read ? C.border : C.accent }}
-            >
-              <div onClick={() => !n.read && markRead(n.id)} style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                <div style={{ fontFamily: bodyFont, fontSize: 13.5, color: C.text, fontWeight: n.read ? 400 : 700 }}>{n.text}</div>
-                {!n.read && <Pill tone="accent">Yeni</Pill>}
-              </div>
-              <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginTop: 6 }}>{timeAgo(n.createdAt)}</div>
-            </Card>
-          ))}
+          {notifications.map((n) => {
+            const { icon: Icon, tone } = NOTIFICATION_STYLE[n.type] || NOTIFICATION_STYLE.info;
+            const tappable = !n.read || !!n.data?.screen;
+            return (
+              <Card key={n.id} hover={tappable} style={{ padding: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => openNotification(n)}
+                  disabled={!tappable}
+                  style={{ display: "flex", alignItems: "flex-start", gap: 12, width: "100%", padding: "13px 14px", background: "none", border: "none", textAlign: "left", cursor: tappable ? "pointer" : "default", fontFamily: bodyFont }}
+                >
+                  <span style={{ width: 34, height: 34, borderRadius: 10, background: tone.bg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <Icon size={16} color={tone.fg} />
+                  </span>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: "block", fontSize: 13.5, lineHeight: 1.45, color: C.text, fontWeight: n.read ? 500 : 700 }}>{n.text}</span>
+                    <span style={{ display: "block", fontSize: 11.5, color: C.muted, marginTop: 4 }}>{timeAgo(n.createdAt)}</span>
+                  </span>
+                  {!n.read && <span aria-label="Okunmadı" style={{ width: 8, height: 8, borderRadius: 999, background: C.accent, flexShrink: 0, marginTop: 6 }} />}
+                  {n.read && n.data?.screen && <ChevronRight size={16} color={C.mutedLight} style={{ flexShrink: 0, marginTop: 9 }} />}
+                </button>
+              </Card>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
+
+// Bildirim türüne göre simge + renk — sunucudaki notifyUser çağrılarının type değerleri
+// (bkz. server/src/scheduler.js, routes/assignments.js).
+const NOTIFICATION_STYLE = {
+  get assignment() { return { icon: ClipboardList, tone: { bg: C.accentSoft, fg: C.accent } }; },
+  get assignment_overdue() { return { icon: AlertTriangle, tone: { bg: C.redSoft, fg: C.red } }; },
+  get assignment_overdue_summary() { return { icon: Users, tone: { bg: C.amberSoft, fg: C.amber } }; },
+  get info() { return { icon: Bell, tone: { bg: C.surface2, fg: C.muted } }; },
+};

@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, BookOpen } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Select, Pill, EmptyState } from "../../components/common.jsx";
+import { Card, Button, Input, Select, Pill, EmptyState, LoadingState, confirmDialog, alertDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { SUBJECTS_BY_EXAM, trackForGrade } from "../../subjects.js";
-
-const todayISO = () => new Date().toISOString().slice(0, 10);
+import { todayISO } from "../../dates.js";
+import TopicField from "../../components/TopicField.jsx";
 
 function formatDate(iso) {
   return new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" });
@@ -16,15 +16,13 @@ function parseQuestionNumbers(text) {
 }
 
 export default function StudyLogScreen({ user }) {
-  // Öğrenci sadece kendi sınıf düzeyine (LGS ya da YKS) uygun dersleri girebilir — koçun ödev
-  // formundaki mantığın öğrenci tarafındaki tekil (tek kişilik "grup") hâli.
+  // Okul yalnızca YKS (TYT/AYT) hazırlığı yapıyor — sınıf düzeyi girilmemişse de TYT/AYT gösterilir.
   const track = trackForGrade(user?.gradeLevel);
-  const isLGS = track === "LGS";
 
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [examType, setExamType] = useState(isLGS ? "LGS" : "TYT");
-  const [subject, setSubject] = useState(SUBJECTS_BY_EXAM[isLGS ? "LGS" : "TYT"][0]);
+  const [examType, setExamType] = useState("TYT");
+  const [subject, setSubject] = useState(SUBJECTS_BY_EXAM.TYT[0]);
   const [topic, setTopic] = useState("");
   const [sourceBook, setSourceBook] = useState("");
   const [pageRange, setPageRange] = useState("");
@@ -43,6 +41,9 @@ export default function StudyLogScreen({ user }) {
   const [loadError, setLoadError] = useState("");
   const load = () => {
     setLoading(true);
+    // Önceki başarısız yüklemenin hatası temizlenmezse, sonraki başarılı yüklemede liste yerine hâlâ
+    // hata metni görünüyordu.
+    setLoadError("");
     api.listStudySessions().then(({ sessions }) => setSessions(sessions)).catch((e) => setLoadError(e.message || "Kayıtlar yüklenemedi")).finally(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
@@ -74,31 +75,29 @@ export default function StudyLogScreen({ user }) {
   };
 
   const remove = async (id) => {
-    if (!window.confirm("Bu kayıt silinsin mi?")) return;
-    await api.deleteStudySession(id).catch(() => {});
+    if (!(await confirmDialog({ title: "Kayıt silinsin mi?", message: "Bu serbest çalışma kaydı raporlarından da kaldırılacak.", confirmLabel: "Sil", danger: true }))) return;
+    try {
+      await api.deleteStudySession(id);
+    } catch (e) {
+      alertDialog({ title: "Silinemedi", message: e.message || "Kayıt silinemedi, lütfen tekrar dene." });
+    }
     load();
   };
 
   return (
-    <div style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
       <Card style={{ marginBottom: 24 }}>
         <form onSubmit={submit}>
-          {isLGS ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
-              <Pill tone="amber">LGS</Pill>
-            </div>
-          ) : (
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              {["TYT", "AYT"].map((v) => (
-                <button key={v} type="button" className="k-btn" onClick={() => setExamType(v)} style={{
-                  flex: 1, padding: "10px 12px", borderRadius: C.radiusSm, cursor: "pointer",
-                  border: `1.5px solid ${examType === v ? C.accent : C.border}`,
-                  background: examType === v ? C.accentSoft : C.surface2,
-                  color: examType === v ? C.accent : C.text, fontFamily: bodyFont, fontWeight: 700, fontSize: 13.5,
-                }}>{v}</button>
-              ))}
-            </div>
-          )}
+          <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+            {["TYT", "AYT"].map((v) => (
+              <button key={v} type="button" className="k-btn" onClick={() => setExamType(v)} style={{
+                flex: 1, padding: "10px 12px", borderRadius: C.radiusSm, cursor: "pointer",
+                border: `1.5px solid ${examType === v ? C.accent : C.border}`,
+                background: examType === v ? C.accentSoft : C.surface2,
+                color: examType === v ? C.accent : C.text, fontFamily: bodyFont, fontWeight: 700, fontSize: 13.5,
+              }}>{v}</button>
+            ))}
+          </div>
           {!track && (
             <div style={{ fontSize: 12, color: C.amber, marginTop: -10, marginBottom: 16 }}>
               Sınıf düzeyin henüz girilmemiş, varsayılan olarak TYT/AYT gösteriliyor.
@@ -107,13 +106,13 @@ export default function StudyLogScreen({ user }) {
           <Select label="Ders" value={subject} onChange={(e) => setSubject(e.target.value)}>
             {subjectOptions.map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
-          <Input label="Konu" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="ör. Fonksiyonlar" required />
+          <TopicField label="Konu" examType={examType} subject={subject} value={topic} onChange={setTopic} placeholder="ör. Fonksiyonlar" required />
           <Input label="Kaynak Kitap (opsiyonel)" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} />
           <Input label="Sayfa / Soru Aralığı (opsiyonel)" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="ör. 20-30" />
           <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1 }}><Input label="Doğru" type="number" min="0" value={correctCount} onChange={(e) => setCorrectCount(e.target.value)} required /></div>
-            <div style={{ flex: 1 }}><Input label="Yanlış" type="number" min="0" value={wrongCount} onChange={(e) => setWrongCount(e.target.value)} required /></div>
-            <div style={{ flex: 1 }}><Input label="Boş" type="number" min="0" value={blankCount} onChange={(e) => setBlankCount(e.target.value)} required /></div>
+            <div style={{ flex: 1, minWidth: 0 }}><Input label="Doğru" type="number" inputMode="numeric" pattern="[0-9]*" min="0" value={correctCount} onChange={(e) => setCorrectCount(e.target.value)} required /></div>
+            <div style={{ flex: 1, minWidth: 0 }}><Input label="Yanlış" type="number" inputMode="numeric" pattern="[0-9]*" min="0" value={wrongCount} onChange={(e) => setWrongCount(e.target.value)} required /></div>
+            <div style={{ flex: 1, minWidth: 0 }}><Input label="Boş" type="number" inputMode="numeric" pattern="[0-9]*" min="0" value={blankCount} onChange={(e) => setBlankCount(e.target.value)} required /></div>
           </div>
           <Input label="Yanlış/boş soru numaraları (opsiyonel)" value={questionNumbers} onChange={(e) => setQuestionNumbers(e.target.value)} placeholder="ör. 4, 9" />
           <Input label="Ne zaman çalıştın?" type="date" value={studyDate} onChange={(e) => setStudyDate(e.target.value)} required />
@@ -122,13 +121,13 @@ export default function StudyLogScreen({ user }) {
         </form>
       </Card>
 
-      <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5 }}>Geçmiş Kayıtlarım</div>
+      <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Geçmiş Kayıtlarım</div>
       {loading ? (
-        <EmptyState text="Yükleniyor..." />
+        <LoadingState />
       ) : loadError ? (
         <EmptyState text={loadError} />
       ) : sessions.length === 0 ? (
-        <EmptyState text="Henüz serbest çalışma kaydın yok." />
+        <EmptyState icon={BookOpen} text="Henüz serbest çalışma kaydın yok. Ödev dışında çözdüğün testleri yukarıdan ekleyebilirsin." />
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {sessions.map((s) => (
@@ -143,8 +142,8 @@ export default function StudyLogScreen({ user }) {
                     {formatDate(s.studyDate)} · D:{s.correctCount} Y:{s.wrongCount} B:{s.blankCount}
                   </div>
                 </div>
-                <button className="k-icon-btn" onClick={() => remove(s.id)} title="Sil" style={{ width: 30, height: 30, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface2, color: C.red, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  <Trash2 size={14} />
+                <button className="k-icon-btn" onClick={() => remove(s.id)} title="Kaydı sil" aria-label="Kaydı sil" style={{ width: 36, height: 36, borderRadius: C.radiusSm, border: "none", background: "transparent", color: C.mutedLight, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Trash2 size={16} />
                 </button>
               </div>
             </Card>

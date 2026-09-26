@@ -29,7 +29,7 @@ function parseDateOnly(value) {
 }
 
 function validateBody(body, { requireDate }) {
-  const { examType, date, kind, subject, topic, sourceBook, pageRange, questionCount, note, autoSend, schoolWide } = body || {};
+  const { examType, date, endDate, kind, subject, topic, sourceBook, pageRange, questionCount, note, autoSend, schoolWide } = body || {};
   assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü");
   assert(KINDS.includes(kind), "Geçersiz tür");
   assert(topic && String(topic).trim(), "Konu/başlık gerekli");
@@ -38,6 +38,15 @@ function validateBody(body, { requireDate }) {
   let cleanDate = null;
   if (date) cleanDate = parseDateOnly(date);
   assert(!requireDate || cleanDate, "Geçerli bir tarih gir");
+
+  // Bitiş günü opsiyonel — boş ya da başlangıçla aynıysa tek günlük kayıt olarak (null) saklanır.
+  let cleanEndDate = null;
+  if (endDate) {
+    cleanEndDate = parseDateOnly(endDate);
+    assert(cleanEndDate, "Geçerli bir bitiş tarihi gir");
+    assert(cleanDate && cleanEndDate >= cleanDate, "Bitiş tarihi başlangıç tarihinden önce olamaz");
+    if (cleanEndDate.getTime() === cleanDate.getTime()) cleanEndDate = null;
+  }
 
   let cleanQuestionCount = null;
   if (questionCount !== undefined && questionCount !== null && questionCount !== "") {
@@ -50,7 +59,7 @@ function validateBody(body, { requireDate }) {
   assert(cleanAutoSend === "OFF" || cleanDate, "Otomatik gönderim için bir tarih seçmelisin");
 
   return {
-    examType, date: cleanDate, kind,
+    examType, date: cleanDate, endDate: cleanEndDate, kind,
     subject: kind === "TOPIC" ? subject : null,
     topic: String(topic).trim(),
     sourceBook: sourceBook ? String(sourceBook).trim() : null,
@@ -152,6 +161,13 @@ planEntriesRouter.delete("/:id", async (req, res) => {
 export async function publishPlanEntry(entry) {
   assert(entry.topic, "Önce bu kaydı doldur", 400);
   assert(entry.date, "Bu kayıt için bir tarih seç", 400);
+  // "Ders öğretmeni" yetkisi yalnızca kayıt oluşturulurken/düzenlenirken kontrol ediliyordu — admin
+  // yetkiyi sonradan geri alsa bile önceden kaydedilmiş okul çapındaki kayıtlar (elle ya da otomatik)
+  // yine tüm okula gidiyordu. Yayın anında tekrar doğrulanır.
+  if (entry.schoolWide) {
+    const owner = await prisma.user.findUnique({ where: { id: entry.teacherId }, select: { isSubjectTeacher: true } });
+    assert(owner?.isSubjectTeacher, "Okul çapında ödev gönderme yetkin artık yok — kaydı düzenleyip okul çapı seçeneğini kaldır", 403);
+  }
 
   // Yalnızca gerçekten bu sınav türüne (LGS ya da YKS) hazırlanan öğrenciler — sınıf düzeyi HENÜZ
   // girilmemiş (trackForGrade -> null) öğrenciler burada BİLEREK dahil edilmez: routes/assignments.js
@@ -180,10 +196,12 @@ export async function publishPlanEntry(entry) {
         subject: entry.subject || (entry.kind === "PRACTICE_TEST" ? "Deneme" : "Tatil Ödevi"),
         topic: entry.topic,
         sourceBook: entry.sourceBook,
-        pageRange: entry.pageRange || (entry.questionCount ? `${entry.questionCount} soru` : null),
+        // Soru sayısı, sayfa aralığı da girilmişse önceden kayboluyordu — ikisi birlikte yazılır.
+        pageRange: [entry.pageRange, entry.questionCount ? `${entry.questionCount} soru` : null].filter(Boolean).join(" · ") || null,
+        note: entry.note,
         period: "WEEKLY",
         scheduledDate: entry.date,
-        endDate: entry.date,
+        endDate: entry.endDate || entry.date,
         sendMode: "MANUAL_NOW",
         // Takvim kaydı her zaman TÜM track'i hedefler, öğrenci bazlı kısmi seçim yok — schoolWide
         // ise bu, kendi öğrencilerinin ötesinde okuldaki TÜM track'i kapsar (bkz. targetTrack yukarıda).

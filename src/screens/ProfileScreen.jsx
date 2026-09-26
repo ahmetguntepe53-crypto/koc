@@ -3,7 +3,7 @@ import { BarChart3, Sun, Moon } from "lucide-react";
 import { C, displayFont, bodyFont } from "../theme.js";
 import { Card, Button, Input, Pill, Avatar, roleLabel } from "../components/common.jsx";
 import { api, setToken } from "../api.js";
-import { trackForGrade } from "../subjects.js";
+import { gradeLabel } from "../subjects.js";
 
 const THEME_OPTIONS = [
   { value: "light", label: "Açık", icon: Sun },
@@ -36,7 +36,7 @@ export default function ProfileScreen({ user, onLogout, onOpenReport, theme, onC
   };
 
   return (
-    <div style={{ padding: 28, maxWidth: 500, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 500, margin: "0 auto" }}>
       <Card style={{ marginBottom: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <Avatar name={user.name} size={52} />
@@ -46,7 +46,7 @@ export default function ProfileScreen({ user, onLogout, onOpenReport, theme, onC
             <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap" }}>
               <Pill tone="accent">{roleLabel(user.role)}</Pill>
               {user.className && <Pill>{user.className}</Pill>}
-              {user.gradeLevel && <Pill tone="amber">{user.gradeLevel}. Sınıf ({trackForGrade(user.gradeLevel)})</Pill>}
+              {user.gradeLevel && <Pill tone="amber">{gradeLabel(user.gradeLevel)}</Pill>}
             </div>
           </div>
         </div>

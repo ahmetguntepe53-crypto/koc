@@ -27,6 +27,36 @@ function stringifyData(data) {
   return Object.fromEntries(Object.entries(data).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)]));
 }
 
+// FCM v1'in ham hata detayındaki errorCode (ör. "SENDER_ID_MISMATCH") — firebase-admin bunu kendi
+// koduna eşlerken bilgi kaybediyor (bkz. aşağıdaki mismatched-credential notu).
+function fcmErrorCode(e) {
+  const details = e?.httpResponse?.data?.error?.details;
+  if (!Array.isArray(details)) return null;
+  return details.find((d) => d?.["@type"] === "type.googleapis.com/google.firebase.fcm.v1.FcmError")?.errorCode || null;
+}
+
+// Aboneliğin (token'ın) kalıcı olarak geçersiz olduğu durumlar — silinmezse her bildirimde boşuna
+// denenmeye devam eder. firebase-admin 14'te kodlar "messaging/" önekiyle gelir.
+function isDeadToken(e) {
+  switch (e?.code) {
+    case "messaging/registration-token-not-registered": // UNREGISTERED: uygulama silinmiş/token yenilenmiş
+    case "messaging/invalid-registration-token":
+      return true;
+    // Token başka bir Firebase projesine ait (ör. eski/yanlış google-services.json ile kaydolmuş).
+    // firebase-admin genel PERMISSION_DENIED'i de (servis hesabının yetkisi yoksa) bu koda eşliyor —
+    // o durumda token'lar sağlam, silersek HERKESİN aboneliği giderdi. Bu yüzden yalnızca FCM
+    // detayı açıkça SENDER_ID_MISMATCH diyorsa silinir.
+    case "messaging/mismatched-credential":
+      return fcmErrorCode(e) === "SENDER_ID_MISMATCH";
+    // Bozuk formatlı token FCM v1'de INVALID_ARGUMENT döner ("The registration token is not a valid
+    // FCM registration token") — aynı kod bozuk payload için de kullanıldığı için mesaja bakılır.
+    case "messaging/invalid-argument":
+      return /registration token/i.test(e.message || "");
+    default:
+      return false;
+  }
+}
+
 async function pushToUser(userId, payload) {
   if (!messaging) return;
   const subs = await prisma.pushSubscription.findMany({ where: { userId } });
@@ -44,7 +74,7 @@ async function pushToUser(userId, payload) {
         },
       });
     } catch (e) {
-      if (e.code === "messaging/registration-token-not-registered" || e.code === "messaging/invalid-registration-token") {
+      if (isDeadToken(e)) {
         await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {});
       } else {
         console.error("[push] gönderilemedi:", e.code || "(code yok)", "-", e.message);

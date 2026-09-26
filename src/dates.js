@@ -1,3 +1,12 @@
+// Cihazın YEREL takvim günü (YYYY-MM-DD) — form varsayılanları için. toISOString() UTC'ye çevirdiği
+// için Türkiye'de (UTC+3) 00:00-03:00 arasında bir ÖNCEKİ günü veriyordu: gece yarısından sonra
+// oluşturulan ödev dünün tarihiyle kaydedilip anında "süresi geçti" bildirimi tetikliyor, gece girilen
+// serbest çalışma da bir önceki güne yazılıyordu.
+export function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 export function formatDate(iso) {
   return new Date(iso).toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric" });
 }

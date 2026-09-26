@@ -29,8 +29,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Ödevini tamamladığını göstermek için defterinin ya da kitabının fotoğrafını çekmek amacıyla kullanılır.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Geliştirme sırasında yerel ağdaki test sunucusuna bağlanmak için kullanılır.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Ödevine kanıt fotoğrafı eklemek için galerinden fotoğraf seçmek amacıyla kullanılır.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

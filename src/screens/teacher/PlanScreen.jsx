@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Plus, Send, Trash2, Clock } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Select, Textarea, Pill, EmptyState, Modal } from "../../components/common.jsx";
+import { Card, Button, Input, Select, Textarea, Pill, EmptyState, Modal, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { SUBJECTS_BY_EXAM, trackForGrade } from "../../subjects.js";
+import TopicField from "../../components/TopicField.jsx";
 
 // 7 sütunluk tam ay ızgarası telefon genişliğinde (~390px) hücre başına ~40px bırakıyor — ders adı
 // yazan tam genişlikte satırlar bu genişlikte hiç sığmıyordu ("çok kötü" görünüm). Telefonda hücreler
@@ -70,14 +71,16 @@ export default function PlanScreen({ user }) {
   }, []);
   const activeStudents = useMemo(() => students.filter((s) => !s.banned).map((s) => ({ ...s, track: trackForGrade(s.gradeLevel) })), [students]);
   const tracksPresent = useMemo(() => [...new Set(activeStudents.map((s) => s.track).filter(Boolean))], [activeStudents]);
-  useEffect(() => {
-    if (tracksPresent.includes("LGS") && !tracksPresent.includes("YKS")) setExamType("LGS");
-    else if (examType === "LGS" && !tracksPresent.includes("LGS")) setExamType("TYT");
-  }, [tracksPresent.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
-
+  // Sınav türü (TYT/AYT) hızlıca değiştirilince önceki türün
+  // geç gelen yanıtı yeni sekmenin altında gösterilmesin diye yalnızca SON isteğin yanıtı uygulanır.
+  const loadSeq = useRef(0);
   const load = () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
-    api.listPlanEntries(examType).then(({ entries }) => setEntries(entries)).catch((e) => setToast({ type: "error", text: e.message })).finally(() => setLoading(false));
+    api.listPlanEntries(examType)
+      .then(({ entries }) => { if (seq === loadSeq.current) setEntries(entries); })
+      .catch((e) => { if (seq === loadSeq.current) setToast({ type: "error", text: e.message }); })
+      .finally(() => { if (seq === loadSeq.current) setLoading(false); });
   };
   useEffect(load, [examType]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -129,9 +132,6 @@ export default function PlanScreen({ user }) {
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10, marginBottom: 16 }}>
         <div style={{ display: "flex", gap: 8 }}>
-          {tracksPresent.includes("LGS") && (
-            <Button small variant={examType === "LGS" ? "primary" : "secondary"} onClick={() => setExamType("LGS")}>LGS</Button>
-          )}
           {tracksPresent.includes("YKS") && (
             <>
               <Button small variant={examType === "TYT" ? "primary" : "secondary"} onClick={() => setExamType("TYT")}>TYT</Button>
@@ -140,11 +140,11 @@ export default function PlanScreen({ user }) {
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button type="button" onClick={() => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))} className="k-icon-btn" style={{ width: 30, height: 30, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button type="button" aria-label="Önceki ay" onClick={() => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1))} className="k-icon-btn" style={{ width: 36, height: 36, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <ChevronLeft size={16} color={C.text} />
           </button>
           <span style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, color: C.text, minWidth: isMobile ? 100 : 150, textAlign: "center", textTransform: "capitalize" }}>{monthLabel(viewDate)}</span>
-          <button type="button" onClick={() => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))} className="k-icon-btn" style={{ width: 30, height: 30, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button type="button" aria-label="Sonraki ay" onClick={() => setViewDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1))} className="k-icon-btn" style={{ width: 36, height: 36, borderRadius: C.radiusSm, border: `1px solid ${C.border}`, background: C.surface, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <ChevronRight size={16} color={C.text} />
           </button>
           <Button small variant="secondary" onClick={() => setViewDate(new Date())}>Bugün</Button>
@@ -152,12 +152,12 @@ export default function PlanScreen({ user }) {
       </div>
 
       {loading ? (
-        <EmptyState text="Yükleniyor..." />
+        <LoadingState />
       ) : (
         <Card style={{ padding: isMobile ? 5 : 10 }}>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: isMobile ? 3 : 6, marginBottom: 6 }}>
             {WEEKDAY_LABELS.map((w) => (
-              <div key={w} style={{ textAlign: "center", fontFamily: bodyFont, fontSize: isMobile ? 9.5 : 11, fontWeight: 800, color: C.mutedLight, textTransform: "uppercase", padding: "4px 0" }}>{w}</div>
+              <div key={w} style={{ textAlign: "center", fontFamily: bodyFont, fontSize: isMobile ? 9.5 : 11, fontWeight: 800, color: C.muted, textTransform: "uppercase", padding: "4px 0" }}>{w}</div>
             ))}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: isMobile ? 3 : 6 }}>
@@ -214,6 +214,15 @@ export default function PlanScreen({ user }) {
             })}
           </div>
         </Card>
+      )}
+
+      {/* Telefonda hücreler yalnızca nokta gösterdiği için ayın kayıtları takvimin altında okunur bir
+          liste olarak da verilir — hangi gün ne var, tek tek güne dokunmadan görülsün. */}
+      {isMobile && !loading && (
+        <MonthAgenda
+          entries={entries.filter((e) => { const d = new Date(`${e.date.slice(0, 10)}T00:00:00`); return d.getFullYear() === viewDate.getFullYear() && d.getMonth() === currentMonth; })}
+          onOpenEntry={(entry) => openExisting(entry.date.slice(0, 10), entry)}
+        />
       )}
 
       <div style={{ display: "flex", gap: 14, marginTop: 14, flexWrap: "wrap" }}>
@@ -283,6 +292,46 @@ function DayAgendaModal({ dateKey, entries, onClose, onOpenEntry, onAddNew }) {
   );
 }
 
+function MonthAgenda({ entries, onOpenEntry }) {
+  if (entries.length === 0) {
+    return <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, textAlign: "center", padding: "14px 0 0" }}>Bu ay için henüz kayıt yok — bir güne dokunup ekleyebilirsin.</div>;
+  }
+  const sorted = [...entries].sort((a, b) => a.date.localeCompare(b.date));
+  return (
+    <div style={{ marginTop: 16 }}>
+      <h2 style={{ margin: "0 0 10px", fontFamily: displayFont, fontSize: 13, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>Bu Ayın Kayıtları ({sorted.length})</h2>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {sorted.map((entry) => {
+          const d = new Date(`${entry.date.slice(0, 10)}T00:00:00`);
+          return (
+            <button
+              key={entry.id}
+              type="button"
+              onClick={() => onOpenEntry(entry)}
+              style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", textAlign: "left", background: C.surface, border: `1px solid ${C.border}`, borderRadius: C.radiusSm, padding: "10px 12px", cursor: "pointer", boxShadow: C.shadowSm }}
+            >
+              <span style={{ width: 40, flexShrink: 0, textAlign: "center", fontFamily: bodyFont }}>
+                <span style={{ display: "block", fontSize: 17, fontWeight: 800, color: C.text, lineHeight: 1.1 }}>{d.getDate()}</span>
+                <span style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase" }}>{WEEKDAY_LABELS[(d.getDay() + 6) % 7]}</span>
+              </span>
+              <span style={{ width: 3, alignSelf: "stretch", borderRadius: 999, background: entry.assignmentId ? C.green : kindDot(entry.kind), flexShrink: 0 }} />
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {entry.subject ? `${entry.subject} — ${entry.topic}` : entry.topic || KIND_LABELS[entry.kind]}
+                </span>
+                <span style={{ display: "block", fontFamily: bodyFont, fontSize: 11.5, color: C.muted, marginTop: 2 }}>
+                  {KIND_LABELS[entry.kind]}{entry.questionCount ? ` · ${entry.questionCount} soru` : ""}{entry.autoSend !== "OFF" && !entry.assignmentId ? " · otomatik" : ""}
+                </span>
+              </span>
+              {entry.assignmentId ? <Pill tone="green">Gönderildi</Pill> : entry.schoolWide ? <Pill tone="accent">Okul</Pill> : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Legend({ color, label }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
@@ -292,8 +341,11 @@ function Legend({ color, label }) {
   );
 }
 
-function PlanEntryModal({ examType, dateKey, existing, isSubjectTeacher, onClose, onSaved }) {
+function PlanEntryModal({ examType: tabExamType, dateKey, existing, isSubjectTeacher, onClose, onSaved }) {
   const published = !!existing?.assignmentId;
+  // Var olan bir kayıt düzenlenirken KENDİ sınav türü kullanılır — açık sekmeninki değil; aksi halde
+  // kayıt sessizce başka sınav türüne taşınıyor ya da "Geçersiz ders" hatası veriyordu.
+  const examType = existing?.examType || tabExamType;
   const [kind, setKind] = useState(existing?.kind || "TOPIC");
   const [subject, setSubject] = useState(existing?.subject || SUBJECTS_BY_EXAM[examType][0]);
   const [topic, setTopic] = useState(existing?.topic || "");
@@ -302,6 +354,7 @@ function PlanEntryModal({ examType, dateKey, existing, isSubjectTeacher, onClose
   const [questionCount, setQuestionCount] = useState(existing?.questionCount ? String(existing.questionCount) : "");
   const [note, setNote] = useState(existing?.note || "");
   const [date, setDate] = useState(existing?.date ? existing.date.slice(0, 10) : dateKey);
+  const [endDate, setEndDate] = useState(existing?.endDate ? existing.endDate.slice(0, 10) : "");
   const [autoSend, setAutoSend] = useState(existing?.autoSend || "OFF");
   const [schoolWide, setSchoolWide] = useState(existing?.schoolWide || false);
   const [error, setError] = useState("");
@@ -309,11 +362,14 @@ function PlanEntryModal({ examType, dateKey, existing, isSubjectTeacher, onClose
   const [busy, setBusy] = useState(false);
 
   const payload = () => ({
-    examType, date, kind, subject: kind === "TOPIC" ? subject : undefined, topic: topic.trim(),
+    examType, date, endDate: endDate || undefined, kind, subject: kind === "TOPIC" ? subject : undefined, topic: topic.trim(),
     sourceBook: sourceBook.trim() || undefined, pageRange: pageRange.trim() || undefined,
     questionCount: questionCount ? Number(questionCount) : undefined,
     note: note.trim() || undefined, autoSend, schoolWide: isSubjectTeacher ? schoolWide : false,
   });
+  // Son kaydedilmiş hâlin anlık görüntüsü — "Yayınla"ya basıldığında formda kaydedilmemiş değişiklik
+  // olup olmadığını anlamak için.
+  const [savedSnapshot, setSavedSnapshot] = useState(() => JSON.stringify(payload()));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -331,19 +387,29 @@ function PlanEntryModal({ examType, dateKey, existing, isSubjectTeacher, onClose
     }
   };
 
+  // Yayın, formdaki kaydedilmemiş düzeltmeleri (konu, tarih, okul çapı...) önce kaydeder — önceden
+  // veritabanındaki ESKİ hâl tüm öğrencilere gönderiliyor (geri alınamaz), düzeltmeler kayboluyordu.
   const publishNow = async () => {
+    const current = payload();
+    const dirty = JSON.stringify(current) !== savedSnapshot;
+    if (dirty && !current.topic) { setError(kind === "TOPIC" ? "Konu gerekli" : "Başlık gerekli (ör. Deneme Sınavı)"); return; }
     let confirmText = "Bu kayıt tüm öğrencilerinize şimdi gönderilsin mi? Bu işlem geri alınamaz.";
-    if (existing.schoolWide) {
+    if (current.schoolWide) {
       confirmText = "Bu kayıt OKULDAKİ TÜM ilgili öğrencilere gönderilecek. Bu işlem geri alınamaz.";
       try {
-        const { count } = await api.planSchoolWideCount(existing.examType);
-        confirmText = `Bu kayıt okuldaki TÜM ${count} ${existing.examType} öğrencisine gönderilecek (yalnızca sizin öğrencileriniz değil). Bu işlem geri alınamaz. Devam edilsin mi?`;
+        const { count } = await api.planSchoolWideCount(examType);
+        confirmText = `Bu kayıt okuldaki TÜM ${count} ${examType} öğrencisine gönderilecek (yalnızca sizin öğrencileriniz değil). Bu işlem geri alınamaz. Devam edilsin mi?`;
       } catch { /* sayım alınamazsa genel uyarı ile devam */ }
     }
-    if (!window.confirm(confirmText)) return;
+    if (dirty) confirmText = `Yaptığın değişiklikler önce kaydedilecek. ${confirmText}`;
+    if (!(await confirmDialog({ title: "Kayıt yayınlansın mı?", message: confirmText, confirmLabel: "Yayınla" }))) return;
     setBusy(true);
     setError("");
     try {
+      if (dirty) {
+        await api.savePlanEntry(existing.id, current);
+        setSavedSnapshot(JSON.stringify(current));
+      }
       await api.publishPlanEntry(existing.id);
       onSaved();
     } catch (err) {
@@ -353,7 +419,7 @@ function PlanEntryModal({ examType, dateKey, existing, isSubjectTeacher, onClose
   };
 
   const remove = async () => {
-    if (!window.confirm("Bu kayıt silinsin mi?")) return;
+    if (!(await confirmDialog({ title: "Kayıt silinsin mi?", message: "Bu takvim kaydı silinecek.", confirmLabel: "Sil", danger: true }))) return;
     setBusy(true);
     setError("");
     try {
@@ -379,6 +445,12 @@ function PlanEntryModal({ examType, dateKey, existing, isSubjectTeacher, onClose
           {existing.subject ? `${existing.subject} — ` : ""}{existing.topic}
         </div>
         {existing.questionCount && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted }}>{existing.questionCount} soru</div>}
+        {existing.endDate && existing.endDate.slice(0, 10) !== existing.date.slice(0, 10) && (
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted }}>
+            Bitiş: {new Date(`${existing.endDate.slice(0, 10)}T00:00:00`).toLocaleDateString("tr-TR", { day: "2-digit", month: "long" })}
+          </div>
+        )}
+        {existing.note && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.text, marginTop: 6, whiteSpace: "pre-wrap" }}>{existing.note}</div>}
         <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.mutedLight, marginTop: 12 }}>
           Bu kayıt zaten yayınlandı, buradan değiştirilemez — ödevin kendisi "Ödevlerim" sekmesinden yönetilir.
         </div>
@@ -389,7 +461,13 @@ function PlanEntryModal({ examType, dateKey, existing, isSubjectTeacher, onClose
   return (
     <Modal title={dateLabel} onClose={onClose}>
       <form onSubmit={submit}>
-        <Select label="Tür" value={kind} onChange={(e) => { setKind(e.target.value); if (!topic) setTopic(e.target.value === "PRACTICE_TEST" ? "Deneme Sınavı" : e.target.value === "HOLIDAY" ? "Tatil Ödevi" : ""); }}>
+        <Select label="Tür" value={kind} onChange={(e) => {
+          const k = e.target.value;
+          setKind(k);
+          // Deneme/Tatil'in varsayılan başlığı Konu Anlatımı'na dönülünce "elle yazılmış konu" gibi kalmasın.
+          if (k === "TOPIC") { if (topic === "Deneme Sınavı" || topic === "Tatil Ödevi") setTopic(""); }
+          else if (!topic) setTopic(k === "PRACTICE_TEST" ? "Deneme Sınavı" : "Tatil Ödevi");
+        }}>
           <option value="TOPIC">Konu Anlatımı</option>
           <option value="PRACTICE_TEST">Deneme Çözümü</option>
           <option value="HOLIDAY">Tatil Ödevi</option>
@@ -400,22 +478,28 @@ function PlanEntryModal({ examType, dateKey, existing, isSubjectTeacher, onClose
             <Select label="Ders" value={subject} onChange={(e) => setSubject(e.target.value)}>
               {SUBJECTS_BY_EXAM[examType].map((s) => <option key={s} value={s}>{s}</option>)}
             </Select>
-            <Input label="Konu" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="ör. Çarpanlara Ayırma" required />
+            <TopicField label="Konu" examType={examType} subject={subject} value={topic} onChange={setTopic} placeholder="ör. Çarpanlara Ayırma" required />
             <Input label="Kaynak Kitap (opsiyonel)" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} placeholder="ör. 3D Yayınları" />
             <Input label="Sayfa / Soru Aralığı (opsiyonel)" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="ör. 45-60" />
             <Input
-              label={`Soru Sayısı (opsiyonel, önerilen 20-${MAX_QUESTION_COUNT})`} type="number" min="1" max={MAX_QUESTION_COUNT}
+              label={`Soru Sayısı (opsiyonel, önerilen 20-${MAX_QUESTION_COUNT})`} type="number" inputMode="numeric" pattern="[0-9]*" min="1" max={MAX_QUESTION_COUNT}
               value={questionCount} onChange={(e) => setQuestionCount(e.target.value)} placeholder="ör. 25"
             />
           </>
         ) : (
-          <>
-            <Input label="Başlık" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={kind === "PRACTICE_TEST" ? "ör. Deneme Sınavı" : "ör. Tatil Ödevi"} required />
-            <Textarea label="Not (opsiyonel)" value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder="ör. Her gün 1 deneme çöz" />
-          </>
+          <Input label="Başlık" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder={kind === "PRACTICE_TEST" ? "ör. Deneme Sınavı" : "ör. Tatil Ödevi"} required />
         )}
+        {/* Not artık yayınlanınca ödevle birlikte öğrenciye de gider (önceden sessizce kayboluyordu). */}
+        <Textarea label="Öğrenciye not (opsiyonel)" value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={kind === "TOPIC" ? "ör. Önce konu özetini oku" : "ör. Her gün 1 deneme çöz"} />
 
-        <Input label="Tarih" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
+        <div style={{ display: "flex", gap: 10 }}>
+          {/* minWidth:0 — iOS/Chrome tarih alanının kendi asgari genişliği flex çocuğunu pencerenin dışına taşırıyordu. */}
+          <div style={{ flex: 1, minWidth: 0 }}><Input label="Tarih" type="date" value={date} onChange={(e) => setDate(e.target.value)} required /></div>
+          <div style={{ flex: 1, minWidth: 0 }}><Input label="Bitiş (opsiyonel)" type="date" value={endDate} min={date} onChange={(e) => setEndDate(e.target.value)} /></div>
+        </div>
+        {endDate && endDate < date && (
+          <div style={{ fontSize: 11.5, color: C.red, marginTop: -10, marginBottom: 16 }}>Bitiş tarihi başlangıçtan önce olamaz.</div>
+        )}
 
         <Select label="Gönderim" value={autoSend} onChange={(e) => setAutoSend(e.target.value)}>
           <option value="OFF">Elle yayınlayacağım</option>

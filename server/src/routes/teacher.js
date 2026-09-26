@@ -16,8 +16,10 @@ teacherRouter.get("/students", async (req, res) => {
 
     // Her öğrenci için tamamlanma oranı — /stats/teacher'daki genel orandan farklı olarak öğrenci
     // bazında, listede kartın altında gösterilsin diye (yalnızca gönderilmiş ödevler sayılır).
+    // Öğrenciye kim gönderirse göndersin (koç, ders öğretmeninin okul çapındaki ödevi, önceki koç)
+    // TÜM gönderilmiş ödevler sayılır — öğrenci özet ekranındaki oranla aynı kural, ikisi tutarlı kalsın.
     const recipients = await prisma.assignmentRecipient.findMany({
-      where: { studentId: { in: students.map((s) => s.id) }, assignment: { teacherId: req.userId, status: "SENT" } },
+      where: { studentId: { in: students.map((s) => s.id) }, assignment: { status: "SENT" } },
       select: { studentId: true, completed: true },
     });
     const byStudent = new Map();
@@ -46,9 +48,12 @@ teacherRouter.get("/students/:id/overview", async (req, res) => {
     });
     assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
     const [recipients, studySessions] = await Promise.all([
+      // Başka öğretmenlerin TASLAKLARI (öğrenciye henüz gitmemiş) gösterilmez; kendi taslakları ve
+      // herkesin gönderilmiş ödevleri gösterilir. assignment.teacher, istemcinin başkasına ait ödevi
+      // "X tarafından verildi" diye işaretleyebilmesi için.
       prisma.assignmentRecipient.findMany({
-        where: { studentId: student.id },
-        include: { assignment: true, submission: true },
+        where: { studentId: student.id, assignment: { OR: [{ status: "SENT" }, { teacherId: req.userId }] } },
+        include: { assignment: { include: { teacher: { select: { id: true, name: true } } } }, submission: true },
         orderBy: { createdAt: "desc" },
       }),
       prisma.studySession.findMany({ where: { studentId: student.id }, orderBy: { studyDate: "desc" } }),

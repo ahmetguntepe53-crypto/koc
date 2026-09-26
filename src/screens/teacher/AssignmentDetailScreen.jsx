@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Pill, EmptyState, Avatar, Modal } from "../../components/common.jsx";
+import { Card, Button, Pill, EmptyState, Avatar, Modal, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api, photoUrl } from "../../api.js";
 import { PERIOD_LABELS, SEND_MODE_LABELS, STATUS_LABELS } from "../../subjects.js";
 import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
 
-export default function AssignmentDetailScreen({ assignmentId, onBack }) {
+export default function AssignmentDetailScreen({ assignmentId, onBack, backLabel = "Ödevlerime dön" }) {
   const [assignment, setAssignment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -16,6 +16,7 @@ export default function AssignmentDetailScreen({ assignmentId, onBack }) {
 
   const load = () => {
     setLoading(true);
+    setLoadError("");
     api.getAssignment(assignmentId)
       .then(({ assignment }) => setAssignment(assignment))
       .catch((e) => setLoadError(e.message || "Ödev yüklenemedi"))
@@ -25,27 +26,36 @@ export default function AssignmentDetailScreen({ assignmentId, onBack }) {
   useEffect(() => { load(); }, [assignmentId]);
 
   const sendNow = async () => {
-    if (!window.confirm("Bu ödev şimdi öğrencilere gönderilsin mi?")) return;
+    if (!(await confirmDialog({ title: "Ödev şimdi gönderilsin mi?", message: "Öğrencilere hemen bildirim gidecek. Gönderildikten sonra ödev düzenlenemez.", confirmLabel: "Şimdi Gönder" }))) return;
     setActionError("");
     setBusy(true);
     try { await api.sendAssignmentNow(assignmentId); load(); } catch (e) { setActionError(e.message); } finally { setBusy(false); }
   };
   const remove = async () => {
-    if (!window.confirm("Bu taslak ödev silinsin mi?")) return;
+    if (!(await confirmDialog({ title: "Taslak silinsin mi?", message: "Bu taslak ödev kalıcı olarak silinecek.", confirmLabel: "Sil", danger: true }))) return;
     setActionError("");
     setBusy(true);
     try { await api.deleteAssignment(assignmentId); onBack(); } catch (e) { setActionError(e.message); setBusy(false); }
   };
 
-  if (loading) return <EmptyState text="Yükleniyor..." />;
-  if (loadError) return <EmptyState text={loadError} />;
+  const backButton = (
+    <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
+      <ArrowLeft size={16} /> {backLabel}
+    </button>
+  );
+
+  if (loading) return <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}><LoadingState /></div>;
+  // Hata ekranında da geri düğmesi — önceden yalnızca metin gösteriliyor, kullanıcı ekranda kalıyordu.
+  if (loadError) return <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>{backButton}<EmptyState text={loadError} /></div>;
   if (!assignment) return null;
 
+  // readOnly: başka bir öğretmenin verdiği ödev (koç, öğrencisinin özetinden açtı) ya da admin
+  // görünümü — gönder/sil yalnızca ödevin sahibi öğretmene açık (bkz. server > GET /assignments/:id).
+  const readOnly = !!assignment.readOnly;
+
   return (
-    <div style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-      <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
-        <ArrowLeft size={16} /> Ödevlerime dön
-      </button>
+    <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+      {backButton}
 
       <Card style={{ marginBottom: 20 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
@@ -53,14 +63,18 @@ export default function AssignmentDetailScreen({ assignmentId, onBack }) {
           <Pill tone={assignment.status === "SENT" ? "green" : "amber"}>{STATUS_LABELS[assignment.status]}</Pill>
           <Pill>{assignment.examType}</Pill>
         </div>
+        {readOnly && assignment.teacher?.name && <DetailRow label="Veren öğretmen" value={assignment.teacher.name} />}
         <DetailRow label="Tarih" value={formatDateRange(assignment.scheduledDate, assignment.endDate)} />
         <DetailRow label="Periyot" value={PERIOD_LABELS[assignment.period]} />
         <DetailRow label="Gönderim modu" value={SEND_MODE_LABELS[assignment.sendMode]} />
         {assignment.sourceBook && <DetailRow label="Kaynak kitap" value={assignment.sourceBook} />}
         {assignment.pageRange && <DetailRow label="Sayfa / soru aralığı" value={assignment.pageRange} />}
         {assignment.sentAt && <DetailRow label="Gönderildi" value={formatDate(assignment.sentAt)} />}
+        {assignment.note && (
+          <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.text, marginTop: 10, whiteSpace: "pre-wrap" }}>{assignment.note}</div>
+        )}
 
-        {assignment.status === "DRAFT" && (
+        {assignment.status === "DRAFT" && !readOnly && (
           <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
             <Button small disabled={busy} onClick={sendNow}>Şimdi Gönder</Button>
             <Button small variant="danger" disabled={busy} onClick={remove}>Sil</Button>
@@ -69,7 +83,7 @@ export default function AssignmentDetailScreen({ assignmentId, onBack }) {
         {actionError && <div style={{ color: C.red, fontSize: 12.5, marginTop: 10 }}>{actionError}</div>}
       </Card>
 
-      <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5 }}>
+      <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
         Öğrenciler ({assignment.recipients.length})
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

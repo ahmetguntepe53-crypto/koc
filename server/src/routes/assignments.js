@@ -2,14 +2,15 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
-import { isValidSubject, trackForGrade, trackForExamType } from "../subjects.js";
+import { isValidSubject, trackForGrade, trackForExamType, EXAM_TYPES } from "../subjects.js";
 import { notifyUser } from "../notify.js";
 
 // Bu router server/src/app.js'de requireAuth ile mount edilir (rol karışık: TEACHER oluşturur/
 // düzenler, ADMIN yalnızca okur) — her uç nokta kendi içinde req.userRole'e göre yetki kontrolü yapar.
 export const assignmentsRouter = Router();
 
-export const EXAM_TYPES = ["TYT", "AYT", "LGS"];
+// Yeni kayıtta kabul edilen sınav türleri — tek kaynak subjects.js (LGS kaldırıldı).
+export { EXAM_TYPES };
 const PERIODS = ["WEEKLY", "MONTHLY", "YEARLY"];
 const SEND_MODES = ["AUTO_ON_DATE", "AUTO_DAY_BEFORE", "MANUAL_NOW"];
 
@@ -119,7 +120,7 @@ assignmentsRouter.get("/source-books", async (req, res) => {
     assert(req.userRole === "TEACHER", "Bu işlem için yetkin yok", 403);
     const { examType } = req.query || {};
     const where = { teacherId: req.userId, sourceBook: { not: null } };
-    if (examType) where.examType = examType;
+    if (examType) { assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü"); where.examType = examType; }
     const rows = await prisma.assignment.findMany({ where, distinct: ["sourceBook"], select: { sourceBook: true }, take: 20, orderBy: { createdAt: "desc" } });
     res.json({ sourceBooks: rows.map((r) => r.sourceBook).filter(Boolean) });
   } catch (e) {
@@ -134,9 +135,10 @@ assignmentsRouter.get("/", async (req, res) => {
     if (req.userRole === "TEACHER") where.teacherId = req.userId;
     else if (req.userRole === "ADMIN") { if (teacherId) where.teacherId = teacherId; }
     else return res.status(403).json({ error: "Bu işlem için yetkin yok" });
-    if (status) where.status = status;
-    if (examType) where.examType = examType;
-    if (subject) where.subject = subject;
+    // Geçersiz enum değeri Prisma'ya ulaşırsa 500 dönüyordu — burada 400'e çevrilir.
+    if (status) { assert(["DRAFT", "SENT"].includes(status), "Geçersiz durum"); where.status = status; }
+    if (examType) { assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü"); where.examType = examType; }
+    if (subject) where.subject = String(subject);
     const assignments = await prisma.assignment.findMany({ where, orderBy: { scheduledDate: "desc" }, include: recipientInclude });
     res.json({ assignments });
   } catch (e) {
@@ -151,8 +153,22 @@ assignmentsRouter.get("/:id", async (req, res) => {
       include: { ...recipientInclude, teacher: { select: { id: true, name: true } } },
     });
     assert(assignment, "Ödev bulunamadı", 404);
-    assert(req.userRole === "ADMIN" || (req.userRole === "TEACHER" && assignment.teacherId === req.userId), "Bu işlem için yetkin yok", 403);
-    res.json({ assignment });
+    const isOwner = req.userRole === "TEACHER" && assignment.teacherId === req.userId;
+    if (isOwner || req.userRole === "ADMIN") {
+      // readOnly: "Şimdi Gönder"/"Sil" yalnızca ödevin sahibi öğretmene açık (bkz. loadOwnedDraftAssignment).
+      return res.json({ assignment: { ...assignment, readOnly: !isOwner } });
+    }
+    // Koç, öğrencisinin özet ekranında BAŞKA bir öğretmenin (ör. ders öğretmeninin okul çapındaki ya
+    // da önceki koçun) gönderdiği ödevleri de görür — tıklayınca 403 yerine salt okunur açılır, ama
+    // yalnızca kendi öğrencilerinin satırlarını görür, diğer öğrencilerin sonuçları sızmaz.
+    assert(req.userRole === "TEACHER" && assignment.status === "SENT", "Bu işlem için yetkin yok", 403);
+    const coached = await prisma.user.findMany({
+      where: { teacherId: req.userId, id: { in: assignment.recipients.map((r) => r.studentId) } },
+      select: { id: true },
+    });
+    const coachedIds = new Set(coached.map((s) => s.id));
+    assert(coachedIds.size > 0, "Bu işlem için yetkin yok", 403);
+    res.json({ assignment: { ...assignment, recipients: assignment.recipients.filter((r) => coachedIds.has(r.studentId)), readOnly: true } });
   } catch (e) {
     handleErr(res, e);
   }

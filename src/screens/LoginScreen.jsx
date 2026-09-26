@@ -28,7 +28,9 @@ function AnimatedLogo({ width }) {
   );
 }
 
-export default function LoginScreen({ onLogin, onForgotPassword }) {
+// notice: oturum sunucu tarafından sonlandırıldıysa (süre doldu, şifre başka yerde değişti, hesap
+// askıya alındı) nedeni — bkz. useAuthSession > setUnauthorizedHandler.
+export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -119,6 +121,9 @@ export default function LoginScreen({ onLogin, onForgotPassword }) {
               </div>
             ) : (
               <form onSubmit={submit}>
+                {notice && !forgotMode && !error && (
+                  <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: C.radiusSm, background: C.amberSoft, color: C.amber, fontSize: 12.5, fontWeight: 600 }}>{notice}</div>
+                )}
                 {/* Giriş modunda type="text": admin girişi artık gerçek bir e-posta değil (bkz. "admin"
                     kullanıcı adı) — tarayıcının yerleşik e-posta biçimi doğrulaması ("@" gerekli)
                     bu girişi engellerdi. Şifremi unuttum modu gerçek bir e-postaya sıfırlama

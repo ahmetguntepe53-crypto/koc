@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { UserPlus, Upload, RotateCcw, KeyRound, Ban, ShieldCheck, Trash2, GraduationCap } from "lucide-react";
+import { UserPlus, Upload, RotateCcw, KeyRound, Ban, ShieldCheck, Trash2, GraduationCap, Search } from "lucide-react";
 import { C, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Select, Pill, Modal, EmptyState, roleLabel } from "../../components/common.jsx";
+import { Card, Button, Input, Select, Pill, Modal, EmptyState, Avatar, roleLabel, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { GRADE_OPTIONS, trackForGrade } from "../../subjects.js";
+import { GRADE_OPTIONS, GRADE_LEVELS, trackForGrade } from "../../subjects.js";
 
 export default function AdminUsersScreen() {
   const [users, setUsers] = useState([]);
@@ -57,14 +57,14 @@ export default function AdminUsersScreen() {
   const toggleBan = withAction(async (u) => { u.banned ? await api.adminUnbanUser(u.id) : await api.adminBanUser(u.id); });
   const toggleSubjectTeacher = withAction(async (u) => { await api.adminSetSubjectTeacher(u.id, !u.isSubjectTeacher); });
   const remove = withAction(async (u) => {
-    if (!window.confirm(`${u.name} silinsin mi? Bu işlem geri alınamaz.`)) return;
+    if (!(await confirmDialog({ title: `${u.name} silinsin mi?`, message: "Hesap kalıcı olarak silinecek. Bu işlem geri alınamaz.", confirmLabel: "Hesabı Sil", danger: true }))) return;
     await api.adminDeleteUser(u.id);
   });
 
   return (
-    <div style={{ padding: 28, maxWidth: 1040, margin: "0 auto" }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", flexWrap: "wrap", gap: 10, marginBottom: 20 }}>
-        <div style={{ display: "flex", gap: 8 }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 1040, margin: "0 auto" }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, auto)", gap: 8, maxWidth: "100%" }}>
           <Button small icon={UserPlus} onClick={() => setAddModalRole("TEACHER")}>Öğretmen Ekle</Button>
           <Button small icon={UserPlus} variant="secondary" onClick={() => setAddModalRole("STUDENT")}>Öğrenci Ekle</Button>
           <Button small icon={Upload} variant="secondary" onClick={() => setBulkModalOpen(true)}>Toplu İçe Aktar</Button>
@@ -79,23 +79,23 @@ export default function AdminUsersScreen() {
 
       <ExamDatesCard />
 
-      <form onSubmit={runSearch} style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-        <div style={{ minWidth: 160 }}>
-          <Select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
+      <form onSubmit={runSearch} style={{ display: "flex", gap: 10, marginBottom: 4, flexWrap: "wrap", alignItems: "flex-start" }}>
+        <div style={{ flex: "1 1 140px", maxWidth: 200 }}>
+          <Select aria-label="Role göre filtrele" value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}>
             <option value="">Tüm roller</option>
             <option value="ADMIN">Yönetici</option>
             <option value="TEACHER">Öğretmen</option>
             <option value="STUDENT">Öğrenci</option>
           </Select>
         </div>
-        <div style={{ flex: 1, minWidth: 200 }}>
-          <Input placeholder="İsim veya e-posta ara..." value={q} onChange={(e) => setQ(e.target.value)} />
+        <div style={{ flex: "3 1 180px", minWidth: 0 }}>
+          <Input type="search" enterKeyHint="search" aria-label="İsim veya e-posta ara" placeholder="İsim veya e-posta ara..." value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <Button small variant="secondary" type="submit">Ara</Button>
+        <div style={{ flex: "0 0 auto" }}><Button variant="secondary" type="submit" icon={Search}>Ara</Button></div>
       </form>
 
       {loading ? (
-        <EmptyState text="Yükleniyor..." />
+        <LoadingState />
       ) : users.length === 0 ? (
         <EmptyState text="Kayıtlı kullanıcı yok." />
       ) : (
@@ -136,7 +136,7 @@ export default function AdminUsersScreen() {
         <SetPasswordModal
           user={setPasswordFor}
           onClose={() => setSetPasswordFor(null)}
-          onDone={() => { setSetPasswordFor(null); setToast({ type: "ok", text: "Şifre belirlendi." }); }}
+          onDone={() => { setSetPasswordFor(null); setToast({ type: "ok", text: "Şifre belirlendi." }); load(); }}
         />
       )}
     </div>
@@ -147,26 +147,30 @@ export default function AdminUsersScreen() {
 // açıklanınca (ya da değişince) admin burada güncelleyebilsin diye koda gömülü değil.
 function ExamDatesCard() {
   const [yksExamDate, setYksExamDate] = useState("");
-  const [lgsExamDate, setLgsExamDate] = useState("");
   const [loading, setLoading] = useState(true);
+  // Mevcut tarihler yüklenemediyse alanlar boş görünür — o haldeyken "Kaydet" dokunulmayan tarihi de
+  // null gönderip siliyordu. Yükleme başarısızsa kaydetme kapatılır, hata ve "tekrar dene" gösterilir.
+  const [loadError, setLoadError] = useState("");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
 
-  useEffect(() => {
+  const loadSettings = () => {
+    setLoading(true);
+    setLoadError("");
     api.adminGetSettings()
-      .then(({ yksExamDate, lgsExamDate }) => {
+      .then(({ yksExamDate }) => {
         setYksExamDate(yksExamDate ? yksExamDate.slice(0, 10) : "");
-        setLgsExamDate(lgsExamDate ? lgsExamDate.slice(0, 10) : "");
       })
-      .catch(() => {})
+      .catch((e) => setLoadError(e.message || "Sınav tarihleri yüklenemedi"))
       .finally(() => setLoading(false));
-  }, []);
+  };
+  useEffect(loadSettings, []);
 
   const save = async () => {
     setSaving(true);
     setMsg(null);
     try {
-      await api.adminUpdateSettings({ yksExamDate: yksExamDate || null, lgsExamDate: lgsExamDate || null });
+      await api.adminUpdateSettings({ yksExamDate: yksExamDate || null });
       setMsg({ type: "ok", text: "Kaydedildi." });
     } catch (e) {
       setMsg({ type: "error", text: e.message || "Kaydedilemedi" });
@@ -177,18 +181,27 @@ function ExamDatesCard() {
 
   if (loading) return null;
 
+  if (loadError) {
+    return (
+      <Card style={{ padding: 18, marginBottom: 16 }}>
+        <div style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 6 }}>Sınav Tarihleri</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12.5, color: C.red, fontWeight: 600 }}>{loadError}</span>
+          <Button small variant="secondary" onClick={loadSettings}>Tekrar dene</Button>
+        </div>
+      </Card>
+    );
+  }
+
   return (
     <Card style={{ padding: 18, marginBottom: 16 }}>
-      <div style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 3 }}>Sınav Tarihleri</div>
+      <div style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 3 }}>YKS Tarihi</div>
       <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.muted, marginBottom: 14 }}>
-        Öğrenci ana ekranındaki "sınava kaç gün kaldı" sayacı için — resmi takvim açıklanınca buradan güncelleyin.
+        Öğrenci ana ekranındaki "YKS'ye kalan" sayacı için — TYT oturumunun günü (sayaç 10.15'e göre sayar). ÖSYM takvimi açıklanınca buradan güncelleyin.
       </div>
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div style={{ minWidth: 180 }}>
-          <Input label="YKS (TYT/AYT) Tarihi" type="date" value={yksExamDate} onChange={(e) => setYksExamDate(e.target.value)} />
-        </div>
-        <div style={{ minWidth: 180 }}>
-          <Input label="LGS Tarihi" type="date" value={lgsExamDate} onChange={(e) => setLgsExamDate(e.target.value)} />
+          <Input label="YKS (TYT) Tarihi" type="date" value={yksExamDate} onChange={(e) => setYksExamDate(e.target.value)} />
         </div>
         <div style={{ marginBottom: 16 }}>
           <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
@@ -199,52 +212,57 @@ function ExamDatesCard() {
   );
 }
 
+// Kart düzeni: üstte kimlik (avatar, ad, rozetler, e-posta), öğrencide altında etiketli iki seçim
+// (sınıf düzeyi, koç), en altta işlem düğmeleri — önceden seçimler rozetlerin arasına karışıyor, telefonda
+// düzensiz satırlara kırılıyordu; seçimlerin neyi değiştirdiği de etiketsizdi.
 function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onResendActivation, onToggleBan, onToggleSubjectTeacher, onSetPassword, onDelete }) {
+  const isStudent = user.role === "STUDENT";
   return (
     <Card hover style={{ padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-            <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{user.name}</span>
-            <Pill tone={user.role === "STUDENT" ? "accent" : "muted"}>{roleLabel(user.role)}</Pill>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <Avatar name={user.name} size={38} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text, marginRight: 2 }}>{user.name}</span>
+            <Pill tone={isStudent ? "accent" : "muted"}>{roleLabel(user.role)}</Pill>
+            {isStudent && user.className && <Pill>{user.className}</Pill>}
             {user.banned && <Pill tone="red">Askıda</Pill>}
             {!user.hasPassword && <Pill tone="amber">Aktivasyon bekleniyor</Pill>}
-            {user.role === "TEACHER" && user.isSubjectTeacher && <Pill tone="accent">Ders Öğretmeni — Okul Çapında Ödev Yetkisi</Pill>}
+            {isStudent && !GRADE_LEVELS.includes(user.gradeLevel) && <Pill tone="red">{user.gradeLevel ? "Sınıf düzeyi güncellenmeli" : "Sınıf düzeyi girilmedi"}</Pill>}
+            {user.role === "TEACHER" && user.isSubjectTeacher && <Pill tone="accent">Ders öğretmeni</Pill>}
           </div>
-          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 3 }}>{user.email}</div>
-          {user.role === "STUDENT" && (
-            <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              {user.className && <Pill>{user.className}</Pill>}
-              <Pill tone={trackForGrade(user.gradeLevel) === "LGS" ? "amber" : trackForGrade(user.gradeLevel) === "YKS" ? "green" : "red"}>
-                {user.gradeLevel ? `${user.gradeLevel}. Sınıf (${trackForGrade(user.gradeLevel)})` : "Sınıf düzeyi girilmedi"}
-              </Pill>
-              <Select value={user.gradeLevel || ""} onChange={(e) => onChangeGradeLevel(e.target.value)} style={{ minWidth: 150 }}>
-                <option value="" disabled>Sınıf düzeyi...</option>
-                {GRADE_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
-              </Select>
-              <Select value={user.teacherId || ""} onChange={(e) => onReassignTeacher(e.target.value)} style={{ minWidth: 160 }}>
-                <option value="">Koç atanmadı</option>
-                {teachers.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.studentCount})</option>)}
-              </Select>
-            </div>
-          )}
+          <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.email}</div>
         </div>
-        <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-          {!user.hasPassword && (
-            <IconButton title="Aktivasyon bağlantısını tekrar gönder" icon={RotateCcw} onClick={onResendActivation} />
-          )}
-          {user.role === "TEACHER" && (
-            <IconButton
-              title={user.isSubjectTeacher ? "Ders öğretmeni yetkisini kaldır" : "Ders öğretmeni yap (okul çapında ortak ödev gönderebilsin)"}
-              icon={GraduationCap}
-              onClick={onToggleSubjectTeacher}
-              active={user.isSubjectTeacher}
-            />
-          )}
-          <IconButton title="Şifreyi doğrudan belirle" icon={KeyRound} onClick={onSetPassword} />
-          <IconButton title={user.banned ? "Askıyı kaldır" : "Askıya al"} icon={user.banned ? ShieldCheck : Ban} onClick={onToggleBan} />
-          <IconButton title="Sil" icon={Trash2} onClick={onDelete} danger />
+      </div>
+      {isStudent && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", columnGap: 10, marginTop: 14 }}>
+          <Select label="Sınıf düzeyi" value={user.gradeLevel || ""} onChange={(e) => onChangeGradeLevel(e.target.value)}>
+            <option value="" disabled>Seç...</option>
+            {/* Artık seçilemeyen eski bir düzey (ör. 9, 10, 8) kayıtlıysa görünür kalsın — admin 11/12'ye çeksin. */}
+            {user.gradeLevel && !GRADE_LEVELS.includes(user.gradeLevel) && <option value={user.gradeLevel} disabled>{user.gradeLevel}. Sınıf (güncellenmeli)</option>}
+            {GRADE_OPTIONS.map((g) => <option key={g.value} value={g.value}>{g.label}</option>)}
+          </Select>
+          <Select label="Koç" value={user.teacherId || ""} onChange={(e) => onReassignTeacher(e.target.value)}>
+            <option value="">Koç atanmadı</option>
+            {teachers.map((t) => <option key={t.id} value={t.id}>{t.name} ({t.studentCount})</option>)}
+          </Select>
         </div>
+      )}
+      <div style={{ display: "flex", gap: 6, justifyContent: "flex-end", flexWrap: "wrap", marginTop: isStudent ? -4 : 12, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
+        {!user.hasPassword && (
+          <IconButton title="Aktivasyon bağlantısını tekrar gönder" icon={RotateCcw} onClick={onResendActivation} />
+        )}
+        {user.role === "TEACHER" && (
+          <IconButton
+            title={user.isSubjectTeacher ? "Ders öğretmeni yetkisini kaldır" : "Ders öğretmeni yap (okul çapında ortak ödev gönderebilsin)"}
+            icon={GraduationCap}
+            onClick={onToggleSubjectTeacher}
+            active={user.isSubjectTeacher}
+          />
+        )}
+        <IconButton title="Şifreyi doğrudan belirle" icon={KeyRound} onClick={onSetPassword} />
+        <IconButton title={user.banned ? "Askıyı kaldır" : "Askıya al"} icon={user.banned ? ShieldCheck : Ban} onClick={onToggleBan} />
+        <IconButton title="Sil" icon={Trash2} onClick={onDelete} danger />
       </div>
     </Card>
   );
@@ -254,10 +272,12 @@ function IconButton({ icon: Icon, onClick, title, danger, active }) {
   return (
     <button
       title={title}
+      aria-label={title}
+      aria-pressed={active === undefined ? undefined : !!active}
       onClick={onClick}
       className="k-icon-btn"
       style={{
-        width: 34, height: 34, borderRadius: C.radiusSm, border: `1px solid ${active ? C.accent : C.border}`,
+        width: 38, height: 38, borderRadius: C.radiusSm, border: `1px solid ${active ? C.accent : C.border}`,
         background: active ? C.accentSoft : C.surface2, color: danger ? C.red : active ? C.accent : C.muted, cursor: "pointer",
         display: "flex", alignItems: "center", justifyContent: "center",
       }}
@@ -280,7 +300,7 @@ function AddUserModal({ role, teachers, onClose, onCreated }) {
   const submit = async (e) => {
     e.preventDefault();
     setError("");
-    if (role === "STUDENT" && !gradeLevel) { setError("Sınıf düzeyi seçmelisin — sistem buna göre LGS ya da TYT/AYT gösterir"); return; }
+    if (role === "STUDENT" && !gradeLevel) { setError("Sınıf düzeyi seçmelisin (11 veya 12. sınıf)"); return; }
     setSaving(true);
     try {
       await api.adminCreateUser({ role, name, email, phone: phone || undefined, className: className || undefined, gradeLevel: gradeLevel || undefined, teacherId: teacherId || undefined });
@@ -388,7 +408,8 @@ function BulkImportModal({ teachers, onClose, onDone }) {
 
   const rows = useMemo(() => parseBulkText(text, role), [text, role]);
   const resolvedRows = useMemo(() => rows.map((r) => {
-    const gradeTrack = role === "STUDENT" ? trackForGrade(Number(r.gradeLevel)) : null;
+    // Yalnızca 11/12 kabul ediliyor (sunucu da bunu doğrular) — diğer değerler önizlemede geçersiz görünür.
+    const gradeTrack = role === "STUDENT" && GRADE_LEVELS.includes(Number(r.gradeLevel)) ? trackForGrade(Number(r.gradeLevel)) : null;
     const base = { ...r, gradeTrack };
     if (role !== "STUDENT" || !r.teacherEmail) return { ...base, teacherId: undefined, teacherMatch: null };
     const match = teachersByEmail && teachersByEmail[r.teacherEmail.toLowerCase()];
@@ -418,7 +439,7 @@ function BulkImportModal({ teachers, onClose, onDone }) {
             <option value="TEACHER">Öğretmen</option>
           </Select>
           <div style={{ fontSize: 12, color: C.muted, marginBottom: 8 }}>
-            Her satıra bir kullanıcı — Excel/Sheets'ten kopyalayıp yapıştırabilirsin. Sütunlar: {role === "STUDENT" ? "Ad Soyad, E-posta, Sınıf Düzeyi (7-12, zorunlu), Sınıf (opsiyonel), Koçun E-postası (opsiyonel)" : "Ad Soyad, E-posta"}.
+            Her satıra bir kullanıcı — Excel/Sheets'ten kopyalayıp yapıştırabilirsin. Sütunlar: {role === "STUDENT" ? "Ad Soyad, E-posta, Sınıf Düzeyi (11 veya 12, zorunlu), Sınıf (opsiyonel), Koçun E-postası (opsiyonel)" : "Ad Soyad, E-posta"}.
           </div>
           <textarea
             value={text}
@@ -434,7 +455,7 @@ function BulkImportModal({ teachers, onClose, onDone }) {
                   <span>{r.name} · {r.email}{r.className ? ` · ${r.className}` : ""}</span>
                   <span style={{ display: "flex", gap: 8 }}>
                     {role === "STUDENT" && (
-                      <span style={{ color: r.gradeTrack ? C.muted : C.red }}>{r.gradeTrack ? `${r.gradeLevel}. sınıf (${r.gradeTrack})` : "sınıf düzeyi geçersiz"}</span>
+                      <span style={{ color: r.gradeTrack ? C.muted : C.red }}>{r.gradeTrack ? `${r.gradeLevel}. sınıf` : "sınıf düzeyi geçersiz (11 veya 12 olmalı)"}</span>
                     )}
                     {role === "STUDENT" && r.teacherEmail && (
                       <span style={{ color: r.teacherMatch === "eşleşme yok" ? C.red : C.muted }}>{r.teacherMatch}</span>

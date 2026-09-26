@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { ChevronRight, CalendarClock, AlertTriangle, BookOpen, ListOrdered } from "lucide-react";
+import { ChevronRight, CalendarClock, AlertTriangle, BookOpen, ListOrdered, ClipboardCheck, PartyPopper } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Select, Pill, EmptyState, StatCard, ShowMoreButton } from "../../components/common.jsx";
+import { Card, Select, Pill, EmptyState, StatCard, StatGrid, ShowMoreButton, LoadingState } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { ALL_SUBJECTS, trackForGrade, subjectIconUrl } from "../../subjects.js";
+import { ALL_SUBJECTS, subjectIconUrl } from "../../subjects.js";
 import { daysUntil } from "../../dates.js";
 
 // Geciken/Bekleyen/Tamamlanan — üçü de aynı sayfalama kuralına uyar: başta yalnızca 1 tanesi
@@ -59,9 +59,9 @@ function AssignmentRow({ r, onOpen }) {
 
 function SectionTitle({ children }) {
   return (
-    <div style={{ fontFamily: displayFont, fontSize: 13, fontWeight: 800, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>
+    <h2 style={{ margin: "0 0 10px", fontFamily: displayFont, fontSize: 13, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
       {children}
-    </div>
+    </h2>
   );
 }
 
@@ -71,7 +71,7 @@ function CountdownSegment({ value, label }) {
       <div style={{ fontFamily: displayFont, fontSize: 34, fontWeight: 800, color: C.text, fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
         {String(value).padStart(2, "0")}
       </div>
-      <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 6 }}>
+      <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5, marginTop: 6 }}>
         {label}
       </div>
     </div>
@@ -82,8 +82,8 @@ function CountdownDivider() {
   return <div style={{ width: 1, height: 34, background: C.border, flexShrink: 0 }} />;
 }
 
-// Başlığı (ikon + "X'YE KALAN") ortalanmış, kartın kalan içeriği duruma göre değişen ortak kabuk.
-function ExamCountdownShell({ track, children }) {
+// Başlığı (ikon + "YKS'YE KALAN") ortalanmış, kartın kalan içeriği duruma göre değişen ortak kabuk.
+function ExamCountdownShell({ children, footer }) {
   return (
     <Card style={{ marginBottom: 22, padding: "22px 20px", textAlign: "center" }}>
       <div style={{
@@ -92,10 +92,11 @@ function ExamCountdownShell({ track, children }) {
       }}>
         <CalendarClock size={14} color={C.accent} strokeWidth={2.4} />
         <span style={{ fontFamily: displayFont, fontSize: 12, fontWeight: 800, color: C.accent, textTransform: "uppercase", letterSpacing: 0.6 }}>
-          {track}'ye Kalan
+          YKS'ye Kalan
         </span>
       </div>
       {children}
+      {footer && <div style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, color: C.muted, marginTop: 16 }}>{footer}</div>}
     </Card>
   );
 }
@@ -111,25 +112,38 @@ function useNowTicking(intervalMs = 30000) {
   return now;
 }
 
-// Sınav tarihi admin panelinden yalnızca GÜN olarak girildiği için (bkz. AdminUsersScreen >
-// ExamDatesCard), depolanan değer o günün UTC gece yarısı — geri sayım bu ana kadar hesaplanır.
-function ExamCountdownCard({ track, examDate }) {
+// Sınav tarihi admin panelinden yalnızca GÜN olarak girilir (bkz. AdminUsersScreen > ExamDatesCard),
+// depolanan değer o günün UTC gece yarısı. Geri sayım YKS'nin ilk oturumu TYT'nin başlangıcına —
+// Türkiye saatiyle 10.15'e (UTC 07.15) — göre hesaplanır; önceden gece yarısına sayıyordu.
+const TYT_START_UTC_OFFSET_MS = (7 * 60 + 15) * 60 * 1000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+function examDayLabel(examDate) {
+  return new Date(examDate).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric", weekday: "long", timeZone: "Europe/Istanbul" });
+}
+
+function ExamCountdownCard({ examDate }) {
   const now = useNowTicking();
-  if (!track) return null;
 
   if (!examDate) {
     return (
-      <ExamCountdownShell track={track}>
-        <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted }}>Sınav tarihi henüz girilmedi.</div>
+      <ExamCountdownShell>
+        <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted }}>YKS tarihi henüz girilmedi.</div>
       </ExamCountdownShell>
     );
   }
 
-  const diffMs = new Date(examDate).getTime() - now;
+  const examStart = new Date(examDate).getTime() + TYT_START_UTC_OFFSET_MS;
+  const diffMs = examStart - now;
   if (diffMs <= 0) {
+    // Sınav günü (TYT + ertesi gün AYT) "bol şans"; ondan sonra kayıtlı tarih eskimiş demektir — bir
+    // sonraki yılın tarihi girilene kadar eski sınavı "geldi" diye göstermeye devam etmesin.
+    const examOver = now - examStart > 2 * ONE_DAY_MS;
     return (
-      <ExamCountdownShell track={track}>
-        <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text }}>Sınav tarihi geldi — bol şans! 🍀</div>
+      <ExamCountdownShell footer={examOver ? null : examDayLabel(examDate)}>
+        <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text }}>
+          {examOver ? "Yeni YKS tarihi henüz girilmedi." : "Sınav günü geldi — bol şans! 🍀"}
+        </div>
       </ExamCountdownShell>
     );
   }
@@ -140,7 +154,7 @@ function ExamCountdownCard({ track, examDate }) {
   const minutes = totalMinutes % 60;
 
   return (
-    <ExamCountdownShell track={track}>
+    <ExamCountdownShell footer={`${examDayLabel(examDate)} · TYT 10.15`}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 18 }}>
         <CountdownSegment value={days} label="Gün" />
         <CountdownDivider />
@@ -180,12 +194,14 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
 
   useEffect(() => { api.studentStats().then(setStats).catch(() => {}); }, [refreshKey]);
   useEffect(() => { api.getExamDates().then(setExamDates).catch(() => {}); }, []);
+  // Yalnızca ders filtresi değişince baştan başlar — refreshKey artık uygulama arka plandan dönünce de
+  // artıyor (bkz. App.jsx > kocluk:resume), o anda öğrencinin seçtiği kart filtresi sıfırlanmamalı.
   useEffect(() => {
     setVisibleOverdueCount(INITIAL_COUNT);
     setVisiblePendingCount(INITIAL_COUNT);
     setVisibleCompletedCount(INITIAL_COUNT);
     setAssignmentFilter("all");
-  }, [subject, refreshKey]);
+  }, [subject]);
 
   const pending = recipients.filter((r) => !r.completed);
   // Geciken ödevler artık kendi ayrı başlığında (en üstte) gösteriliyor — "Bekleyen Ödevler"
@@ -200,18 +216,16 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
   const visiblePending = notOverdue.slice(0, visiblePendingCount);
   const visibleCompleted = completed.slice(0, visibleCompletedCount);
 
-  // 7-8. sınıf LGS'ye, 9-12. sınıf YKS'ye hazırlanıyor (bkz. subjects.js > trackForGrade) — sayaç
-  // öğrencinin kendi sınavına göre otomatik seçilir, admin panelinden girilen tarihi okur.
-  const track = trackForGrade(user?.gradeLevel);
-  const examDate = track === "LGS" ? examDates?.lgsExamDate : track === "YKS" ? examDates?.yksExamDate : null;
+  // Okul yalnızca YKS'ye hazırlanıyor — sayaç herkes için admin panelinden girilen YKS tarihini okur.
+  const examDate = examDates?.yksExamDate || null;
 
   return (
-    <div style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
-      <ExamCountdownCard track={track} examDate={examDate} />
+    <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+      {examDates && <ExamCountdownCard examDate={examDate} />}
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
-        <div style={{ minWidth: 170 }}>
-          <Select value={subject} onChange={(e) => setSubject(e.target.value)}>
+      <div style={{ marginBottom: 4 }}>
+        <div style={{ maxWidth: 320 }}>
+          <Select aria-label="Derse göre filtrele" value={subject} onChange={(e) => setSubject(e.target.value)}>
             <option value="">Tüm dersler</option>
             {ALL_SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
@@ -219,20 +233,22 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
       </div>
 
       {stats && (
-        <div style={{ display: "flex", gap: 12, marginBottom: 22, flexWrap: "wrap" }}>
+        <StatGrid>
           <StatCard label="Bekleyen" value={notOverdue.length} tone="amber" onClick={() => toggleFilter("pending")} active={assignmentFilter === "pending"} />
           <StatCard label="Geciken" value={overdue.length} tone="red" onClick={() => toggleFilter("overdue")} active={assignmentFilter === "overdue"} />
-          <StatCard label="Tamamlanan" value={stats.completedCount} tone="green" onClick={() => toggleFilter("completed")} active={assignmentFilter === "completed"} />
+          {/* Bekleyen/Geciken gibi listeden sayılır — stats.completedCount ders filtresini bilmediği için
+              "Matematik" seçiliyken kart tüm derslerin toplamını, altındaki liste yalnızca Matematik'i gösteriyordu. */}
+          <StatCard label="Tamamlanan" value={completed.length} tone="green" onClick={() => toggleFilter("completed")} active={assignmentFilter === "completed"} />
           <StatCard label="Serbest Çalışma" value={stats.studySessionCount} tone="accent" />
-        </div>
+        </StatGrid>
       )}
 
       {loading ? (
-        <EmptyState text="Yükleniyor..." />
+        <LoadingState />
       ) : loadError ? (
         <EmptyState text={loadError} />
       ) : recipients.length === 0 ? (
-        <EmptyState text="Henüz sana gönderilmiş bir ödev yok." />
+        <EmptyState icon={ClipboardCheck} text={subject ? `${subject} dersinde sana gönderilmiş bir ödev yok.` : "Henüz sana gönderilmiş bir ödev yok. Koçun ödev gönderdiğinde burada ve bildirimlerinde göreceksin."} />
       ) : (
         <>
           {(assignmentFilter === "all" || assignmentFilter === "overdue") && (
@@ -254,7 +270,7 @@ export default function StudentHomeScreen({ user, onOpen, refreshKey }) {
             <div style={{ marginBottom: 28 }}>
               <SectionTitle>Bekleyen Ödevler ({notOverdue.length})</SectionTitle>
               {notOverdue.length === 0 ? (
-                <EmptyState text="Bekleyen ödevin yok, harika gidiyorsun." />
+                <EmptyState icon={PartyPopper} text="Bekleyen ödevin yok, harika gidiyorsun." />
               ) : (
                 <>
                   <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

@@ -53,9 +53,36 @@
       .k-sidebar-item:hover { background: rgba(255,255,255,0.07); }
 
       .k-icon-btn { transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
-      .k-icon-btn:hover { background: #E9EBF4 !important; }
+      .k-icon-btn:hover { background: var(--surface-hover, #E9EBF4) !important; }
 
       .k-link-btn:hover { color: var(--accent-color, #4338CA) !important; }
+
+      /* Ekran geçişi: yeni ekran hafifçe belirir — ani "zıplama" yerine. */
+      @keyframes k-fade-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+      /* "backwards": animasyon bitince öğede hiçbir animasyon değeri kalmaz — "both" ile son kare
+         (transform/opacity) kalıcı uygulanıp yeni bir yığın bağlamı oluşturuyor, ekran içindeki
+         pencereleri alt menünün altına itiyordu. */
+      .k-screen { animation: k-fade-in .18s ease-out backwards; }
+
+      /* İskelet yükleniyor kartları (bkz. common.jsx > LoadingState) — renkler inline, yalnızca kayma animasyonu burada. */
+      @keyframes k-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+      .k-skeleton { background-size: 400% 100% !important; animation: k-shimmer 1.4s ease-in-out infinite; }
+
+      /* Pencereler: masaüstünde ortada kart, telefonda alttan açılan sayfa (bottom sheet) — başparmakla
+         erişimi kolay, doğal mobil uygulama hissi. */
+      @keyframes k-sheet-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+      @keyframes k-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+      .k-modal-backdrop { animation: k-backdrop-in .15s ease-out both; }
+      .k-modal-panel { animation: k-sheet-up .2s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+      /* Yatay kaydırılabilir çip satırı (tarih filtreleri vb.) — telefonda alt satıra kırılmak yerine kayar. */
+      .k-chip-row { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+      .k-chip-row::-webkit-scrollbar { display: none; }
+      .k-chip-row > * { flex-shrink: 0; }
+
+      @media (prefers-reduced-motion: reduce) {
+        .k-screen, .k-modal-backdrop, .k-modal-panel, .k-skeleton, .k-wing-left, .k-wing-right { animation: none !important; }
+      }
 
       /* Kenar çubuğu dar ekranlarda simge-yalnız moda geçer — telefon/dar pencere yerine masaüstünde
          de pencere küçültüldüğünde metin taşmasın diye. */
@@ -96,6 +123,26 @@
         .k-sidebar { display: none !important; }
         .k-bottom-nav { display: flex !important; position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; }
         .k-content-col { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px) !important; }
+        /* Klavye açıkken (Keyboard resize:native görünümü küçültür) sabit alt menü klavyenin hemen
+           üstüne binip odaktaki alanı örtüyordu — yazı yazılırken menüye zaten ihtiyaç yok. */
+        html.kb-open .k-bottom-nav { display: none !important; }
+        html.kb-open .k-content-col { padding-bottom: 0 !important; }
+
+        /* Telefonda sayfa kenar boşlukları 28px'ten 16px'e — dar ekranda içerik için yer açılır. */
+        .k-page { padding: 16px 16px 24px !important; }
+        /* Sayfa başlığı telefonda daha kompakt; alt yazı (sekme adının açıklaması) gizlenir — başlık
+           zaten yeterli, alt yazı dar ekranda iki satıra taşıp başlık çubuğunu şişiriyordu. */
+        .k-page-header { padding: 12px 16px !important; }
+        .k-page-title { font-size: 18px !important; }
+        .k-page-subtitle { display: none !important; }
+
+        /* Pencere telefonda alttan açılan sayfaya dönüşür. */
+        .k-modal-backdrop { align-items: flex-end !important; padding: 0 !important; padding-top: env(safe-area-inset-top) !important; }
+        .k-modal-panel {
+          max-width: none !important; max-height: 92vh !important;
+          border-radius: 20px 20px 0 0 !important;
+          padding: 20px 18px calc(env(safe-area-inset-bottom, 0px) + 20px) !important;
+        }
       }
 
       /* ==========================================================================

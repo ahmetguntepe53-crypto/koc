@@ -37,13 +37,56 @@ describe("useAuthSession — mount-time /auth/me kontrolü", () => {
     expect(params.setAuthChecked).toHaveBeenCalledWith(true);
   });
 
-  it("api.me() başarısız olursa token temizlenir", async () => {
+  it("sunucu oturumu reddederse (401) token temizlenir", async () => {
     mockTokenStore = "gecersiz-token";
-    api.me.mockRejectedValueOnce(new Error("Yetkisiz"));
+    api.me.mockRejectedValueOnce(Object.assign(new Error("Yetkisiz"), { status: 401, code: "SESSION_INVALID" }));
     const params = makeParams();
     renderHook(() => useAuthSession(params));
     await waitFor(() => expect(params.setAuthChecked).toHaveBeenCalledWith(true));
     expect(getToken()).toBe(null);
+  });
+
+  it("askıya alınmış hesapta (BANNED) token temizlenir", async () => {
+    mockTokenStore = "banli-token";
+    api.me.mockRejectedValueOnce(Object.assign(new Error("Askıda"), { status: 403, code: "BANNED" }));
+    const params = makeParams();
+    renderHook(() => useAuthSession(params));
+    await waitFor(() => expect(params.setAuthChecked).toHaveBeenCalledWith(true));
+    expect(getToken()).toBe(null);
+  });
+
+  it("ağ hatasında token KORUNUR ve authError set edilir (kullanıcı çıkış yapmış olmaz)", async () => {
+    mockTokenStore = "gecerli-token";
+    api.me.mockRejectedValueOnce(Object.assign(new Error("Failed to fetch"), { network: true }));
+    const params = makeParams({ setAuthError: vi.fn() });
+    renderHook(() => useAuthSession(params));
+    await waitFor(() => expect(params.setAuthChecked).toHaveBeenCalledWith(true));
+    expect(getToken()).toBe("gecerli-token");
+    expect(params.setAuthError).toHaveBeenCalledWith(expect.stringContaining("bağlan"));
+    expect(params.setAuthUser).not.toHaveBeenCalled();
+  });
+
+  it("sunucu hatasında (500/502) token KORUNUR", async () => {
+    mockTokenStore = "gecerli-token";
+    api.me.mockRejectedValueOnce(Object.assign(new Error("Sunucu hatası"), { status: 502 }));
+    const params = makeParams({ setAuthError: vi.fn() });
+    renderHook(() => useAuthSession(params));
+    await waitFor(() => expect(params.setAuthChecked).toHaveBeenCalledWith(true));
+    expect(getToken()).toBe("gecerli-token");
+    expect(params.setAuthError).toHaveBeenCalled();
+  });
+
+  it("retrySession tekrar denediğinde başarılı yanıt oturumu açar", async () => {
+    mockTokenStore = "gecerli-token";
+    api.me
+      .mockRejectedValueOnce(Object.assign(new Error("Failed to fetch"), { network: true }))
+      .mockResolvedValueOnce({ user: { id: "u9", name: "Can", role: "STUDENT" } });
+    const params = makeParams({ setAuthError: vi.fn() });
+    const { result } = renderHook(() => useAuthSession(params));
+    await waitFor(() => expect(params.setAuthChecked).toHaveBeenCalledWith(true));
+    await act(async () => { await result.current.retrySession(); });
+    expect(params.setAuthUser).toHaveBeenCalledWith({ id: "u9", name: "Can", role: "STUDENT" });
+    expect(params.setAuthError).toHaveBeenLastCalledWith("");
   });
 });
 

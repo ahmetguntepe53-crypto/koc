@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Pill, EmptyState, Avatar } from "../../components/common.jsx";
+import { Card, Pill, EmptyState, Avatar, LoadingState } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { trackForGrade } from "../../subjects.js";
+import { GRADE_LEVELS, gradeLabel } from "../../subjects.js";
 
 // Öğrencinin kendi tamamlama oranı kutusu için renk — ReportScreen'deki başarı oranı eşikleriyle aynı.
 function rateTone(rate) {
@@ -29,7 +29,7 @@ function CompletionBox({ rate }) {
       <span style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, color: colors.color, lineHeight: 1.1 }}>
         {rate != null ? `%${rate}` : "—"}
       </span>
-      <span style={{ fontFamily: bodyFont, fontSize: 8.5, fontWeight: 700, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.3, marginTop: 2 }}>
+      <span style={{ fontFamily: bodyFont, fontSize: 8.5, fontWeight: 700, color: C.muted, textTransform: "uppercase", letterSpacing: 0.3, marginTop: 2 }}>
         Tamamlama
       </span>
     </div>
@@ -46,9 +46,9 @@ export default function TeacherStudentsScreen({ onOpen }) {
   }, []);
 
   return (
-    <div style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
       {loading ? (
-        <EmptyState text="Yükleniyor..." />
+        <LoadingState />
       ) : loadError ? (
         <EmptyState text={loadError} />
       ) : students.length === 0 ? (
@@ -56,7 +56,7 @@ export default function TeacherStudentsScreen({ onOpen }) {
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {students.map((s) => {
-            const track = trackForGrade(s.gradeLevel);
+            const gradeOk = GRADE_LEVELS.includes(s.gradeLevel);
             return (
               <Card key={s.id} hover={!!onOpen} style={{ padding: 16, cursor: onOpen ? "pointer" : "default" }}>
                 <div onClick={onOpen ? () => onOpen(s.id, s.name) : undefined} style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
@@ -64,10 +64,10 @@ export default function TeacherStudentsScreen({ onOpen }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <span style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.text }}>{s.name}</span>
-                      {/* Sınıf (className) ile sınav türü (track) ayrı kutucuklarda — track'in rengi
-                          YKS/LGS'yi göze bir bakışta ayırt etsin diye farklı (YKS: mor/accent, LGS: yeşil). */}
-                      {s.className ? <Pill>{s.className}</Pill> : s.gradeLevel ? <Pill>{s.gradeLevel}. Sınıf</Pill> : null}
-                      {track && <Pill tone={track === "YKS" ? "accent" : "green"}>{track}</Pill>}
+                      {/* Herkes YKS'ye hazırlandığı için sınav türü rozeti yerine sınıf düzeyi gösterilir;
+                          düzeyi eksik/eski (11-12 dışı) olan öğrenci ödev listelerinde görünmediği için kırmızı. */}
+                      {s.className && <Pill>{s.className}</Pill>}
+                      <Pill tone={gradeOk ? "accent" : "red"}>{gradeLabel(s.gradeLevel)}</Pill>
                       {s.banned && <Pill tone="red">Askıda</Pill>}
                     </div>
                   </div>

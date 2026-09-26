@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, ImagePlus, X } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Textarea, Pill, EmptyState } from "../../components/common.jsx";
+import { Card, Button, Input, Textarea, Pill, EmptyState, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api, photoUrl } from "../../api.js";
 import { formatDateRange, daysUntil } from "../../dates.js";
 
@@ -78,6 +78,8 @@ export default function AssignmentSubmitScreen({ recipientId, onBack }) {
   };
 
   const deletePhoto = async (photoId) => {
+    // Köşedeki küçük X'e yanlışlıkla dokunmak kanıtı sessizce siliyordu.
+    if (!(await confirmDialog({ title: "Fotoğraf silinsin mi?", message: "Bu kanıt fotoğrafı ödevinden kaldırılacak.", confirmLabel: "Sil", danger: true }))) return;
     try {
       await api.deleteRecipientPhoto(recipientId, photoId);
       setPhotos((prev) => prev.filter((p) => p.id !== photoId));
@@ -113,10 +115,10 @@ export default function AssignmentSubmitScreen({ recipientId, onBack }) {
     }
   };
 
-  if (loading) return <EmptyState text="Yükleniyor..." />;
+  if (loading) return <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}><LoadingState /></div>;
   if (loadError || !recipient) {
     return (
-      <div style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
+      <div className="k-page" style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
         <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
           <ArrowLeft size={16} /> Ödevlerime dön
         </button>
@@ -125,9 +127,13 @@ export default function AssignmentSubmitScreen({ recipientId, onBack }) {
     );
   }
   const a = recipient.assignment;
+  // Girilen D/Y/B'den anlık net — öğrenci kaydetmeden önce sonucunu görsün (TYT/AYT: 4 yanlış 1 doğruyu götürür).
+  const [cN, wN, bN] = [correctCount, wrongCount, blankCount].map((v) => (v === "" ? null : parseInt(v, 10)));
+  const liveNet = Number.isInteger(cN) && Number.isInteger(wN) ? Math.round((cN - wN / 4) * 100) / 100 : null;
+  const liveTotal = (cN || 0) + (wN || 0) + (Number.isInteger(bN) ? bN : 0);
 
   return (
-    <div style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
       <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
         <ArrowLeft size={16} /> Ödevlerime dön
       </button>
@@ -144,9 +150,44 @@ export default function AssignmentSubmitScreen({ recipientId, onBack }) {
         </div>
         {a.sourceBook && <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.text, marginTop: 8 }}>Kaynak: {a.sourceBook}</div>}
         {a.pageRange && <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.text, marginTop: 4 }}>Sayfa/Soru: {a.pageRange}</div>}
+        {a.note && (
+          <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.text, marginTop: 10, padding: "10px 12px", borderRadius: C.radiusSm, background: C.surface2, whiteSpace: "pre-wrap" }}>
+            {a.note}
+          </div>
+        )}
       </Card>
 
+      {/* Sonuç formu önce — öğrencinin bu ekrandaki asıl işi; kanıt fotoğrafı onu tamamlayan adım. */}
       <Card style={{ marginBottom: 20 }}>
+        <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 700, marginBottom: 12, color: C.text }}>
+          {recipient.completed ? "Sonucunu Güncelle" : "Sonucunu Gir"}
+        </div>
+        <form onSubmit={submit}>
+          <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ flex: 1 }}>
+              <Input label="Doğru" type="number" inputMode="numeric" pattern="[0-9]*" min="0" value={correctCount} onChange={(e) => setCorrectCount(e.target.value)} required />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Input label="Yanlış" type="number" inputMode="numeric" pattern="[0-9]*" min="0" value={wrongCount} onChange={(e) => setWrongCount(e.target.value)} required />
+            </div>
+            <div style={{ flex: 1 }}>
+              <Input label="Boş" type="number" inputMode="numeric" pattern="[0-9]*" min="0" value={blankCount} onChange={(e) => setBlankCount(e.target.value)} required />
+            </div>
+          </div>
+          {liveNet != null && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: -6, marginBottom: 16, fontFamily: bodyFont, fontSize: 12.5, color: C.muted }}>
+              <Pill tone="accent">Net: {liveNet}</Pill>
+              <span>{liveTotal} soru · 4 yanlış 1 doğruyu götürür</span>
+            </div>
+          )}
+          <Input label="Yanlış/boş yaptığın soru numaraları (opsiyonel, virgülle ayır)" value={questionNumbers} onChange={(e) => setQuestionNumbers(e.target.value)} placeholder="ör. 3, 7, 12" />
+          <Textarea label="Not (opsiyonel)" value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="ör. 19. soruyu anlamadım" />
+          {error && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{error}</div>}
+          {success && <div style={{ color: C.green, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{success}</div>}
+          <Button full type="submit" disabled={saving}>{saving ? "Kaydediliyor..." : recipient.completed ? "Güncelle" : "Kaydet"}</Button>
+        </form>
+      </Card>
+      <Card>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <span style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 700, color: C.text }}>Kanıt Fotoğrafları</span>
           <span style={{ fontFamily: bodyFont, fontSize: 12, color: C.mutedLight, fontWeight: 600 }}>{photos.length}/{MAX_PHOTOS}</span>
@@ -160,7 +201,8 @@ export default function AssignmentSubmitScreen({ recipientId, onBack }) {
                   type="button"
                   onClick={() => deletePhoto(p.id)}
                   title="Fotoğrafı sil"
-                  style={{ position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: 999, border: "none", background: "rgba(15,23,42,0.6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
+                  aria-label="Fotoğrafı sil"
+                  style={{ position: "absolute", top: 4, right: 4, width: 28, height: 28, borderRadius: 999, border: "none", background: "rgba(15,23,42,0.6)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer" }}
                 >
                   <X size={13} />
                 </button>
@@ -179,29 +221,6 @@ export default function AssignmentSubmitScreen({ recipientId, onBack }) {
         {photoError && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginTop: 10 }}>{photoError}</div>}
       </Card>
 
-      <Card>
-        <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 700, marginBottom: 12, color: C.text }}>
-          {recipient.completed ? "Sonucunu Güncelle" : "Sonucunu Gir"}
-        </div>
-        <form onSubmit={submit}>
-          <div style={{ display: "flex", gap: 10 }}>
-            <div style={{ flex: 1 }}>
-              <Input label="Doğru" type="number" min="0" value={correctCount} onChange={(e) => setCorrectCount(e.target.value)} required />
-            </div>
-            <div style={{ flex: 1 }}>
-              <Input label="Yanlış" type="number" min="0" value={wrongCount} onChange={(e) => setWrongCount(e.target.value)} required />
-            </div>
-            <div style={{ flex: 1 }}>
-              <Input label="Boş" type="number" min="0" value={blankCount} onChange={(e) => setBlankCount(e.target.value)} required />
-            </div>
-          </div>
-          <Input label="Yanlış/boş yaptığın soru numaraları (opsiyonel, virgülle ayır)" value={questionNumbers} onChange={(e) => setQuestionNumbers(e.target.value)} placeholder="ör. 3, 7, 12" />
-          <Textarea label="Not (opsiyonel)" value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="ör. 19. soruyu anlamadım" />
-          {error && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{error}</div>}
-          {success && <div style={{ color: C.green, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{success}</div>}
-          <Button full type="submit" disabled={saving}>{saving ? "Kaydediliyor..." : recipient.completed ? "Güncelle" : "Kaydet"}</Button>
-        </form>
-      </Card>
     </div>
   );
 }

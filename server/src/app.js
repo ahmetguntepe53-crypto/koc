@@ -27,7 +27,8 @@ app.set("trust proxy", 1);
 // formunu kırar (PP'deki server/src/app.js ile aynı gerekçe/çözüm).
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
-app.use(express.json());
+// 1mb: toplu içe aktarma (admin.js > /users/bulk-import, 500 satıra kadar) varsayılan 100kb'ı aşabiliyor.
+app.use(express.json({ limit: "1mb" }));
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
@@ -60,3 +61,18 @@ app.use("/api/settings", requireAuth, settingsRouter);
 // Bilinmeyen /api/* rotaları için genel 404 — istemci tarafında "sunucudan boş HTML döndü" gibi
 // anlaşılması güç hatalar yerine net bir JSON hata mesajı görülsün diye.
 app.use("/api", (req, res) => res.status(404).json({ error: "Bulunamadı" }));
+
+// Son çare hata yakalayıcı — her zaman JSON döner. Olmadan, bozuk bir JSON gövdesi (body-parser
+// hatası) Express'in varsayılan HTML sayfasına düşüp yığın izini ve sunucu dosya yollarını
+// istemciye gösteriyordu. 4 parametre ŞART: Express hata middleware'ini imzasından tanır.
+// eslint-disable-next-line no-unused-vars
+app.use((err, req, res, next) => {
+  if (res.headersSent) return next(err);
+  if (err.type === "entity.parse.failed") return res.status(400).json({ error: "Geçersiz istek" });
+  if (err.type === "entity.too.large") return res.status(413).json({ error: "İstek çok büyük" });
+  // Diğer istemci hataları (ör. desteklenmeyen charset, bozuk URL parametresi) kendi 4xx kodunu korur.
+  const status = err.status || err.statusCode;
+  if (Number.isInteger(status) && status >= 400 && status < 500) return res.status(status).json({ error: "Geçersiz istek" });
+  console.error("[app] beklenmeyen hata:", err);
+  res.status(500).json({ error: "Sunucu hatası" });
+});

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Trash2 } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Pill, Modal, EmptyState } from "../../components/common.jsx";
+import { Card, Button, Input, Pill, Modal, EmptyState, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api, photoUrl } from "../../api.js";
 import { formatDate } from "../../dates.js";
 
@@ -50,7 +50,7 @@ export default function AdminPhotosScreen() {
   const runSearch = (e) => { e.preventDefault(); load(q); };
 
   const deletePhoto = async (photoId) => {
-    if (!window.confirm("Bu fotoğraf kalıcı olarak silinsin mi?")) return;
+    if (!(await confirmDialog({ title: "Fotoğraf silinsin mi?", message: "Bu kanıt fotoğrafı kalıcı olarak silinecek.", confirmLabel: "Sil", danger: true }))) return;
     try {
       await api.adminDeletePhoto(photoId);
       setPhotos((prev) => prev.filter((p) => p.id !== photoId));
@@ -63,22 +63,22 @@ export default function AdminPhotosScreen() {
   const groups = groupByStudent(photos);
 
   return (
-    <div style={{ padding: 28, maxWidth: 1040, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 1040, margin: "0 auto" }}>
       {toast && (
         <div style={{ marginBottom: 16, padding: "11px 15px", borderRadius: C.radiusSm, background: toast.type === "error" ? C.redSoft : C.greenSoft, color: toast.type === "error" ? C.red : C.green, fontSize: 13, fontWeight: 600, fontFamily: bodyFont }}>
           {toast.text}
         </div>
       )}
 
-      <form onSubmit={runSearch} style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+      <form onSubmit={runSearch} style={{ display: "flex", gap: 10, marginBottom: 4, alignItems: "flex-start" }}>
         <div style={{ flex: 1, minWidth: 200 }}>
-          <Input placeholder="Öğrenci ismiyle ara..." value={q} onChange={(e) => setQ(e.target.value)} />
+          <Input type="search" enterKeyHint="search" aria-label="Öğrenci ismiyle ara" placeholder="Öğrenci ismiyle ara..." value={q} onChange={(e) => setQ(e.target.value)} />
         </div>
-        <Button small variant="secondary" type="submit">Ara</Button>
+        <Button variant="secondary" type="submit">Ara</Button>
       </form>
 
       {loading ? (
-        <EmptyState text="Yükleniyor..." />
+        <LoadingState />
       ) : groups.length === 0 ? (
         <EmptyState text="Kanıt fotoğrafı bulunamadı." />
       ) : (

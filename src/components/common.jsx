@@ -1,4 +1,5 @@
-import { Component, useRef } from "react";
+import { Component, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, LogOut } from "lucide-react";
 import { C, displayFont, bodyFont } from "../theme.js";
 
@@ -54,20 +55,21 @@ export function LogoMark({ width = 34, radius, style }) {
   );
 }
 
-export function Card({ children, style, hover, onClick }) {
+export function Card({ children, style, hover, onClick, stripe = true }) {
   // İnce, iki renkli (accent→accent2) bir üst şerit — kartın kendi border-radius'u tarafından otomatik
   // kırpılır (ayrı bir çocuk eleman/overflow:hidden gerekmez). Gölge bilerek NÖTR bırakıldı: rengin
   // şeritle sınırlı kalması, Card'ın kullanıldığı HER yerin (satır listeleri dahil) aynı rengin tonuna
-  // bürünmesini önler.
+  // bürünmesini önler. stripe={false}: art arda dizilen liste satırlarında (bildirimler, kayıtlar)
+  // her satırın tepesindeki mor şerit göz yoruyordu — şerit ana bölüm kartlarında kalır.
   return (
     <div
       onClick={onClick}
       className={hover ? "k-card-hover" : undefined}
       style={{
-        background: `linear-gradient(90deg, ${C.accent}, ${C.accent2}) top left / 100% 3px no-repeat, ${C.surface}`,
+        background: stripe ? `linear-gradient(90deg, ${C.accent}, ${C.accent2}) top left / 100% 3px no-repeat, ${C.surface}` : C.surface,
         border: `1px solid ${C.border}`,
         borderRadius: C.radiusMd, padding: 20,
-        boxShadow: C.shadowMd,
+        boxShadow: stripe ? C.shadowMd : C.shadowSm,
         ...style,
       }}
     >
@@ -88,6 +90,8 @@ export function Button({ children, onClick, variant = "primary", full, disabled,
     secondary: { background: C.surface, color: C.text, border: `1px solid ${C.borderStrong}` },
     ghost: { background: "transparent", color: C.muted },
     danger: { background: C.redSoft, color: C.red },
+    // Geri alınamaz işlemin onay düğmesi (bkz. DialogHost) — yumuşak "danger"dan daha belirgin.
+    dangerSolid: { background: C.red, color: C.onRed },
   };
   return (
     <button type={type} disabled={disabled} className="k-btn" onClick={disabled ? undefined : onClick} style={{ ...base, ...variants[variant] }}>
@@ -200,24 +204,52 @@ export function Avatar({ name, size = 36, dark }) {
   );
 }
 
+// Android geri tuşu önce açık bir pencereyi kapatsın diye (bkz. App.jsx > onBackButton) — aksi halde
+// "Öğrenci Ekle" formu açıkken geri tuşu alttaki ekranda gezinip ya da uygulamadan çıkıp formu
+// kaybettiriyordu. Açık modalların onClose'ları açılış sırasıyla tutulur, geri tuşu en üsttekini kapatır.
+const openModalStack = [];
+export function closeTopModal() {
+  const top = openModalStack[openModalStack.length - 1];
+  if (!top) return false;
+  top.current();
+  return true;
+}
+
 export function Modal({ children, onClose, title }) {
   const openedAt = useRef(Date.now());
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    openModalStack.push(onCloseRef);
+    return () => {
+      const i = openModalStack.lastIndexOf(onCloseRef);
+      if (i >= 0) openModalStack.splice(i, 1);
+    };
+  }, []);
   const handleBackdropClick = () => {
     if (Date.now() - openedAt.current < 300) return;
     onClose();
   };
-  return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(10,12,28,0.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }} onClick={handleBackdropClick}>
-      <div onClick={(e) => e.stopPropagation()} style={{ background: C.surface, borderRadius: C.radiusLg, padding: 24, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", boxShadow: C.shadowLg }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
-          <span style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text }}>{title}</span>
-          <button className="k-icon-btn" onClick={onClose} style={{ background: C.surface2, border: "none", borderRadius: 999, width: 30, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <X size={16} color={C.text} />
+  // zIndex 55: alt gezinme çubuğunun (index.html > .k-bottom-nav, 50) ÜSTÜNDE, durum çubuğu şeridinin
+  // (60) altında — önceden ikisi de 50'ydi, DOM'da sonra gelen alt çubuk uzun modalların alt kısmını
+  // (kaydet düğmesinin yarısını) örtüyordu. Dolgu güvenli alanları da kapsar (çentik / home indicator).
+  // Telefonda alttan açılan sayfa düzeni index.html > .k-modal-backdrop/.k-modal-panel'de.
+  // createPortal(document.body): pencere, onu açan ekranın DOM'unun içinde değil gövdenin en üstünde
+  // render edilir — bir üst öğe kendi yığın bağlamını (stacking context) oluşturduğunda (animasyon,
+  // transform, opacity) z-index'i o bağlamla sınırlı kalıp alt menünün ALTINDA kalmasın diye.
+  return createPortal(
+    <div className="k-modal-backdrop" role="presentation" style={{ position: "fixed", inset: 0, background: "rgba(10,12,28,0.55)", backdropFilter: "blur(2px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 55, padding: "max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom))" }} onClick={handleBackdropClick}>
+      <div className="k-modal-panel" role="dialog" aria-modal="true" aria-label={typeof title === "string" ? title : undefined} onClick={(e) => e.stopPropagation()} style={{ background: C.surface, borderRadius: C.radiusLg, padding: 24, width: "100%", maxWidth: 480, maxHeight: "88vh", overflowY: "auto", boxShadow: C.shadowLg }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, marginBottom: 18 }}>
+          <span style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text, minWidth: 0 }}>{title}</span>
+          <button className="k-icon-btn" onClick={onClose} aria-label="Kapat" style={{ background: C.surface2, border: "none", borderRadius: 999, width: 36, height: 36, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <X size={17} color={C.text} />
           </button>
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -343,10 +375,10 @@ export function BottomNav({ tabs, activeId, onSelect }) {
 // zaman sağ üstte sabit kalıyor.
 export function PageHeader({ title, subtitle, right }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "18px 28px", background: C.surface, borderBottom: `1px solid ${C.border}` }}>
+    <div className="k-page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "18px 28px", background: C.surface, borderBottom: `1px solid ${C.border}` }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontFamily: displayFont, fontSize: 19, fontWeight: 800, color: C.text }}>{title}</div>
-        {subtitle && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
+        <h1 className="k-page-title" style={{ margin: 0, fontFamily: displayFont, fontSize: 19, fontWeight: 800, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>
+        {subtitle && <div className="k-page-subtitle" style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 2 }}>{subtitle}</div>}
       </div>
       {right && <div style={{ flexShrink: 0 }}>{right}</div>}
     </div>
@@ -365,28 +397,113 @@ export function StatCard({ label, value, tone = "muted", onClick, active }) {
   const strong = { muted: C.text, accent: C.accent, green: C.green, amber: C.amber, red: C.red };
   const soft = { muted: C.surface2, accent: C.accentSoft, green: C.greenSoft, amber: C.amberSoft, red: C.redSoft };
   const Comp = onClick ? "button" : "div";
+  // Kompakt: telefonda 4 kart tek satıra sığsın diye (bkz. StatGrid) — önceden 2x2/2x3 büyük kartlar
+  // listeyi ekranın altına itiyordu. Etiket rengi kartın kendi tonundan (yumuşak zemin üzerinde okunur).
   return (
     <Comp
       type={onClick ? "button" : undefined}
       onClick={onClick}
+      aria-pressed={onClick ? !!active : undefined}
       style={{
         background: soft[tone], border: `1.5px solid ${active ? strong[tone] : "transparent"}`,
-        borderRadius: C.radiusMd, padding: "14px 16px", minWidth: 120, flex: 1, boxShadow: C.shadowSm,
+        borderRadius: C.radiusMd, padding: "11px 12px", minWidth: 0, boxShadow: C.shadowSm,
         textAlign: "left", cursor: onClick ? "pointer" : "default", fontFamily: "inherit",
       }}
     >
-      <div style={{ fontFamily: displayFont, fontSize: 24, fontWeight: 800, color: strong[tone] }}>{value}</div>
-      <div style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 700, color: C.mutedLight, marginTop: 3, textTransform: "uppercase", letterSpacing: 0.4 }}>{label}</div>
+      <div style={{ fontFamily: displayFont, fontSize: 21, fontWeight: 800, color: strong[tone], lineHeight: 1.15 }}>{value}</div>
+      <div style={{ fontFamily: bodyFont, fontSize: 10, fontWeight: 700, color: tone === "muted" ? C.muted : strong[tone], marginTop: 3, textTransform: "uppercase", letterSpacing: 0.1, lineHeight: 1.25 }}>{label}</div>
     </Comp>
   );
 }
 
-export function EmptyState({ text, icon: Icon }) {
+// Sayı kartları ızgarası — min: bir kartın asgari genişliği. Telefonda ~72 → 4 sütun, ~96 → 3 sütun;
+// geniş ekranda kartlar satırı eşit paylaşır.
+export function StatGrid({ children, min = 72, style }) {
   return (
-    <div style={{ padding: "48px 16px", textAlign: "center", color: C.mutedLight, fontFamily: bodyFont, fontSize: 13.5 }}>
-      {Icon && <Icon size={30} style={{ marginBottom: 10, opacity: 0.6 }} />}
-      <div>{text}</div>
+    <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fit, minmax(${min}px, 1fr))`, gap: 8, marginBottom: 22, ...style }}>
+      {children}
     </div>
+  );
+}
+
+// Boş durum: ikon (varsa) yumuşak bir daire içinde, altında açıklama ve isteğe bağlı bir eylem düğmesi —
+// kullanıcı "burada ne yapabilirim?" sorusuna cevap bulsun diye.
+export function EmptyState({ text, icon: Icon, action }) {
+  return (
+    <div style={{ padding: "36px 16px", textAlign: "center", color: C.muted, fontFamily: bodyFont, fontSize: 13.5, lineHeight: 1.5 }}>
+      {Icon && (
+        <div style={{ width: 52, height: 52, borderRadius: 999, background: C.surface2, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px" }}>
+          <Icon size={24} color={C.mutedLight} />
+        </div>
+      )}
+      <div style={{ maxWidth: 320, margin: "0 auto" }}>{text}</div>
+      {action && <div style={{ marginTop: 14 }}>{action}</div>}
+    </div>
+  );
+}
+
+// "Yükleniyor..." yazısı yerine içeriğin şeklini taşıyan iskelet kartlar — sayfa boş/donmuş gibi
+// görünmesin, içerik gelince yerleşim zıplamasın diye.
+function SkeletonBar({ width = "100%", height = 12, style }) {
+  return (
+    <div
+      className="k-skeleton"
+      style={{ width, height, borderRadius: 6, background: `linear-gradient(90deg, ${C.surface2} 25%, ${C.surfaceHover} 37%, ${C.surface2} 63%)`, ...style }}
+    />
+  );
+}
+export function LoadingState({ rows = 3 }) {
+  return (
+    <div aria-busy="true" aria-label="Yükleniyor" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {Array.from({ length: rows }, (_, i) => (
+        <Card key={i} stripe={false} style={{ padding: 16 }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+            <SkeletonBar width={36} height={36} style={{ borderRadius: 10, flexShrink: 0 }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+              <SkeletonBar width={`${70 - i * 12}%`} height={13} />
+              <SkeletonBar width="40%" height={10} />
+            </div>
+          </div>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// --- Uygulama içi onay/uyarı penceresi ---
+// window.confirm/alert WKWebView'da başlığında sayfa adresini ("localhost") gösteren gri sistem
+// kutusu açıyordu — uygulamaya ait değilmiş gibi duruyordu. confirmDialog aynı kullanım kolaylığında
+// (await ile true/false) uygulamanın kendi Modal'ını açar. DialogHost App.jsx'te bir kez render edilir;
+// host yoksa (ör. testler) tarayıcının kendi confirm'üne düşülür.
+let dialogListener = null;
+export function confirmDialog({ title = "Emin misin?", message, confirmLabel = "Onayla", cancelLabel = "Vazgeç", danger = false } = {}) {
+  return new Promise((resolve) => {
+    if (!dialogListener) { resolve(window.confirm(message || title)); return; }
+    dialogListener({ title, message, confirmLabel, cancelLabel, danger, resolve });
+  });
+}
+export function alertDialog({ title = "Bilgi", message, confirmLabel = "Tamam" } = {}) {
+  return new Promise((resolve) => {
+    if (!dialogListener) { window.alert(message || title); resolve(true); return; }
+    dialogListener({ title, message, confirmLabel, alertOnly: true, resolve });
+  });
+}
+export function DialogHost() {
+  const [dialog, setDialog] = useState(null);
+  useEffect(() => {
+    dialogListener = (next) => setDialog((prev) => { prev?.resolve(false); return next; });
+    return () => { dialogListener = null; };
+  }, []);
+  if (!dialog) return null;
+  const close = (value) => { dialog.resolve(value); setDialog(null); };
+  return (
+    <Modal title={dialog.title} onClose={() => close(false)}>
+      {dialog.message && <div style={{ fontFamily: bodyFont, fontSize: 14, color: C.text, lineHeight: 1.55, marginBottom: 20, whiteSpace: "pre-wrap" }}>{dialog.message}</div>}
+      <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap-reverse" }}>
+        {!dialog.alertOnly && <Button variant="secondary" onClick={() => close(false)}>{dialog.cancelLabel}</Button>}
+        <Button variant={dialog.danger ? "dangerSolid" : "primary"} onClick={() => close(true)}>{dialog.confirmLabel}</Button>
+      </div>
+    </Modal>
   );
 }
 

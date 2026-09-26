@@ -3,6 +3,8 @@ import { C, bodyFont } from "../../theme.js";
 import { Card, Button, Input, Select, Pill, Avatar, EmptyState } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { SUBJECTS_BY_EXAM, PERIOD_LABELS, SEND_MODE_LABELS, trackForGrade } from "../../subjects.js";
+import { todayISO } from "../../dates.js";
+import TopicField from "../../components/TopicField.jsx";
 
 function ToggleGroup({ value, onChange, options }) {
   return (
@@ -29,8 +31,6 @@ function ToggleGroup({ value, onChange, options }) {
     </div>
   );
 }
-
-const todayISO = () => new Date().toISOString().slice(0, 10);
 
 function FieldLabel({ children }) {
   return <div style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 700, color: C.mutedLight, marginBottom: 7, textTransform: "uppercase", letterSpacing: 0.5 }}>{children}</div>;
@@ -79,7 +79,7 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId }) 
 
   // Uygun öğrenci havuzu İLK KEZ görüldüğünde (roster yüklendi, ya da yeni bir öğrenci roster'a
   // eklendi) varsayılan olarak tiklenir. Daha önce de eligible olan bir öğrencinin tik durumu
-  // KORUNUR — aksi halde (karma LGS/YKS roster'da) "Sınav Grubu" arasında ileri geri geçmek, koçun
+  // KORUNUR — aksi halde (karma sınav gruplu bir roster'da) "Sınav Grubu" arasında ileri geri geçmek, koçun
   // az önce kaldırdığı tikleri sessizce geri koyup o öğrencilere de ödev gönderirdi.
   const seenEligibleIdsRef = useRef(new Set());
   useEffect(() => {
@@ -115,11 +115,6 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId }) 
     initialStudentAppliedRef.current = true;
     setCheckedIds(new Set([initialStudentId]));
   }, [initialStudentId, activeStudents, effectiveTrack, tracksPresent, eligibleStudents]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (effectiveTrack === "LGS" && examType !== "LGS") setExamType("LGS");
-    else if (effectiveTrack === "YKS" && examType === "LGS") setExamType("TYT");
-  }, [effectiveTrack]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const subjectOptions = useMemo(() => SUBJECTS_BY_EXAM[examType], [examType]);
   useEffect(() => {
@@ -177,7 +172,7 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId }) 
   if (rosterError) return <EmptyState text={rosterError} />;
 
   return (
-    <div style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
       <Card>
         <form onSubmit={submit}>
           {tracksPresent.length > 1 && (
@@ -191,17 +186,8 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId }) 
             </>
           )}
 
-          {effectiveTrack === "LGS" ? (
-            <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-              <FieldLabelInline>Sınav Türü</FieldLabelInline>
-              <Pill tone="amber">LGS</Pill>
-            </div>
-          ) : (
-            <>
-              <FieldLabel>Sınav Türü</FieldLabel>
-              <ToggleGroup value={examType} onChange={setExamType} options={[{ value: "TYT", label: "TYT" }, { value: "AYT", label: "AYT" }]} />
-            </>
-          )}
+          <FieldLabel>Sınav Türü</FieldLabel>
+          <ToggleGroup value={examType} onChange={setExamType} options={[{ value: "TYT", label: "TYT" }, { value: "AYT", label: "AYT" }]} />
 
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 7 }}>
             <FieldLabel>Öğrenciler ({checkedIds.size}/{eligibleStudents.length} seçili)</FieldLabel>
@@ -211,7 +197,7 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId }) 
           </div>
           {eligibleStudents.length === 0 ? (
             <div style={{ fontSize: 12.5, color: C.red, marginBottom: 16 }}>
-              {effectiveTrack} sınav türüne hazırlanan bir öğrencin yok.
+              Sınıf düzeyi girilmiş (11 veya 12. sınıf) bir öğrencin yok.
             </div>
           ) : (
             <div style={{ border: `1px solid ${C.border}`, borderRadius: C.radiusSm, marginBottom: 6, maxHeight: 220, overflowY: "auto" }}>
@@ -236,7 +222,7 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId }) 
           )}
           {gradeMissingCount > 0 && (
             <div style={{ fontSize: 11.5, color: C.amber, marginBottom: 16 }}>
-              {gradeMissingCount} öğrencinin sınıf düzeyi girilmemiş, listede görünmüyor (Kullanıcılar sayfasından girilebilir).
+              {gradeMissingCount} öğrencinin sınıf düzeyi girilmemiş ya da güncel değil, listede görünmüyor (yönetici Kullanıcılar sayfasından 11/12 olarak girebilir).
             </div>
           )}
           {gradeMissingCount === 0 && <div style={{ marginBottom: 16 }} />}
@@ -245,7 +231,7 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId }) 
             {subjectOptions.map((s) => <option key={s} value={s}>{s}</option>)}
           </Select>
 
-          <Input label="Müfredat Konusu" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="ör. Temel Kavramlar" required />
+          <TopicField label="Müfredat Konusu" examType={examType} subject={subject} value={topic} onChange={setTopic} placeholder="ör. Temel Kavramlar" required />
 
           <label style={{ display: "block", marginBottom: 16 }}>
             <FieldLabel>Kaynak Kitap (opsiyonel)</FieldLabel>
@@ -296,6 +282,3 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId }) 
   );
 }
 
-function FieldLabelInline({ children }) {
-  return <div style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 700, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5 }}>{children}</div>;
-}

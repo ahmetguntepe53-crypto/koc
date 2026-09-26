@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ChevronRight, Plus, AlertTriangle } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, Avatar, Modal, ShowMoreButton } from "../../components/common.jsx";
+import { Card, Button, Input, Textarea, Pill, EmptyState, StatCard, StatGrid, Avatar, Modal, ShowMoreButton, LoadingState } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { trackForGrade, subjectIconUrl } from "../../subjects.js";
+import { subjectIconUrl, gradeLabel } from "../../subjects.js";
 import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
 
-// TYT/AYT/LGS'nin standart net hesaplama formülü — server/src/routes/stats.js'deki net()'in
+// TYT/AYT'nin standart net hesaplama formülü — server/src/routes/stats.js'deki net()'in
 // birebir aynısı, burada yalnızca özet kartlarda göstermek için ayrıca hesaplanıyor.
 function net(correctCount, wrongCount) {
   return Math.round((correctCount - wrongCount / 4) * 100) / 100;
@@ -41,13 +41,16 @@ function overlapsRange(r, range) {
 
 function SectionTitle({ children }) {
   return (
-    <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>
+    <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>
       {children}
     </div>
   );
 }
 
-function RecipientRow({ r, onOpen }) {
+// coachId: öğrencinin koçu (bu ekranı açan öğretmen) — ödevi başka bir öğretmen (ör. ders öğretmeninin
+// okul çapındaki ödevi ya da önceki koç) verdiyse satırda kimin verdiği gösterilir; detay salt okunur açılır.
+function RecipientRow({ r, onOpen, coachId }) {
+  const byOtherTeacher = r.assignment.teacherId !== coachId;
   return (
     <Card hover style={{ padding: 14, cursor: "pointer" }}>
       <div onClick={() => onOpen(r.assignmentId, "studentOverview")} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
@@ -56,6 +59,7 @@ function RecipientRow({ r, onOpen }) {
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, color: C.text }}>{r.assignment.subject} — {r.assignment.topic}</span>
             <Pill>{r.assignment.examType}</Pill>
+            {byOtherTeacher && r.assignment.teacher?.name && <Pill tone="muted">{r.assignment.teacher.name} verdi</Pill>}
             {r.submission ? (
               <>
                 <Pill tone="green">D:{r.submission.correctCount} Y:{r.submission.wrongCount} B:{r.submission.blankCount}</Pill>
@@ -94,7 +98,10 @@ function RecipientRow({ r, onOpen }) {
 // server/src/serialize.js > safeUser, coachNote orada bilerek süzülüyor). Artık sayfada sürekli yer
 // kaplamıyor — App.jsx'teki başlık çubuğundaki not defteri ikonu bunu bir modal olarak açıyor
 // (bkz. App.jsx > coachNoteOpen). key={studentId} ile öğrenci değişince sıfırdan mount edilir.
-function CoachNoteModal({ studentId, initialNote, onClose }) {
+// onSaved: kaydedilen not üst bileşenin verisine geri yazılır — modal kapanınca unmount olup bir
+// sonraki açılışta initialNote'tan (ilk yüklemedeki eski not) yeniden başladığı için, aksi halde
+// tekrar açınca eski not görünüyor, o haliyle kaydedilirse yeni not siliniyordu.
+function CoachNoteModal({ studentId, initialNote, onClose, onSaved }) {
   const [note, setNote] = useState(initialNote || "");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -109,7 +116,8 @@ function CoachNoteModal({ studentId, initialNote, onClose }) {
     setSaving(true);
     setMsg(null);
     try {
-      await api.teacherUpdateStudentNote(studentId, note);
+      const { coachNote } = await api.teacherUpdateStudentNote(studentId, note);
+      onSaved?.(coachNote);
       setMsg({ type: "ok", text: "Kaydedildi." });
     } catch (e) {
       setMsg({ type: "error", text: e.message || "Kaydedilemedi" });
@@ -183,11 +191,21 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
     return null;
   }, [dateFilter, rangeStart, rangeEnd]);
 
-  if (loading) return <EmptyState text="Yükleniyor..." />;
-  if (error) return <EmptyState text={error} />;
+  if (loading) return <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}><LoadingState /></div>;
+  if (error) {
+    return (
+      <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+        <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
+          <ArrowLeft size={16} /> Öğrencilerime dön
+        </button>
+        <EmptyState text={error} />
+      </div>
+    );
+  }
   if (!data) return null;
 
   const { student, recipients, studySessions } = data;
+  const updateCoachNote = (coachNote) => setData((d) => ({ ...d, student: { ...d.student, coachNote } }));
   const dateFilteredRecipients = recipients.filter((r) => overlapsRange(r, dateRange));
 
   // Tamamlanma oranı yalnızca GÖNDERİLMİŞ (SENT) ödevler üzerinden hesaplanır — taslaklar (DRAFT)
@@ -211,7 +229,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
   const visibleCompleted = completed.slice(0, visibleCompletedCount);
 
   return (
-    <div style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
+    <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
       <button onClick={onBack} className="k-link-btn" style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", color: C.muted, cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginBottom: 18 }}>
         <ArrowLeft size={16} /> Öğrencilerime dön
       </button>
@@ -223,36 +241,37 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
             <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
               <span style={{ fontFamily: displayFont, fontSize: 17, fontWeight: 800, color: C.text }}>{student.name}</span>
               {student.className && <Pill>{student.className}</Pill>}
-              {student.gradeLevel && <Pill tone="amber">{student.gradeLevel}. Sınıf ({trackForGrade(student.gradeLevel)})</Pill>}
+              {student.gradeLevel && <Pill tone="amber">{gradeLabel(student.gradeLevel)}</Pill>}
               {student.banned && <Pill tone="red">Askıda</Pill>}
             </div>
           </div>
         </div>
       </Card>
 
-      {noteOpen && <CoachNoteModal key={studentId} studentId={studentId} initialNote={student.coachNote} onClose={onCloseNote} />}
+      {noteOpen && <CoachNoteModal key={studentId} studentId={studentId} initialNote={student.coachNote} onClose={onCloseNote} onSaved={updateCoachNote} />}
 
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+      {/* Tarih filtreleri tek satırda yatay kayar — telefonda "Tümü" tek başına alt satıra düşüyordu. */}
+      <div className="k-chip-row" role="group" aria-label="Tarih aralığı" style={{ marginBottom: dateFilter === "range" ? 10 : 14, paddingBottom: 2 }}>
         {DATE_FILTERS.map((f) => (
           <Button key={f.value} small variant={dateFilter === f.value ? "primary" : "secondary"} onClick={() => setDateFilter(f.value)}>{f.label}</Button>
         ))}
-        {dateFilter === "range" && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Input type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} style={{ minWidth: 0 }} />
-            <span style={{ color: C.mutedLight, fontSize: 12.5 }}>—</span>
-            <Input type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} style={{ minWidth: 0 }} />
-          </div>
-        )}
       </div>
+      {dateFilter === "range" && (
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <div style={{ flex: 1, minWidth: 0 }}><Input aria-label="Başlangıç" type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} /></div>
+          <span style={{ color: C.muted, fontSize: 12.5, marginBottom: 16 }}>—</span>
+          <div style={{ flex: 1, minWidth: 0 }}><Input aria-label="Bitiş" type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} /></div>
+        </div>
+      )}
 
-      <div style={{ display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" }}>
+      <StatGrid min={96} style={{ marginBottom: 20 }}>
         <StatCard label="Toplam Ödev" value={dateFilteredRecipients.length} tone="accent" onClick={() => setFilter("all")} active={filter === "all"} />
         <StatCard label="Bekleyen" value={notOverdue.length} tone="amber" onClick={() => setFilter("pending")} active={filter === "pending"} />
         <StatCard label="Geciken" value={overdue.length} tone="red" onClick={() => setFilter("overdue")} active={filter === "overdue"} />
         <StatCard label="Tamamlanan" value={completed.length} tone="green" onClick={() => setFilter("completed")} active={filter === "completed"} />
         <StatCard label="Tamamlanma Oranı" value={completionRate != null ? `%${completionRate}` : "—"} tone="muted" />
         <StatCard label="Serbest Çalışma" value={studySessions.length} tone="amber" />
-      </div>
+      </StatGrid>
 
       {onCreateAssignment && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
@@ -274,7 +293,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
               ) : (
                 <>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {visibleOverdue.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} />)}
+                    {visibleOverdue.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} coachId={student.teacherId} />)}
                   </div>
                   <ShowMoreButton remaining={overdue.length - visibleOverdue.length} onClick={() => setVisibleOverdueCount((n) => n + 5)} />
                 </>
@@ -289,7 +308,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
               ) : (
                 <>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {visiblePending.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} />)}
+                    {visiblePending.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} coachId={student.teacherId} />)}
                   </div>
                   <ShowMoreButton remaining={notOverdue.length - visiblePending.length} onClick={() => setVisiblePendingCount((n) => n + 5)} />
                 </>
@@ -304,7 +323,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
               ) : (
                 <>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    {visibleCompleted.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} />)}
+                    {visibleCompleted.map((r) => <RecipientRow key={r.id} r={r} onOpen={onOpenAssignment} coachId={student.teacherId} />)}
                   </div>
                   <ShowMoreButton remaining={completed.length - visibleCompleted.length} onClick={() => setVisibleCompletedCount((n) => n + 5)} />
                 </>
@@ -314,7 +333,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenAssignm
         </div>
       )}
 
-      <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.mutedLight, textTransform: "uppercase", letterSpacing: 0.5 }}>
+      <div style={{ fontFamily: displayFont, fontSize: 14, fontWeight: 800, marginBottom: 12, color: C.muted, textTransform: "uppercase", letterSpacing: 0.5 }}>
         Serbest Çalışmaları ({studySessions.length})
       </div>
       {studySessions.length === 0 ? (

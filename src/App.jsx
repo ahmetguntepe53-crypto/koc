@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange, NotebookPen, BarChart3 } from "lucide-react";
 import { C, THEMES, bodyFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
-import { Sidebar, PageHeader, BottomNav } from "./components/common.jsx";
+import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost } from "./components/common.jsx";
 import { api } from "./api.js";
 import { registerPush, unregisterPush } from "./native/push.js";
 import { onBackButton, exitApp, setStatusBarTheme } from "./native/index.js";
@@ -56,6 +56,12 @@ function readStoredTheme() {
 export default function App() {
   const [authUser, setAuthUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  // Açılışta oturum doğrulanamadıysa (ağ/sunucu hatası — token korunur, bkz. useAuthSession) giriş
+  // ekranı yerine "Tekrar dene" gösterilir. sessionNotice: oturum sunucu tarafından sonlandırılınca
+  // giriş ekranında nedenini göstermek için.
+  const [authError, setAuthError] = useState("");
+  const [authRetrying, setAuthRetrying] = useState(false);
+  const [sessionNotice, setSessionNotice] = useState("");
   // "light" | "dark" — profilden değiştirilir. HalisahaApp.jsx ile AYNI desen: Object.assign(C, ...)
   // doğrudan render gövdesinde (bir effect İÇİNDE DEĞİL) çağrılır, böylece theme state'i her
   // değiştiğinde App zaten yeniden render olur ve TÜM alt bileşenler bir sonraki render'da C'nin
@@ -74,6 +80,7 @@ export default function App() {
     setStatusBarTheme(theme === "dark");
     document.documentElement.style.setProperty("--accent-color", C.accent);
     document.documentElement.style.setProperty("--accent-glow", C.accentSoft);
+    document.documentElement.style.setProperty("--surface-hover", C.surfaceHover);
   }, [theme]);
   // null = henüz role uygun bir varsayılan atanmadı (mount'ta oturum geri yüklenirken YA DA
   // logout()'un bıraktığı "login" değerinden sonra) — aşağıdaki effect authUser hazır olur olmaz
@@ -104,11 +111,42 @@ export default function App() {
   // Native kabuk olayları (arka plandan dönüş / gelen push) rozeti tazelemek için bu sayacı artırır.
   const [notificationsRefreshKey, setNotificationsRefreshKey] = useState(0);
 
-  const { login, logout: endSession, forgotPassword } = useAuthSession({ setAuthUser, setAuthChecked, setScreen });
+  const { login, logout: endSession, forgotPassword, retrySession } = useAuthSession({ setAuthUser, setAuthChecked, setScreen, setAuthError, setSessionNotice });
 
   // Çıkışta cihazın push token'ı sunucudan silinir; aksi halde telefon, çıkmış kullanıcının
   // bildirimlerini almaya devam ederdi. Ağ hatası çıkışı ENGELLEMEZ.
   const logout = () => { unregisterPush().catch(() => {}); endSession(); };
+
+  const retryAuth = () => {
+    if (authRetrying) return;
+    setAuthRetrying(true);
+    retrySession().finally(() => setAuthRetrying(false));
+  };
+  // Bağlantı hatası ekranındayken internet geri gelince ya da uygulama arka plandan dönünce
+  // kullanıcının "Tekrar dene"ye basmasını beklemeden otomatik yeniden denenir.
+  useEffect(() => {
+    if (!authError) return;
+    window.addEventListener("online", retryAuth);
+    window.addEventListener("kocluk:resume", retryAuth);
+    return () => {
+      window.removeEventListener("online", retryAuth);
+      window.removeEventListener("kocluk:resume", retryAuth);
+    };
+  }, [authError, authRetrying]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Çıkışta (elle ya da oturum sunucu tarafından sonlandırıldığında) gezinme seçimleri sıfırlanır —
+  // aynı cihazda başka bir hesapla girilince önceki kullanıcının seçili öğrencisine/ödevine düşülmesin.
+  useEffect(() => {
+    if (authUser) return;
+    setSelectedAssignmentId(null);
+    setAssignmentDetailReturnTo("assignments");
+    setSelectedRecipientId(null);
+    setSelectedStudentId(null);
+    setSelectedStudentName(null);
+    setCoachNoteOpen(false);
+    setAssignmentCreateInitialStudentId(null);
+    setAssignmentCreateReturnTo("assignments");
+  }, [authUser]);
 
   // logout() kasıtlı olarak screen'i "login"a çeker (LoginScreen zaten !authUser'a bakarak
   // gösteriliyor olsa da tutarlı bir "sıfırlanmış" durum bırakmak için) — bir sonraki başarılı
@@ -140,34 +178,57 @@ export default function App() {
   useEffect(() => {
     if (!authUser) return;
     const refresh = () => setNotificationsRefreshKey((k) => k + 1);
-    const goToNotificationTarget = (data) => {
+    // Arka plandan dönünce / yeni push gelince açık liste de tazelenir (yalnızca rozet değil) — aksi
+    // halde öğrenci ana ekranı eski ödevlerle ve bayat "X gün kaldı" rozetleriyle kalıyordu. Sayaçlar
+    // yalnızca o an ekranda olan liste bileşenini yeniden yükletir.
+    const refreshAll = () => {
       refresh();
-      if (data?.screen === "assignmentSubmit" && data?.recipientId) {
-        setSelectedRecipientId(data.recipientId);
-        setScreen("assignmentSubmit");
-      } else if (data?.screen === "assignmentDetail" && data?.assignmentId) {
-        setSelectedAssignmentId(data.assignmentId);
-        setScreen("assignmentDetail");
-      } else {
-        setScreen("notifications");
-      }
+      setMyAssignmentsRefreshKey((k) => k + 1);
+      setAssignmentsRefreshKey((k) => k + 1);
     };
-    const onPushOpen = (e) => goToNotificationTarget(e.detail);
-    window.addEventListener("kocluk:resume", refresh);
-    window.addEventListener("kocluk:push", refresh);
+    const onPushOpen = (e) => { refresh(); goToNotificationTarget(e.detail); };
+    window.addEventListener("kocluk:resume", refreshAll);
+    window.addEventListener("kocluk:push", refreshAll);
     window.addEventListener("kocluk:push-open", onPushOpen);
     return () => {
-      window.removeEventListener("kocluk:resume", refresh);
-      window.removeEventListener("kocluk:push", refresh);
+      window.removeEventListener("kocluk:resume", refreshAll);
+      window.removeEventListener("kocluk:push", refreshAll);
       window.removeEventListener("kocluk:push-open", onPushOpen);
     };
   }, [authUser]);
+
+  // Bir bildirimin hedef ekranına git — hem push'a dokununca (bkz. yukarıdaki effect) hem Bildirimler
+  // ekranındaki bir satıra dokununca kullanılır. data: sunucudaki notifyUser'ın yazdığı { screen, ... }.
+  function goToNotificationTarget(data) {
+    if (data?.screen === "assignmentSubmit" && data?.recipientId) {
+      setSelectedRecipientId(data.recipientId);
+      setScreen("assignmentSubmit");
+    } else if (data?.screen === "assignmentDetail" && data?.assignmentId) {
+      setSelectedAssignmentId(data.assignmentId);
+      // Önceki bir gezinmeden "studentOverview" kalmışsa geri tuşu seçili öğrencisi olmayan boş bir
+      // ekrana düşüyordu — bildirimden açılan ödev her zaman ödev listesine döner.
+      setAssignmentDetailReturnTo("assignments");
+      setScreen("assignmentDetail");
+    } else {
+      setScreen("notifications");
+    }
+  }
 
   // Android donanım geri tuşu: bir detay ekranındaysak liste ekranına dön, bir sekme (kök) ekranındaysak
   // uygulamadan çık — aksi halde Capacitor varsayılanı hiçbir şey yapmaz ve tuş "ölü" görünür.
   useEffect(() => {
     if (!authUser || !screen) return;
     return onBackButton(() => {
+      // Açık bir pencere (form, fotoğraf, not) varsa geri tuşu önce onu kapatır.
+      if (closeTopModal()) return;
+      if (screen === "assignmentCreate" && assignmentCreateReturnTo === "studentOverview" && selectedStudentId) {
+        // Öğrenci özetindeki "Yeni Ödev Ata"dan açıldıysa sekme kökü sayılmaz — özete geri döner,
+        // uygulamadan çıkıp yarım formu kaybettirmez.
+        setAssignmentCreateInitialStudentId(null);
+        setAssignmentCreateReturnTo("assignments");
+        setScreen("studentOverview");
+        return;
+      }
       if (screen === "assignmentDetail") {
         setSelectedAssignmentId(null);
         if (assignmentDetailReturnTo === "studentOverview") { setScreen("studentOverview"); return; }
@@ -197,14 +258,28 @@ export default function App() {
       }
       setScreen(DEFAULT_SCREEN_BY_ROLE[authUser.role] || "profile");
     });
-  }, [authUser, screen, assignmentDetailReturnTo, reportReturnTo]);
+  }, [authUser, screen, assignmentDetailReturnTo, reportReturnTo, assignmentCreateReturnTo, selectedStudentId]);
 
   if (!authChecked) {
     return <div style={{ minHeight: "100vh", background: C.bg }} />;
   }
 
+  if (!authUser && authError) {
+    return (
+      <div style={{
+        minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: 16, textAlign: "center", fontFamily: bodyFont,
+        padding: "calc(env(safe-area-inset-top) + 24px) 24px calc(env(safe-area-inset-bottom) + 24px)",
+      }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: C.text, maxWidth: 320 }}>{authError}</div>
+        <div style={{ fontSize: 12.5, color: C.muted, maxWidth: 320 }}>Oturumun açık kalıyor — bağlantı gelince yeniden şifre girmene gerek yok.</div>
+        <Button disabled={authRetrying} onClick={retryAuth}>{authRetrying ? "Bağlanıyor..." : "Tekrar dene"}</Button>
+      </div>
+    );
+  }
+
   if (!authUser) {
-    return <LoginScreen onLogin={login} onForgotPassword={forgotPassword} />;
+    return <LoginScreen onLogin={login} onForgotPassword={forgotPassword} notice={sessionNotice} />;
   }
 
   if (!screen) {
@@ -297,18 +372,21 @@ export default function App() {
             </div>
           }
         />
-        <div style={{ flex: 1 }}>
+        {/* key={screen}: ekran değişince hafif belirme animasyonu (index.html > .k-screen). */}
+        <div key={screen} className="k-screen" style={{ flex: 1 }}>
           {renderScreen({
             screen, authUser, logout, theme, setTheme,
-            selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated,
+            selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated, assignmentDetailReturnTo,
             selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
             selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
             selectedStudentName, reportReturnTo, openReport, backFromReport,
             coachNoteOpen, onCloseNote: () => setCoachNoteOpen(false),
+            openNotificationTarget: goToNotificationTarget,
           })}
         </div>
       </div>
       <BottomNav tabs={tabs} activeId={activeTabId} onSelect={selectTab} />
+      <DialogHost />
     </div>
   );
 }
@@ -357,14 +435,14 @@ const TABS_BY_ROLE = {
 
 function renderScreen({
   screen, authUser, logout, theme, setTheme,
-  selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated,
+  selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated, assignmentDetailReturnTo,
   selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
   selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
   selectedStudentName, reportReturnTo, openReport, backFromReport,
-  coachNoteOpen, onCloseNote,
+  coachNoteOpen, onCloseNote, openNotificationTarget,
 }) {
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} />;
-  if (screen === "notifications") return <NotificationsScreen />;
+  if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
   if (screen === "reports" && (authUser.role !== "TEACHER" || selectedStudentId)) {
     return (
       <ReportScreen
@@ -383,12 +461,14 @@ function renderScreen({
     if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={createAssignmentForStudent} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} />;
     if (screen === "assignmentCreate") return <AssignmentCreateScreen onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} />;
-    if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} />;
+    if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} backLabel={assignmentDetailReturnTo === "studentOverview" ? "Öğrenci özetine dön" : "Ödevlerime dön"} />;
     if (screen === "plan") return <PlanScreen user={authUser} />;
   }
   if (authUser.role === "STUDENT") {
     if (screen === "myAssignments") return <StudentHomeScreen user={authUser} onOpen={openRecipient} refreshKey={myAssignmentsRefreshKey} />;
-    if (screen === "assignmentSubmit" && selectedRecipientId) return <AssignmentSubmitScreen recipientId={selectedRecipientId} onBack={backToMyAssignments} />;
+    // key: bildirimle başka bir ödeve geçilince bileşen yeniden kullanılıp önceki ödevin D/Y/B
+    // değerleri ve notu formda kalıyor, yanlış ödeve gönderilebiliyordu — ödev değişince sıfırdan mount.
+    if (screen === "assignmentSubmit" && selectedRecipientId) return <AssignmentSubmitScreen key={selectedRecipientId} recipientId={selectedRecipientId} onBack={backToMyAssignments} />;
     if (screen === "studyLog") return <StudyLogScreen user={authUser} />;
   }
   return (
