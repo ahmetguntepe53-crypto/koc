@@ -1,0 +1,28 @@
+# Dış sağlık kontrolü: saatte bir API'nin /api/health'i (DB + zamanlayıcı, bkz. server/src/app.js) ve web ön yüzü.
+# Biri yanıt vermez ya da hata dönerse iş başarısız olur — GitHub, zamanlanmış çalıştırması başarısız olan iş akışını
+# en son düzenleyen kişiye e-posta atar. Sunucunun kendi uyarıları (server/src/alerts.js) sunucu tamamen düştüğünde
+# gönderilemez; bu kontrol tam da o durumu yakalar. Depo çekilmez, bağımlılık yok — tek curl.
+# Not: zamanlanmış iş akışları yalnız varsayılan dalda (main) koşar; depo 60 gün hareketsiz kalırsa GitHub zamanlamayı
+# kapatır (Actions sekmesinden yeniden açılır).
+name: Uptime
+
+on:
+  schedule:
+    - cron: "7 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  check:
+    name: Sağlık kontrolü
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # --retry: tek seferlik ağ/503 hıçkırığı için kimseye e-posta gitmesin; kalıcı sorunda 3 deneme de başarısız olur.
+      - name: API (/api/health)
+        run: curl -fsS --max-time 20 --retry 2 --retry-delay 15 https://api.kocluk.maiakademi.com/api/health
+      # always(): API düştüğünde web'in durumu da görünsün.
+      - name: Web
+        if: always()
+        run: curl -fsS --max-time 20 --retry 2 --retry-delay 15 -o /dev/null https://kocluk.maiakademi.com/

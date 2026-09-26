@@ -1,0 +1,78 @@
+# Her push ve pull request'te: istemci birim testleri + üretim derlemesi, sunucu uçtan uca testleri (gerçek Postgres).
+# Golden/Playwright görsel testleri BİLEREK yok: referans görüntüler macOS'ta üretildi, Linux'ta font/antialias farkıyla
+# her seferinde kırılırdı — onlar yerelde (npm run golden) koşar. İki iş paralel; npm önbelleği dakikaları düşük tutar.
+name: CI
+
+on:
+  push:
+    paths-ignore: ["**.md", "android/**", "ios/**", "golden/**"]
+  pull_request:
+    paths-ignore: ["**.md", "android/**", "ios/**", "golden/**"]
+
+# Aynı dala art arda push'ta eski çalıştırma iptal edilir (yalnız son commit'in sonucu anlamlı).
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  client:
+    name: İstemci (vitest + vite build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Bağımlılıklar
+        run: npm ci --no-audit --no-fund
+        env:
+          # @playwright/test kurulu ama CI'da tarayıcı gerekmez (golden testleri burada koşmuyor).
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: "1"
+      - name: Birim testleri
+        run: npx vitest run
+      - name: Üretim derlemesi
+        run: npx vite build
+
+  server:
+    name: Sunucu (uçtan uca, Postgres 16)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: kocluk
+          POSTGRES_PASSWORD: kocluk
+          POSTGRES_DB: kocluk
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kocluk"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: server
+    env:
+      # test/globalSetup.js bu veritabanını her çalıştırmada silip yeniden kurar (adında "test" geçmeli).
+      DATABASE_URL_TEST: postgresql://kocluk:kocluk@localhost:5432/kocluk_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Bağımlılıklar
+        run: npm ci --no-audit --no-fund
+      - name: Prisma istemcisi
+        run: npx prisma generate
+      - name: Uçtan uca testler
+        run: npm test
