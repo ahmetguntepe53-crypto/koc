@@ -51,7 +51,9 @@ test("Gelişim raporu: ders dökümü ve PDF sayfası", async ({ golden, page })
   await golden.settle();
   await page.locator("#rapor-karne").getByRole("button", { name: /Türkçe/ }).first().click();
   await golden.settle();
-  await golden.snap("gelisim-ders");
+  // fullPage:false — bkz. support.js > snap(): bu, açık bir pencerenin binlerce piksel yüksekliğindeki bir
+  // sayfanın üstünde durduğu bir sahne; arkadaki kaydırılmış içerik zaten penceresiz sahnelerde kapsanıyor.
+  await golden.snap("gelisim-ders", { fullPage: false });
   await page.getByRole("button", { name: "Kapat" }).click();
   await page.getByRole("button", { name: "PDF", exact: true }).click();
   await golden.snap("gelisim-pdf");

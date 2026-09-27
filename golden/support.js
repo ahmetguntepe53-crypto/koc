@@ -101,6 +101,18 @@ async function settle(page, ctx) {
     await page.waitForTimeout(100);
   }
   await page.evaluate(() => document.fonts.ready);
+  // Grafikler (TrendChart, DenemeChart) kapladıkları kutunun genişliğini ResizeObserver ile öğrenip İLK
+  // çizimden SONRA gerçek boyutuna büyüyor — ağ/React dışı, tarayıcının kendi olayı olduğu için yukarıdaki
+  // döngü bunu beklemez. Sayfa yüksekliği art arda iki ölçümde aynı çıkana kadar bekleyerek bu geç büyümeyi
+  // de yakalarız; yoksa üstündeki içerik kararsız kaldığı için altta açılan pencereler tam sayfa
+  // görüntülerde her seferinde başka bir konumda çıkabiliyordu (bkz. gelisim-ders-tam).
+  let lastHeight = -1;
+  for (let i = 0; i < 20; i++) {
+    const h = await page.evaluate(() => document.documentElement.scrollHeight);
+    if (h === lastHeight) break;
+    lastHeight = h;
+    await page.waitForTimeout(80);
+  }
   await page.waitForTimeout(150);
 }
 
@@ -122,7 +134,7 @@ function checkA11y(results, scene) {
   expect(regressions, `${scene}: yeni erişilebilirlik ihlali`).toEqual([]);
 }
 
-async function snap(page, name, ctx, testInfo) {
+async function snap(page, name, ctx, testInfo, { fullPage = true } = {}) {
   await settle(page, ctx);
   const crashed = await page.getByText("Bir şeyler ters gitti").count();
   expect(crashed, `${name}: ekran çöktü (ErrorBoundary)`).toBe(0);
@@ -135,7 +147,16 @@ async function snap(page, name, ctx, testInfo) {
     return;
   }
   await expect(page).toHaveScreenshot(`${name}.png`);
-  await expect(page).toHaveScreenshot(`${name}-tam.png`, { fullPage: true, style: ".k-bottom-nav{visibility:hidden!important}.k-sticky-action{position:static!important}" });
+  // fullPage:false istisnası YALNIZCA çok uzun bir sayfanın üstünde açık bir pencere olduğu sahnelerde: Chromium'un
+  // fullPage yakalaması sanal olarak görüntü alanını TÜM belge yüksekliğine büyütüyor; bu belge binlerce piksel
+  // uzunluğundayken, ortalanmış + bulanıklaştırılmış (backdrop-filter) sabit pencere o dev alanda kararsız bir konumda
+  // beliriyor — sayfa durumu (kaydırma, yükseklik, pencere içeriği) kanıtlanmış şekilde birebir aynı olsa bile
+  // (bkz. golden/README.md ya da git geçmişi: gelisim-ders-tam soruşturması). Pencerenin KENDİSİ zaten viewport
+  // görüntüsünde tam görünür durumda; arkadaki kaydırılmış içerik bu adımın konusu değil, o zaten penceresiz
+  // sahnelerde (z1-bu-hafta-tam, gelisim-tam) kapsanıyor.
+  if (fullPage) {
+    await expect(page).toHaveScreenshot(`${name}-tam.png`, { fullPage: true, style: ".k-bottom-nav{visibility:hidden!important}.k-sticky-action{position:static!important}" });
+  }
 }
 
 export const test = base.extend({
@@ -145,9 +166,17 @@ export const test = base.extend({
       open: async (persona, { theme = "dark" } = {}) => {
         await setupPage(page, persona, theme, ctx);
         await page.goto("/");
+        // Playwright'ın context'teki reducedMotion:"reduce" ayarı ve toHaveScreenshot'ın kendi
+        // animations:"disabled" seçeneği yalnızca @keyframes animasyonlarını (ve o anda AÇIK olan geçişleri)
+        // durdurur; ör. bir kartın genişliği/rengi bir state güncellemesiyle geçişli değişiyorsa (transition),
+        // bu geçiş tam settle() ile ekran görüntüsü arasındaki birkaç yüz ms içinde başlarsa yakalanmaz —
+        // aynı pencere açık durumdayken alınan art arda görüntüler farklı kareler yakalayabiliyordu (bkz.
+        // gelisim-ders-tam). Kalıcı bir stil ekleyerek TÜM geçiş ve animasyon sürelerini sıfırlıyoruz;
+        // navigasyon olmadığı sürece (bu paket boyunca tek sayfa açık kalır) süre boyunca geçerli kalır.
+        await page.addStyleTag({ content: "*,*::before,*::after{animation-duration:0s!important;animation-delay:0s!important;transition-duration:0s!important;transition-delay:0s!important;}" });
         await settle(page, ctx);
       },
-      snap: (name) => snap(page, name, ctx, testInfo),
+      snap: (name, opts) => snap(page, name, ctx, testInfo, opts),
       settle: () => settle(page, ctx),
       // Alt menüden sekme (telefon düzeni) — yazı etiketiyle.
       tab: async (label) => {

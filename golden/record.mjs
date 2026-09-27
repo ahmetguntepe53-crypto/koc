@@ -22,7 +22,7 @@ const env = serverEnv(DB);
 const run = (cmd, args, opts = {}) => execFileSync(cmd, args, { stdio: "inherit", env, ...opts });
 
 // index.html'deki Google Fonts adresi — değişirse fontlar yeniden indirilir.
-const FONT_CSS_URL = "https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap";
+const FONT_CSS_URL = "https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap";
 async function ensureFonts() {
   const marker = path.join(FONT_DIR, "source.txt");
   if (fs.existsSync(marker) && fs.readFileSync(marker, "utf8").trim() === FONT_CSS_URL) return;

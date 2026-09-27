@@ -119,10 +119,12 @@ export const C = {
   radiusLg: 18,   // büyük kart, pencere
 };
 
-// Arayüz: Space Grotesk. BÜTÜN rakamlar JetBrains Mono (netler, yüzdeler, soru sayıları, tarihler,
-// okul numarası) — hizalanmaları gerekiyor.
-export const displayFont = "'Space Grotesk', -apple-system, 'Segoe UI', sans-serif";
-export const bodyFont = "'Space Grotesk', -apple-system, 'Segoe UI', sans-serif";
+// Arayüz: Outfit (2026-09-27'de Space Grotesk'in yerine — daha okunur bulundu, geometrik harfleri
+// daha az sıra dışı). BÜTÜN rakamlar JetBrains Mono (netler, yüzdeler, soru sayıları, tarihler,
+// okul numarası) — hizalanmaları gerekiyor. index.html'deki Google Fonts adresi (500;600;700;800 —
+// kullanılan her ağırlık) burayla birlikte değişmeli, yoksa 800 sentetik kalınlaştırılır.
+export const displayFont = "'Outfit', -apple-system, 'Segoe UI', sans-serif";
+export const bodyFont = "'Outfit', -apple-system, 'Segoe UI', sans-serif";
 export const monoFont = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace";
 
 // Tamamlama yüzdesi rengi (dokümandaki 1b eşikleri) — 0 ayrı bir NÖTR renk: "hiç ödevi yapmadı / henüz
