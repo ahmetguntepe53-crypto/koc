@@ -333,8 +333,10 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
 }
 
 // Telefon genişliğinde (bkz. index.html > @media max-width:640px) kenar çubuğunun yerini alan alt
-// menü — 66px, --k1 zemin, üstte --ciz çizgisi. İkon yok, yalnızca yazı; aktif sekme --t1 ve altında
-// 18×2px çizgi. Görünürlüğü CSS medya sorgusu belirler; burada her zaman render edilir.
+// menü — 66px, --k1 zemin, üstte --ciz çizgisi. Simge (sidebar'la aynı t.icon) üstte, yazı altında;
+// aktif sekme --t1 ve kalın, pasif --t3. Simgenin köşesindeki kırmızı nokta okunmamış sayısı (sidebar'daki
+// rozetle aynı anlam, dar alana sığsın diye 9'dan büyükse "9+"). Görünürlüğü CSS medya sorgusu belirler;
+// burada her zaman render edilir.
 export function BottomNav({ tabs, activeId, onSelect }) {
   return (
     <nav className="k-bottom-nav" aria-label="Ana menü" style={{
@@ -343,22 +345,33 @@ export function BottomNav({ tabs, activeId, onSelect }) {
     }}>
       {tabs.map((t) => {
         const active = t.id === activeId;
+        const Icon = t.icon;
         return (
           <button
             key={t.id}
             onClick={() => onSelect(t.id)}
             aria-current={active ? "page" : undefined}
             style={{
-              flex: 1, height: 66, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+              flex: 1, height: 66, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
               background: "none", border: "none", cursor: "pointer", padding: "0 2px", minWidth: 0,
               color: active ? C.text : C.mutedLight,
             }}
           >
-            <span style={{ position: "relative", fontFamily: bodyFont, fontSize: 14, fontWeight: active ? 700 : 500, letterSpacing: -0.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+            <span style={{ position: "relative", display: "flex" }}>
+              {Icon && <Icon size={21} strokeWidth={active ? 2.4 : 2} aria-hidden="true" />}
+              {t.badge > 0 && (
+                <span aria-hidden="true" style={{
+                  position: "absolute", top: -3, right: -6, background: C.red, color: C.onRed,
+                  fontSize: 9.5, fontWeight: 800, lineHeight: 1, borderRadius: 999, minWidth: 15, height: 15,
+                  display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
+                  border: `1.5px solid ${C.surface}`, fontFamily: monoFont,
+                }}>{t.badge > 9 ? "9+" : t.badge}</span>
+              )}
+            </span>
+            <span style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: active ? 700 : 500, letterSpacing: -0.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
               {t.label}
             </span>
             {t.badge > 0 && <span className="k-sr-only">, {t.badge} okunmamış</span>}
-            <span aria-hidden="true" style={{ width: 18, height: 2, borderRadius: 2, background: active ? C.text : "transparent" }} />
           </button>
         );
       })}
