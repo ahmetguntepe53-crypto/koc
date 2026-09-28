@@ -139,12 +139,12 @@ for (const [username, subject] of Object.entries(branchOf)) {
 // --- Ayşe Yılmaz'ın kişisel ödevleri (koç ödevi) ---
 const ayse = teachers["ayse.yilmaz"];
 const ayseStudents = Object.values(students).filter((s) => s.teacherId === ayse.id);
-async function coachAssignment(topic, subject, start, end, pageRange, doneFor = []) {
+async function coachAssignment(topic, subject, start, end, pageRange, doneFor = [], teacher = ayse, targetStudents = ayseStudents) {
   const a = await prisma.assignment.create({
     data: {
-      teacherId: ayse.id, examType: "TYT", subject, topic, pageRange, period: "WEEKLY", scheduledDate: start, endDate: end,
+      teacherId: teacher.id, examType: "TYT", subject, topic, pageRange, period: "WEEKLY", scheduledDate: start, endDate: end,
       sendMode: "MANUAL_NOW", targetMode: "WHOLE_GROUP", status: "SENT", sentAt: start,
-      recipients: { create: ayseStudents.map((s) => ({ studentId: s.id })) },
+      recipients: { create: targetStudents.map((s) => ({ studentId: s.id })) },
     },
     include: { recipients: true },
   });
@@ -158,6 +158,11 @@ async function coachAssignment(topic, subject, start, end, pageRange, doneFor = 
 await coachAssignment("Sayı basamakları tekrarı", "Matematik", day(-4), day(-1), "20 soru", ["1204", "1205", "1206"]);
 await coachAssignment("Sözcükte Anlam tekrarı", "Türkçe", day(-3), day(0), "20 soru", ["1204", "1206"]);
 await coachAssignment("Limit tekrarı", "Matematik", day(-1), day(3), "25 soru", []);
+// Burak Şen (branşsız koç) — bu değişiklikten ÖNCEKİ dönemden kalma, kendi öğrencilerine kendi
+// verdiği bir ödev: yeni kuralda koçlar artık ödev veremez, ama eski kayıtlar "Ödevler" sekmesinde
+// durmaya devam eder (bkz. golden/specs/koc.spec.js > "Düz koç ödevleri").
+const burakStudents = Object.values(students).filter((s) => s.teacherId === teachers["burak.sen"].id);
+await coachAssignment("Türev tekrarı", "Matematik", day(-2), day(2), "20 soru", ["1209"], teachers["burak.sen"], burakStudents);
 
 // --- Zeynep Kaya: serbest çalışma + koçunun tarihli notları ---
 const zeynep = students["1204"];

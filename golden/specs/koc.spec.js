@@ -32,15 +32,23 @@ test("Z4 başlıktaki Notlar bölüme kaydırır; alt çubuktan yeni not", async
   await golden.snap("z4-yeni-not");
 });
 
-// Branşı olmayan koç: ödev ATAYAMAZ (Ata sekmesi yok), yıllık takvim onda (bkz. App.jsx > tabsFor).
-test("Düz koç: sekmeler ve takvim", async ({ golden }) => {
+// Branşı olmayan koç: ödev ATAYAMAZ (Ata sekmesi yok), ödev TAKİBİ onda (Ödevler sekmesi) — bkz.
+// App.jsx > tabsFor. "Türev tekrarı" bu değişiklikten ÖNCE Burak'ın kendi verdiği bir ödev (seed.mjs);
+// yeni kuralda koçlar artık ödev veremez ama eski kayıtlar durmaya devam eder.
+test("Düz koç: sekmeler, takvim, ödev takibi", async ({ golden, page }) => {
   await golden.open("duzKoc");
   await golden.snap("duz-koc-ogrencilerim");
   await golden.tab("Takvim");
   await golden.snap("takvim");
+  await golden.tab("Ödevler");
+  await golden.snap("duz-koc-odevler");
+  await page.getByText("Türev tekrarı").first().click();
+  await golden.settle();
+  await golden.snap("duz-koc-odev-detay");
 });
 
-test("Ödev ata, ödevlerim, ödev detayı", async ({ golden, page }) => {
+// Branş öğretmeni: ödev VERİR ama takip ETMEZ (Ödevler sekmesi yok) — takip koçun işi (yukarıdaki test).
+test("Ödev ata", async ({ golden, page }) => {
   await golden.open("koc");
   await golden.tab("Ata");
   await golden.snap("ata");
@@ -52,11 +60,6 @@ test("Ödev ata, ödevlerim, ödev detayı", async ({ golden, page }) => {
   await golden.snap("ata-sube");
   await page.getByRole("tab", { name: "Son gönderdiklerim" }).click();
   await golden.snap("ata-son-gonderilenler");
-  await golden.tab("Ödevler");
-  await golden.snap("odevler");
-  await page.getByText("Limit tekrarı").first().click();
-  await golden.settle();
-  await golden.snap("odev-detay");
 });
 
 test("Öğrenci gelişim raporu (koç görünümü), ders dökümü, PDF", async ({ golden, page }) => {

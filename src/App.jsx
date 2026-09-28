@@ -540,10 +540,13 @@ function screenSubtitle(screen, authUser) {
 // gizli — ekran ve sunucu ucu duruyor, plan kayıtları da veritabanında; geri açmak sekmeyi eklemek kadar.
 function tabsFor(user) {
   if (user.role === "TEACHER" && user.isSubjectTeacher) {
+    // "Ödevler" (tam takip: kim tamamladı/etmedi) burada YOK — branş öğretmeni okulun tamamına ödev
+    // gönderiyor ama takibi koçların işi (her koç kendi öğrencisini TABS_BY_ROLE.TEACHER'daki "Ödevler"
+    // sekmesinden izler). "Ata" içindeki "Son gönderdiklerim" yalnızca ne gönderdiğini hatırlatır,
+    // tamamlanma durumu göstermez (bkz. AssignmentCreateScreen > RecentAssignments).
     return [
       { id: "students", label: "Öğrenciler", icon: Users },
       { id: "assignmentCreate", label: "Ata", icon: PlusCircle },
-      { id: "assignments", label: "Ödevler", icon: ClipboardList },
     ];
   }
   return TABS_BY_ROLE[user.role] || [];
@@ -617,7 +620,7 @@ function renderScreen({
     if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={authUser.isSubjectTeacher ? createAssignmentForStudent : undefined} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} setHeader={setHeader} />;
     // Ödev atama yalnızca branş öğretmenlerinde (bkz. tabsFor); koç hesabı bu ekrana hiç giremez —
     // sunucu da aynı kuralı uygular (routes/assignments.js > assertCanAssign).
-    if (screen === "assignmentCreate" && authUser.isSubjectTeacher) return <AssignmentCreateScreen user={authUser} key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} onOpenAssignment={(id) => openAssignment(id, "assignments")} />;
+    if (screen === "assignmentCreate" && authUser.isSubjectTeacher) return <AssignmentCreateScreen user={authUser} key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} />;
     if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} backLabel={assignmentDetailReturnTo === "studentOverview" ? "Öğrenci özetine dön" : "Ödevlerime dön"} />;
     if (screen === "plan") return <PlanScreen user={authUser} />;

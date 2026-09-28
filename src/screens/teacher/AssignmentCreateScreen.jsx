@@ -120,9 +120,11 @@ function shortDateRange(start, end) {
   return `${s.getDate()} ${month(s)}${year(s)} – ${e.getDate()} ${month(e)}${year(e)}`;
 }
 
-// "Son gönderdiklerim" — öğretmenin kendi gönderdiği ödevler, en yenisi üstte. Kaç öğrencinin sonuç
-// girdiği de görünür; satıra dokununca ödevin kendi ekranı açılır.
-function RecentAssignments({ onOpenAssignment, refreshKey }) {
+// "Son gönderdiklerim" — öğretmenin kendi gönderdiği ödevlerin sade bir hatırlatıcısı (ne, ne zaman,
+// hangi kaynaktan), en yenisi üstte. BİLEREK tamamlanma sayısı göstermez, satırına dokununca bir şey
+// açılmaz: sonuç TAKİBİ koçun işi (her koç kendi öğrencisini kendi "Ödevler" sekmesinden izler) — branş
+// öğretmeni yalnızca "bunu daha önce gönderdim mi / hangi kaynaktan gitmişti" sorusuna bakar.
+function RecentAssignments({ refreshKey }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -138,29 +140,19 @@ function RecentAssignments({ onOpenAssignment, refreshKey }) {
   if (!rows.length) return <EmptyState text="Henüz ödev göndermedin. “Yeni ödev” sekmesinden ilk ödevini oluşturabilirsin." />;
   return (
     <ListGroup>
-      {rows.map((a) => {
-        const total = a.recipients?.length || 0;
-        const done = a.recipients?.filter((r) => r.completed).length || 0;
-        return (
-          <ListRow
-            key={a.id}
-            title={a.topic}
-            subtitle={`${a.examType} ${a.subject} · ${shortDate(a.scheduledDate)}${a.sourceBook ? ` · ${a.sourceBook}` : ""}`}
-            right={
-              <span style={{ textAlign: "right", flexShrink: 0 }}>
-                <span style={{ display: "block", fontFamily: monoFont, fontSize: 14, fontWeight: 700, color: done === total && total ? C.green : C.text2 }}>{done}/{total}</span>
-                <span style={{ display: "block", fontFamily: bodyFont, fontSize: 11, color: C.mutedLight }}>sonuç</span>
-              </span>
-            }
-            onClick={onOpenAssignment ? () => onOpenAssignment(a.id) : undefined}
-          />
-        );
-      })}
+      {rows.map((a) => (
+        <ListRow
+          key={a.id}
+          title={a.topic}
+          subtitle={`${a.examType} ${a.subject} · ${shortDate(a.scheduledDate)}${a.sourceBook ? ` · ${a.sourceBook}` : ""}`}
+          right={<span style={{ fontFamily: monoFont, fontSize: 12.5, color: C.mutedLight, flexShrink: 0 }}>{a.recipients?.length || 0} öğrenci</span>}
+        />
+      ))}
     </ListGroup>
   );
 }
 
-export default function AssignmentCreateScreen({ user, onCreated, initialStudentId, prefill, onOpenAssignment }) {
+export default function AssignmentCreateScreen({ user, onCreated, initialStudentId, prefill }) {
   const [tab, setTab] = useState("new");
   const [audience, setAudience] = useState(null); // { students: [...] }
   const [audienceError, setAudienceError] = useState("");
@@ -300,7 +292,7 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
   );
 
   if (audienceError) return page(<><EmptyState text={audienceError} /></>);
-  if (tab === "recent") return page(<>{tabBar}<RecentAssignments onOpenAssignment={onOpenAssignment} refreshKey={sentCount} /></>);
+  if (tab === "recent") return page(<>{tabBar}<RecentAssignments refreshKey={sentCount} /></>);
   if (!audience) return page(<>{tabBar}<LoadingState /></>);
 
   // Alttaki sabit düğmenin ne atayacağını özetler — uzun formda "ne seçmiştim?" sorusu için.
