@@ -114,3 +114,44 @@ describe("kaynak kitap hatırlama", () => {
     expect(saved.pageRange).toBeNull();
   });
 });
+
+// Toplu gönderimin asıl riski bildirimlerde: okulun tamamına tek istekte ödev çıkınca her öğrenciye
+// KENDİ alıcı kaydının id'siyle bir bildirim yazılmalı — aksi halde bildirime dokunan öğrenci başka
+// birinin sonuç ekranına düşer ya da hiç bildirim almaz.
+describe("toplu gönderimde bildirimler", () => {
+  it("okulun tamamına gönderimde herkes KENDİ ödev ekranına giden tek bildirim alır", async () => {
+    const hepsi = [...w.grade11, ...w.grade12];
+    const before = await prisma.notification.count({ where: { type: "assignment" } });
+    const r = await create(t.branch, { studentIds: hepsi.map((s) => s.id), topic: "Bildirim testi konusu", subject: "Fizik" });
+    expect(r.status).toBe(201);
+
+    const after = await prisma.notification.count({ where: { type: "assignment" } });
+    expect(after - before).toBe(hepsi.length); // öğrenci başına tam bir tane, eksik ya da fazla değil
+
+    const recipients = r.body.assignment.recipients;
+    const notifications = await prisma.notification.findMany({
+      where: { type: "assignment", userId: { in: hepsi.map((s) => s.id) } },
+      orderBy: { createdAt: "desc" },
+      take: hepsi.length,
+    });
+    // Her öğrencinin bildirimi kendi AssignmentRecipient kaydına işaret etmeli.
+    const recipientIdByStudent = new Map(recipients.map((x) => [x.studentId, x.id]));
+    expect(notifications).toHaveLength(hepsi.length);
+    for (const n of notifications) {
+      expect(n.data.recipientId).toBe(recipientIdByStudent.get(n.userId));
+      expect(n.data.screen).toBe("assignmentSubmit");
+      expect(n.text).toContain("Bildirim testi konusu");
+      expect(n.text).toContain(w.branch.name); // "<öğretmen> sana yeni bir ödev gönderdi"
+    }
+  });
+
+  it("taslak (tarihi gelince gönder) seçilirse henüz bildirim gitmez", async () => {
+    const before = await prisma.notification.count({ where: { type: "assignment" } });
+    const r = await create(t.branch, {
+      studentIds: w.grade11.map((s) => s.id), topic: "Taslak konusu", sendMode: "AUTO_ON_DATE",
+    });
+    expect(r.status).toBe(201);
+    expect(r.body.assignment.status).toBe("DRAFT");
+    expect(await prisma.notification.count({ where: { type: "assignment" } })).toBe(before);
+  });
+});
