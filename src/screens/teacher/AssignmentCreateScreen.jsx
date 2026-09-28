@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { C, bodyFont, displayFont, monoFont } from "../../theme.js";
 import { Card, Button, Input, Select, Avatar, EmptyState, LoadingState, ListRow, ListGroup } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { PERIOD_LABELS, subjectsForBranches } from "../../subjects.js";
+import { subjectsForBranches } from "../../subjects.js";
 import { todayISO } from "../../dates.js";
 import { shortDate } from "../../work.js";
 import TopicField from "../../components/TopicField.jsx";
@@ -168,7 +168,10 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
   const [scheduledDate, setScheduledDate] = useState(todayISO());
   const [endDate, setEndDate] = useState(todayISO());
   const [endDateTouched, setEndDateTouched] = useState(false);
-  const [period, setPeriod] = useState("WEEKLY");
+  // "Periyot" alanı kaldırıldı (2026-09-28) — sınıflandırma etiketiydi, hiçbir zamanlama/otomatik
+  // tekrar etkisi yoktu, öğretmenler için kafa karıştırıcıydı. Sunucu hâlâ bir değer istiyor (eski
+  // ödevlerin listesinde görünüyor); WEEKLY sabit gönderilir.
+  const period = "WEEKLY";
   const [sendMode, setSendMode] = useState("MANUAL_NOW");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -296,7 +299,7 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
   if (!audience) return page(<>{tabBar}<LoadingState /></>);
 
   // Alttaki sabit düğmenin ne atayacağını özetler — uzun formda "ne seçmiştim?" sorusu için.
-  const summary = [subject, shortDateRange(scheduledDate, endDate), (PERIOD_LABELS[period] || "").toLocaleLowerCase("tr-TR")].filter(Boolean).join(" · ");
+  const summary = [subject, shortDateRange(scheduledDate, endDate)].filter(Boolean).join(" · ");
   const audienceText = mode === "all" ? "okuldaki tüm öğrenciler"
     : mode === "grade" ? (grades.size ? [...grades].sort().map((g) => `${g}. sınıf`).join(", ") : "sınıf düzeyi seç")
     : mode === "class" ? (classes.size ? [...classes].sort((a, b) => a.localeCompare(b, "tr")).join(", ") : "şube seç")
@@ -415,9 +418,6 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
             <div style={FIELD_GRID}>
               <Input label="Başlangıç" type="date" value={scheduledDate} onChange={(e) => onStartDateChange(e.target.value)} required />
               <Input label="Bitiş" type="date" value={endDate} min={scheduledDate} onChange={(e) => onEndDateChange(e.target.value)} required />
-              <Select label="Periyot" value={period} onChange={(e) => setPeriod(e.target.value)}>
-                {Object.entries(PERIOD_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-              </Select>
               <Select label="Gönderim" value={sendMode} onChange={(e) => setSendMode(e.target.value)}>
                 {SEND_MODE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>

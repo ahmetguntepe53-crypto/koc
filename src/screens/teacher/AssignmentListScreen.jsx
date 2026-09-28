@@ -3,7 +3,7 @@ import { Send, Trash2, ChevronRight } from "lucide-react";
 import { C, bodyFont } from "../../theme.js";
 import { Card, Button, Select, Pill, EmptyState, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { PERIOD_LABELS, STATUS_LABELS, ALL_SUBJECTS, subjectIconUrl } from "../../subjects.js";
+import { STATUS_LABELS, ALL_SUBJECTS, subjectIconUrl } from "../../subjects.js";
 import { formatDateRange, daysUntil } from "../../dates.js";
 
 export default function AssignmentListScreen({ onOpen, refreshKey }) {
@@ -103,7 +103,7 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
                       <Pill>{a.examType}</Pill>
                     </div>
                     <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginTop: 4 }}>
-                      {formatDateRange(a.scheduledDate, a.endDate)} · {PERIOD_LABELS[a.period]} · {a.recipients.length} öğrenci{a.status === "SENT" ? ` · ${completedCount}/${a.recipients.length} tamamladı` : ""}
+                      {formatDateRange(a.scheduledDate, a.endDate)} · {a.recipients.length} öğrenci{a.status === "SENT" ? ` · ${completedCount}/${a.recipients.length} tamamladı` : ""}
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>

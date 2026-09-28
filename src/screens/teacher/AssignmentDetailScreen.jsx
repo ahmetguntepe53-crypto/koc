@@ -3,7 +3,7 @@ import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
 import { Card, Button, Pill, EmptyState, Avatar, Modal, LoadingState, confirmDialog, SectionHeader } from "../../components/common.jsx";
 import { api, photoUrl } from "../../api.js";
-import { PERIOD_LABELS, SEND_MODE_LABELS, STATUS_LABELS } from "../../subjects.js";
+import { SEND_MODE_LABELS, STATUS_LABELS } from "../../subjects.js";
 import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
 
 export default function AssignmentDetailScreen({ assignmentId, onBack, backLabel = "Ödevlerime dön" }) {
@@ -62,7 +62,6 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, backLabel
         </div>
         {readOnly && assignment.teacher?.name && <DetailRow label="Veren öğretmen" value={assignment.teacher.name} />}
         <DetailRow label="Tarih" value={formatDateRange(assignment.scheduledDate, assignment.endDate)} />
-        <DetailRow label="Periyot" value={PERIOD_LABELS[assignment.period]} />
         <DetailRow label="Gönderim modu" value={SEND_MODE_LABELS[assignment.sendMode]} />
         {assignment.sourceBook && <DetailRow label="Kaynak kitap" value={assignment.sourceBook} />}
         {assignment.pageRange && <DetailRow label="Sayfa / soru aralığı" value={assignment.pageRange} />}
