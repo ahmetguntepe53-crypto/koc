@@ -313,10 +313,6 @@ export default function App() {
         setScreen("students");
         return;
       }
-      if (screen === "plan" && authUser.role === "TEACHER" && authUser.isSubjectTeacher) {
-        setScreen("branch");
-        return;
-      }
       const tabIds = [...tabsFor(authUser).map((t) => t.id), "profile"];
       if (tabIds.includes(screen)) {
         exitApp();
@@ -430,7 +426,6 @@ export default function App() {
     : screen === "assignmentDetail" ? backToAssignments
     : screen === "studentOverview" ? backToStudents
     : screen === "reports" && reportReturnTo !== "tab" ? backFromReport
-    : screen === "plan" && authUser.role === "TEACHER" && authUser.isSubjectTeacher ? () => setScreen("branch")
     : screen === "assignmentCreate" && ((assignmentCreateReturnTo === "studentOverview" && selectedStudentId) || assignmentCreateReturnTo === "reports") ? backToOverviewFromCreate
     : screen === "monthlyReports" ? () => setScreen("students")
     : screen === "studyLog" && returnToReport ? backFromStudyLog
@@ -443,7 +438,6 @@ export default function App() {
     : screen === "assignmentSubmit" ? "myAssignments"
     : screen === "studentOverview" ? "students"
     : screen === "reports" ? (reportReturnTo === "studentOverview" || reportReturnTo === "monthlyReports" ? "students" : reportReturnTo === "tab" ? "reports" : "profile")
-    : screen === "plan" && authUser.isSubjectTeacher ? "branch"
     : screen;
 
   return (
@@ -540,11 +534,14 @@ function screenSubtitle(screen, authUser) {
 // Rol'e göre sekmeler. Telefonda alt menü yalnızca yazı (şartname); kenar çubuğunda ikonlar da var.
 // Branş öğretmeninde "Takvim" yerine "Branş" sekmesi — yıllık planına branş ekranından girilir
 // (hafta hafta plan listesi orada); koç ekranı (6 öğrenci) ile branş ekranı (74 öğrenci) ayrı sekmeler.
+// 2026-09-28, okulun kararı: ödev YALNIZCA branş öğretmenlerinden gider, koçlar takip eder. Bu yüzden
+// "Ata" sekmesi koçlarda yok; branş öğretmeninde ise kendi öğrencileriyle sınırlı değil, okulun tamamını
+// hedefleyebiliyor (bkz. AssignmentCreateScreen). "Branş" sekmesi (yıllık plandan yayınlama) ŞİMDİLİK
+// gizli — ekran ve sunucu ucu duruyor, plan kayıtları da veritabanında; geri açmak sekmeyi eklemek kadar.
 function tabsFor(user) {
   if (user.role === "TEACHER" && user.isSubjectTeacher) {
     return [
       { id: "students", label: "Öğrenciler", icon: Users },
-      { id: "branch", label: "Branş", icon: GraduationCap },
       { id: "assignmentCreate", label: "Ata", icon: PlusCircle },
       { id: "assignments", label: "Ödevler", icon: ClipboardList },
     ];
@@ -559,7 +556,6 @@ const TABS_BY_ROLE = {
   ],
   TEACHER: [
     { id: "students", label: "Öğrenciler", icon: Users },
-    { id: "assignmentCreate", label: "Ata", icon: PlusCircle },
     { id: "assignments", label: "Ödevler", icon: ClipboardList },
     { id: "plan", label: "Takvim", icon: CalendarRange },
   ],
@@ -594,7 +590,7 @@ function renderScreen({
         onOpenRecipient={authUser.role === "STUDENT" ? openRecipientFromReport : undefined}
         onOpenStudyLog={authUser.role === "STUDENT" ? openStudyLogPrefilled : undefined}
         onOpenHome={authUser.role === "STUDENT" ? openHome : undefined}
-        onAssign={authUser.role === "TEACHER" ? openAssignPrefilled : undefined}
+        onAssign={authUser.role === "TEACHER" && authUser.isSubjectTeacher ? openAssignPrefilled : undefined}
         onOpenAssignment={authUser.role === "TEACHER" ? (id) => openAssignment(id, "reports") : undefined}
       />
       </Suspense>
@@ -615,9 +611,13 @@ function renderScreen({
         />
       );
     }
+    // "Branş" sekmesi 2026-09-28'de gizlendi (bkz. tabsFor) — ekran hiçbir yerden açılmıyor ama duruyor:
+    // okul yıllık plandan yayınlamaya dönmek isterse sekmeyi geri eklemek yetiyor.
     if (screen === "branch" && authUser.isSubjectTeacher) return <BranchScreen user={authUser} setHeader={setHeader} onOpenPlan={openPlan} />;
-    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={createAssignmentForStudent} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} setHeader={setHeader} />;
-    if (screen === "assignmentCreate") return <AssignmentCreateScreen key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} />;
+    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={authUser.isSubjectTeacher ? createAssignmentForStudent : undefined} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} setHeader={setHeader} />;
+    // Ödev atama yalnızca branş öğretmenlerinde (bkz. tabsFor); koç hesabı bu ekrana hiç giremez —
+    // sunucu da aynı kuralı uygular (routes/assignments.js > assertCanAssign).
+    if (screen === "assignmentCreate" && authUser.isSubjectTeacher) return <AssignmentCreateScreen user={authUser} key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} onOpenAssignment={(id) => openAssignment(id, "assignments")} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} />;
     if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} backLabel={assignmentDetailReturnTo === "studentOverview" ? "Öğrenci özetine dön" : "Ödevlerime dön"} />;
     if (screen === "plan") return <PlanScreen user={authUser} />;

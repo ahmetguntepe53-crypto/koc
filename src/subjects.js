@@ -47,6 +47,17 @@ export function branchOfSubject(subject) {
   return SUBJECT_BRANCH[subject] || subject;
 }
 
+// Branş öğretmeninin ödev verebileceği dersler — bir sınav türündeki tüm dersler değil, yalnızca kendi
+// branşına düşenler: Coğrafya öğretmeni TYT'de "Coğrafya"yı, AYT'de "Coğrafya-1" ve "Coğrafya-2"yi görür.
+// teachingSubjects boşsa (ya da hiçbiri o sınav türünde geçmiyorsa) tüm liste döner — form kilitlenmesin;
+// sunucu branş dışı dersi zaten reddeder (server/src/routes/assignments.js > assertCanAssign).
+export function subjectsForBranches(examType, teachingSubjects) {
+  const all = SUBJECTS_BY_EXAM[examType] || [];
+  if (!teachingSubjects?.length) return all;
+  const mine = all.filter((s) => teachingSubjects.includes(branchOfSubject(s)));
+  return mine.length ? mine : all;
+}
+
 export const PERIOD_LABELS = { WEEKLY: "Haftalık", MONTHLY: "Aylık", YEARLY: "Yıllık" };
 export const SEND_MODE_LABELS = {
   AUTO_ON_DATE: "Otomatik — tarihi gelince gönder",

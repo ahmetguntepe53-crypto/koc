@@ -32,12 +32,11 @@ test("Z4 başlıktaki Notlar bölüme kaydırır; alt çubuktan yeni not", async
   await golden.snap("z4-yeni-not");
 });
 
-test("Z5 branş ve yıllık plan", async ({ golden, page }) => {
-  await golden.open("koc");
-  await golden.tab("Branş");
-  await golden.snap("z5-brans");
-  await page.getByRole("button", { name: /takvimi aç/ }).click();
-  await golden.settle();
+// Branşı olmayan koç: ödev ATAYAMAZ (Ata sekmesi yok), yıllık takvim onda (bkz. App.jsx > tabsFor).
+test("Düz koç: sekmeler ve takvim", async ({ golden }) => {
+  await golden.open("duzKoc");
+  await golden.snap("duz-koc-ogrencilerim");
+  await golden.tab("Takvim");
   await golden.snap("takvim");
 });
 
@@ -45,6 +44,14 @@ test("Ödev ata, ödevlerim, ödev detayı", async ({ golden, page }) => {
   await golden.open("koc");
   await golden.tab("Ata");
   await golden.snap("ata");
+  // Kime: branş öğretmeni kendi öğrencileriyle sınırlı değil — sınıf düzeyi ve şube bazlı gönderim.
+  await page.getByRole("button", { name: "Sınıf düzeyi" }).click();
+  await page.getByRole("button", { name: "12. sınıf" }).click();
+  await golden.snap("ata-sinif-duzeyi");
+  await page.getByRole("button", { name: "Şube" }).click();
+  await golden.snap("ata-sube");
+  await page.getByRole("tab", { name: "Son gönderdiklerim" }).click();
+  await golden.snap("ata-son-gonderilenler");
   await golden.tab("Ödevler");
   await golden.snap("odevler");
   await page.getByText("Limit tekrarı").first().click();

@@ -152,6 +152,8 @@ export const api = {
   deleteAssignment: (id) => request(`/assignments/${id}`, { method: "DELETE" }),
   sendAssignmentNow: (id) => request(`/assignments/${id}/send-now`, { method: "POST" }),
   listSourceBooks: (examType) => request(`/assignments/source-books${examType ? `?examType=${encodeURIComponent(examType)}` : ""}`),
+  // Branş öğretmeninin ödev gönderebileceği okul genelindeki öğrenciler (yalnızca branş öğretmenleri).
+  assignmentAudience: () => request("/assignments/audience"),
 
   // --- öğretmen: yıllık plan ---
   listPlanEntries: (examType) => request(`/plan-entries?examType=${encodeURIComponent(examType)}`),

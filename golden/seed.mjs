@@ -237,7 +237,10 @@ const meta = {
   password: PASSWORD,
   personas: {
     ogrenci: { username: "1204", password: PASSWORD },
+    // koc = branş öğretmeni (Matematik): ödev atayabilen rol. duzKoc = branşı olmayan koç: ödev
+    // atayamaz, Takvim sekmesi onda — iki rolün sekmeleri 2026-09-28'den beri farklı (bkz. App.jsx > tabsFor).
     koc: { username: "ayse.yilmaz", password: PASSWORD },
+    duzKoc: { username: "burak.sen", password: PASSWORD },
     admin: { username: "admin@golden.test", password: PASSWORD },
     ilk: { username: "1247", password: "1247" },
   },

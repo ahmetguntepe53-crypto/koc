@@ -1,10 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C, bodyFont, displayFont, monoFont } from "../../theme.js";
-import { Card, Button, Input, Select, Avatar, EmptyState } from "../../components/common.jsx";
+import { Card, Button, Input, Select, Avatar, EmptyState, LoadingState, ListRow, ListGroup } from "../../components/common.jsx";
 import { api } from "../../api.js";
-import { SUBJECTS_BY_EXAM, PERIOD_LABELS, trackForGrade } from "../../subjects.js";
+import { PERIOD_LABELS, subjectsForBranches } from "../../subjects.js";
 import { todayISO } from "../../dates.js";
+import { shortDate } from "../../work.js";
 import TopicField from "../../components/TopicField.jsx";
+
+// Ödev atama ekranı — 2026-09-28'den beri YALNIZCA branş öğretmenlerinde (bkz. App.jsx > tabsFor).
+// Branş öğretmeni kendi koçluk ettiği öğrencilerle sınırlı değildir: okulun tamamını, bir sınıf düzeyini,
+// bir şubeyi ya da tek tek seçtiği öğrencileri hedefler. Buna karşılık yalnızca KENDİ branşındaki dersten
+// ödev verebilir (sunucu da doğrular: routes/assignments.js > assertCanAssign).
 
 // Gönderim modunun KISA etiketleri — iki sütunlu ızgarada ~150px'lik alana "Otomatik — tarihi gelince
 // gönder" sığmıyordu; alanın "Gönderim" etiketi bağlamı zaten veriyor. Değerler sunucuyla aynı.
@@ -12,6 +18,14 @@ const SEND_MODE_OPTIONS = [
   { value: "MANUAL_NOW", label: "Hemen" },
   { value: "AUTO_ON_DATE", label: "Tarihi gelince" },
   { value: "AUTO_DAY_BEFORE", label: "Bir gün önce" },
+];
+
+// Kime gönderileceği: okulun tamamı · sınıf düzeyi (11/12) · şube (12-A) · tek tek seçim.
+const AUDIENCE_MODES = [
+  { value: "all", label: "Tüm okul" },
+  { value: "grade", label: "Sınıf düzeyi" },
+  { value: "class", label: "Şube" },
+  { value: "pick", label: "Seçerek" },
 ];
 
 // İki sütunlu alan ızgarası; sütun asgari 140px — ~360px'ten dar ekranlarda (tarih alanı sığmıyor) medya
@@ -23,8 +37,8 @@ const FIELD_GRID = {
   columnGap: 12, marginBottom: -16,
 };
 
-// Kart başlığı: 24×24 mor kutuda sıra numarası + başlık + alt açıklama — uzun tek form "Kime / Ne /
-// Ne zaman" diye üç gruba bölündü, koç hangi adımda olduğunu görsün diye.
+// Kart başlığı: 24×24 kutuda sıra numarası + başlık + alt açıklama — uzun tek form "Kime / Ne /
+// Ne zaman" diye üç gruba bölündü, öğretmen hangi adımda olduğunu görsün diye.
 function GroupHeader({ n, id, title, subtitle }) {
   return (
     <div style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: 14 }}>
@@ -41,10 +55,12 @@ function GroupHeader({ n, id, title, subtitle }) {
   );
 }
 
-// İki seçenekli bölümlü düğme (TYT/AYT, sınav grubu) — aktif mor dolu, pasif alan zemini.
+// Bölümlü düğme (TYT/AYT, kime) — aktif dolu, pasif alan zemini. Izgara: sütun asgari 120px, yani
+// telefonda dört seçenek 2×2 olur (tek bir düğmenin yalnız başına alt satıra düşmesi yerine), geniş
+// ekranda dördü de tek sıraya çıkar. İki seçenekli kullanımda (TYT/AYT) her koşulda yan yana.
 function Segmented({ value, onChange, options, label }) {
   return (
-    <div role="group" aria-label={label} style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+    <div role="group" aria-label={label} style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8, marginBottom: 14 }}>
       {options.map((opt) => {
         const active = value === opt.value;
         return (
@@ -55,7 +71,7 @@ function Segmented({ value, onChange, options, label }) {
             onClick={() => onChange(opt.value)}
             className="k-btn"
             style={{
-              flex: 1, minWidth: 0, height: 40, borderRadius: 12, cursor: "pointer",
+              minWidth: 0, height: 40, borderRadius: 12, cursor: "pointer",
               border: `1px solid ${active ? C.accent : C.border}`,
               background: active ? C.accent : C.fieldBg,
               color: active ? C.onAccent : C.muted, fontFamily: bodyFont, fontWeight: 700, fontSize: 14,
@@ -66,6 +82,26 @@ function Segmented({ value, onChange, options, label }) {
         );
       })}
     </div>
+  );
+}
+
+// Çoklu seçim rozeti (sınıf düzeyi, şube) — seçili olanlar vurgulu.
+function ToggleChip({ active, onClick, children, label }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={label}
+      className="k-btn"
+      style={{
+        height: 36, padding: "0 14px", borderRadius: 18, cursor: "pointer",
+        background: active ? C.accentSoft : C.fieldBg, border: `1px solid ${active ? C.accent : C.border}`,
+        color: active ? C.accent : C.muted, fontFamily: bodyFont, fontSize: 13, fontWeight: active ? 700 : 600,
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -84,16 +120,55 @@ function shortDateRange(start, end) {
   return `${s.getDate()} ${month(s)}${year(s)} – ${e.getDate()} ${month(e)}${year(e)}`;
 }
 
-export default function AssignmentCreateScreen({ onCreated, initialStudentId, prefill }) {
-  const [students, setStudents] = useState([]);
-  const [manualTrack, setManualTrack] = useState(null); // roster karma sınav türlerinden oluşuyorsa koçun elle seçtiği
-  const [checkedIds, setCheckedIds] = useState(() => new Set());
-  // Rapordaki kısayoldan açıldıysa ders ve konu dolu gelir (kaydetmez — kullanıcı onaylar).
-  const [examType, setExamType] = useState(() => (SUBJECTS_BY_EXAM[prefill?.examType] ? prefill.examType : "TYT"));
-  const [subject, setSubject] = useState(() => {
-    const ex = SUBJECTS_BY_EXAM[prefill?.examType] ? prefill.examType : "TYT";
-    return SUBJECTS_BY_EXAM[ex].includes(prefill?.subject) ? prefill.subject : SUBJECTS_BY_EXAM[ex][0];
-  });
+// "Son gönderdiklerim" — öğretmenin kendi gönderdiği ödevler, en yenisi üstte. Kaç öğrencinin sonuç
+// girdiği de görünür; satıra dokununca ödevin kendi ekranı açılır.
+function RecentAssignments({ onOpenAssignment, refreshKey }) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    api.listAssignments({ status: "SENT" })
+      .then(({ assignments }) => { if (alive) setRows(assignments.slice(0, 20)); })
+      .catch((e) => { if (alive) setError(e.message || "Yüklenemedi"); });
+    return () => { alive = false; };
+  }, [refreshKey]);
+
+  if (error) return <EmptyState text={error} />;
+  if (!rows) return <LoadingState />;
+  if (!rows.length) return <EmptyState text="Henüz ödev göndermedin. “Yeni ödev” sekmesinden ilk ödevini oluşturabilirsin." />;
+  return (
+    <ListGroup>
+      {rows.map((a) => {
+        const total = a.recipients?.length || 0;
+        const done = a.recipients?.filter((r) => r.completed).length || 0;
+        return (
+          <ListRow
+            key={a.id}
+            title={a.topic}
+            subtitle={`${a.examType} ${a.subject} · ${shortDate(a.scheduledDate)}${a.sourceBook ? ` · ${a.sourceBook}` : ""}`}
+            right={
+              <span style={{ textAlign: "right", flexShrink: 0 }}>
+                <span style={{ display: "block", fontFamily: monoFont, fontSize: 14, fontWeight: 700, color: done === total && total ? C.green : C.text2 }}>{done}/{total}</span>
+                <span style={{ display: "block", fontFamily: bodyFont, fontSize: 11, color: C.mutedLight }}>sonuç</span>
+              </span>
+            }
+            onClick={onOpenAssignment ? () => onOpenAssignment(a.id) : undefined}
+          />
+        );
+      })}
+    </ListGroup>
+  );
+}
+
+export default function AssignmentCreateScreen({ user, onCreated, initialStudentId, prefill, onOpenAssignment }) {
+  const [tab, setTab] = useState("new");
+  const [audience, setAudience] = useState(null); // { students: [...] }
+  const [audienceError, setAudienceError] = useState("");
+  const [sentCount, setSentCount] = useState(0); // "son gönderdiklerim" listesini tazelemek için
+
+  const branches = user?.teachingSubjects || [];
+  const [examType, setExamType] = useState(() => (prefill?.examType === "AYT" ? "AYT" : "TYT"));
+  const [subject, setSubject] = useState("");
   const [topic, setTopic] = useState(() => prefill?.topic || "");
   const [sourceBook, setSourceBook] = useState("");
   const [sourceBooks, setSourceBooks] = useState([]);
@@ -107,98 +182,53 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId, pr
   const [success, setSuccess] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const [rosterError, setRosterError] = useState("");
+  // Kime: mod + o moda ait seçim.
+  const [mode, setMode] = useState(initialStudentId ? "pick" : "all");
+  const [grades, setGrades] = useState(() => new Set());
+  const [classes, setClasses] = useState(() => new Set());
+  const [picked, setPicked] = useState(() => new Set(initialStudentId ? [initialStudentId] : []));
+
   useEffect(() => {
-    api.teacherListStudents().then(({ students }) => setStudents(students)).catch((e) => setRosterError(e.message || "Öğrenci listesi yüklenemedi"));
+    api.assignmentAudience()
+      .then(setAudience)
+      .catch((e) => setAudienceError(e.message || "Öğrenci listesi yüklenemedi"));
   }, []);
-  useEffect(() => { api.listSourceBooks(examType).then(({ sourceBooks }) => setSourceBooks(sourceBooks)).catch(() => {}); }, [examType]);
 
-  const activeStudents = useMemo(() => students.filter((s) => !s.banned).map((s) => ({ ...s, track: trackForGrade(s.gradeLevel) })), [students]);
-  const tracksPresent = useMemo(() => [...new Set(activeStudents.map((s) => s.track).filter(Boolean))], [activeStudents]);
-
+  // Kaynak kitap önerileri en yeniden eskiye gelir (bkz. GET /assignments/source-books) — ilki
+  // öğretmenin EN SON kullandığı kaynaktır ve forma hazır gelir; yazarak ya da listeden başka bir
+  // kaynağı seçmek serbest. Öğretmen alanı bilerek boşalttıysa (touched) tekrar doldurulmaz.
+  const sourceTouchedRef = useRef(false);
   useEffect(() => {
-    if (tracksPresent.length && !tracksPresent.includes(manualTrack)) setManualTrack(tracksPresent[0]);
-  }, [tracksPresent.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
+    api.listSourceBooks(examType)
+      .then(({ sourceBooks: books }) => {
+        setSourceBooks(books);
+        if (!sourceTouchedRef.current) setSourceBook(books[0] || "");
+      })
+      .catch(() => {});
+  }, [examType]);
 
-  // Roster boşsa (kimse sınıf düzeyi girilmemiş) YKS'ye düşülür — form kilitlenmesin diye.
-  const effectiveTrack = tracksPresent.length === 1 ? tracksPresent[0] : tracksPresent.length > 1 ? manualTrack : "YKS";
-  const gradeMissingCount = activeStudents.filter((s) => !s.track).length;
+  const students = audience?.students || [];
+  const gradeOptions = useMemo(() => [...new Set(students.map((s) => s.gradeLevel).filter(Boolean))].sort((a, b) => a - b), [students]);
+  const classOptions = useMemo(() => [...new Set(students.map((s) => s.className).filter(Boolean))].sort((a, b) => a.localeCompare(b, "tr")), [students]);
 
-  // Yalnızca seçilen sınav türüyle uyumlu öğrenciler tikletilebilir — böylece işaretlenen HERKES
-  // gerçekten o ödevi alır, sunucuda "bazıları uyumsuz" gibi sürpriz bir filtrelemeye gerek kalmaz.
-  const eligibleStudents = useMemo(() => activeStudents.filter((s) => s.track === effectiveTrack), [activeStudents, effectiveTrack]);
-  const eligibleIdsKey = eligibleStudents.map((s) => s.id).join(",");
+  // Seçilen moda göre gerçek alıcı listesi — gönderim de, özet de bunu kullanır.
+  const recipients = useMemo(() => {
+    if (mode === "all") return students;
+    if (mode === "grade") return students.filter((s) => grades.has(s.gradeLevel));
+    if (mode === "class") return students.filter((s) => classes.has(s.className));
+    return students.filter((s) => picked.has(s.id));
+  }, [mode, students, grades, classes, picked]);
 
-  // Uygun öğrenci havuzu İLK KEZ görüldüğünde (roster yüklendi, ya da yeni bir öğrenci roster'a
-  // eklendi) varsayılan olarak tiklenir. Daha önce de eligible olan bir öğrencinin tik durumu
-  // KORUNUR — aksi halde (karma sınav gruplu bir roster'da) "Sınav Grubu" arasında ileri geri geçmek, koçun
-  // az önce kaldırdığı tikleri sessizce geri koyup o öğrencilere de ödev gönderirdi.
-  const seenEligibleIdsRef = useRef(new Set());
+  const subjectOptions = useMemo(() => subjectsForBranches(examType, branches), [examType, branches.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    const prevSeen = seenEligibleIdsRef.current;
-    const nextEligible = new Set(eligibleStudents.map((s) => s.id));
-    setCheckedIds((prevChecked) => {
-      const next = new Set();
-      for (const id of nextEligible) {
-        if (prevSeen.has(id)) { if (prevChecked.has(id)) next.add(id); }
-        else next.add(id);
-      }
-      return next;
-    });
-    seenEligibleIdsRef.current = nextEligible;
-  }, [eligibleIdsKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Öğrenci Özeti ekranındaki "Yeni Ödev Ata" hızlı eylemiyle açıldıysa (initialStudentId dolu) yukarıdaki
-  // "tüm uygun öğrenciler tikli" varsayılanını GEÇERSİZ KILIP yalnızca bu öğrenciyi tikler. Hedef öğrencinin
-  // sınav grubu farklıysa önce ona geçilir (checkedIds daraltması bir SONRAKİ render'da, eligibleStudents o
-  // gruba göre yeniden hesaplanınca uygulanır) — bu yüzden bayrak yalnızca hedef gerçekten eligible listede
-  // görününce "uygulandı" sayılır, tek seferlik zorlamayı erken bitirip koçun sonraki tik değişikliklerini
-  // ezmemek için.
-  const initialStudentAppliedRef = useRef(false);
-  useEffect(() => {
-    if (!initialStudentId || initialStudentAppliedRef.current) return;
-    const target = activeStudents.find((s) => s.id === initialStudentId);
-    if (!target || !target.track) return;
-    if (target.track !== effectiveTrack) {
-      if (tracksPresent.length > 1) setManualTrack(target.track);
-      return;
-    }
-    if (!eligibleStudents.some((s) => s.id === initialStudentId)) return;
-    initialStudentAppliedRef.current = true;
-    setCheckedIds(new Set([initialStudentId]));
-  }, [initialStudentId, activeStudents, effectiveTrack, tracksPresent, eligibleStudents]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const subjectOptions = useMemo(() => SUBJECTS_BY_EXAM[examType], [examType]);
-  useEffect(() => {
-    if (!subjectOptions.includes(subject)) setSubject(subjectOptions[0]);
+    if (!subjectOptions.includes(subject)) setSubject(subjectOptions.includes(prefill?.subject) ? prefill.subject : subjectOptions[0] || "");
   }, [subjectOptions]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Avatar çiplerinde yalnızca ilk ad yazılır; aynı ilk ada sahip iki öğrenci karışmasın diye onlarda
-  // soyadının baş harfi eklenir ("Ahmet Y."). Tam ad çipin title/aria-label'ında.
-  const chipLabels = useMemo(() => {
-    const partsOf = (name) => (name || "").trim().split(/\s+/).filter(Boolean);
-    const firstCounts = new Map();
-    for (const s of eligibleStudents) {
-      const first = partsOf(s.name)[0] || "";
-      firstCounts.set(first, (firstCounts.get(first) || 0) + 1);
-    }
-    return new Map(eligibleStudents.map((s) => {
-      const parts = partsOf(s.name);
-      const first = parts[0] || s.name || "?";
-      const label = firstCounts.get(first) > 1 && parts.length > 1 ? `${first} ${parts[parts.length - 1][0]}.` : first;
-      return [s.id, label];
-    }));
-  }, [eligibleStudents]);
-
-  const toggleStudent = (id) => {
-    setCheckedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-  const selectAll = () => setCheckedIds(new Set(eligibleStudents.map((s) => s.id)));
-  const selectNone = () => setCheckedIds(new Set());
+  const toggleIn = (setter) => (value) => setter((prev) => {
+    const next = new Set(prev);
+    if (next.has(value)) next.delete(value); else next.add(value);
+    return next;
+  });
 
   const onStartDateChange = (v) => {
     setScheduledDate(v);
@@ -210,7 +240,7 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId, pr
     e.preventDefault();
     setError("");
     setSuccess("");
-    if (checkedIds.size === 0) { setError("En az bir öğrenci seçmelisin"); return; }
+    if (recipients.length === 0) { setError("En az bir öğrenci seçmelisin"); return; }
     if (!topic.trim()) { setError("Müfredat konusu gerekli"); return; }
     // HTML'in date input'undaki min= özelliği bazı mobil klavye/tarih seçicilerde elle girişte
     // katı uygulanmayabilir — sunucuya gitmeden önce burada da açıkça doğrulanır.
@@ -218,18 +248,21 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId, pr
     setSaving(true);
     try {
       const { assignment } = await api.createAssignment({
-        studentIds: [...checkedIds],
+        studentIds: recipients.map((s) => s.id),
         examType, subject, topic: topic.trim(),
         sourceBook: sourceBook.trim() || undefined, pageRange: pageRange.trim() || undefined,
         period, scheduledDate, endDate, sendMode,
       });
-      setSuccess(assignment.status === "SENT" ? "Ödev oluşturuldu ve gönderildi." : "Ödev taslak olarak takvime kaydedildi.");
+      setSuccess(assignment.status === "SENT"
+        ? `Ödev ${recipients.length} öğrenciye gönderildi.`
+        : "Ödev taslak olarak takvime kaydedildi.");
       setTopic("");
-      setSourceBook("");
       setPageRange("");
       setScheduledDate(todayISO());
       setEndDate(todayISO());
       setEndDateTouched(false);
+      setSentCount((n) => n + 1);
+      // Kaynak kitap BİLEREK korunur — aynı kaynaktan arka arkaya konu göndermek olağan.
       if (onCreated) onCreated(assignment);
     } catch (err) {
       setError(err.message || "Ödev kaydedilemedi");
@@ -238,53 +271,100 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId, pr
     }
   };
 
-  if (rosterError) return <EmptyState text={rosterError} />;
+  const page = (children) => <div className="k-page k-page-form" style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>{children}</div>;
+
+  const tabBar = (
+    <div role="tablist" aria-label="Ödev" style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+      {[{ id: "new", label: "Yeni ödev" }, { id: "recent", label: "Son gönderdiklerim" }].map((t) => {
+        const active = tab === t.id;
+        return (
+          <button
+            key={t.id}
+            type="button"
+            role="tab"
+            aria-selected={active}
+            onClick={() => setTab(t.id)}
+            className="k-btn"
+            style={{
+              flex: 1, height: 40, borderRadius: 12, cursor: "pointer",
+              border: `1px solid ${active ? C.accent : C.border}`,
+              background: active ? C.accent : C.fieldBg,
+              color: active ? C.onAccent : C.muted, fontFamily: bodyFont, fontWeight: 700, fontSize: 13.5,
+            }}
+          >
+            {t.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  if (audienceError) return page(<><EmptyState text={audienceError} /></>);
+  if (tab === "recent") return page(<>{tabBar}<RecentAssignments onOpenAssignment={onOpenAssignment} refreshKey={sentCount} /></>);
+  if (!audience) return page(<>{tabBar}<LoadingState /></>);
 
   // Alttaki sabit düğmenin ne atayacağını özetler — uzun formda "ne seçmiştim?" sorusu için.
   const summary = [subject, shortDateRange(scheduledDate, endDate), (PERIOD_LABELS[period] || "").toLocaleLowerCase("tr-TR")].filter(Boolean).join(" · ");
+  const audienceText = mode === "all" ? "okuldaki tüm öğrenciler"
+    : mode === "grade" ? (grades.size ? [...grades].sort().map((g) => `${g}. sınıf`).join(", ") : "sınıf düzeyi seç")
+    : mode === "class" ? (classes.size ? [...classes].sort((a, b) => a.localeCompare(b, "tr")).join(", ") : "şube seç")
+    : `${picked.size} öğrenci seçili`;
 
   return (
     <div className="k-page k-page-form" style={{ padding: 28, maxWidth: 580, margin: "0 auto" }}>
+      {tabBar}
       <form onSubmit={submit}>
         <Card style={{ padding: 16, marginBottom: 12 }}>
           <section aria-labelledby="create-group-who">
             <GroupHeader
               n={1} id="create-group-who" title="Kime"
-              subtitle={<><span style={{ fontFamily: monoFont }}>{checkedIds.size}</span> öğrenci seçili</>}
+              subtitle={<><span style={{ fontFamily: monoFont }}>{recipients.length}</span> öğrenci · {audienceText}</>}
             />
+            <Segmented label="Kime gönderilecek" value={mode} onChange={setMode} options={AUDIENCE_MODES} />
 
-            {tracksPresent.length > 1 && (
-              <>
-                <div style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, color: C.muted, marginBottom: 7 }}>Sınav grubu</div>
-                <Segmented
-                  label="Sınav grubu"
-                  value={manualTrack}
-                  onChange={setManualTrack}
-                  options={tracksPresent.map((t) => ({ value: t, label: `${t} (${activeStudents.filter((s) => s.track === t).length})` }))}
-                />
-              </>
+            {mode === "all" && (
+              <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, lineHeight: 1.5 }}>
+                Sınıf düzeyi girilmiş, askıya alınmamış <span style={{ fontFamily: monoFont, color: C.text2 }}>{students.length}</span> öğrencinin hepsine gider.
+              </div>
             )}
 
-            <Segmented label="Sınav türü" value={examType} onChange={setExamType} options={[{ value: "TYT", label: "TYT" }, { value: "AYT", label: "AYT" }]} />
-
-            {eligibleStudents.length === 0 ? (
-              <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.red }}>
-                Sınıf düzeyi girilmiş (11 veya 12. sınıf) bir öğrencin yok.
+            {mode === "grade" && (
+              <div className="k-chip-row" role="group" aria-label="Sınıf düzeyi" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {gradeOptions.map((g) => (
+                  <ToggleChip key={g} active={grades.has(g)} onClick={() => toggleIn(setGrades)(g)} label={`${g}. sınıf`}>
+                    {g}. sınıf <span style={{ fontFamily: monoFont, opacity: 0.75 }}>({students.filter((s) => s.gradeLevel === g).length})</span>
+                  </ToggleChip>
+                ))}
               </div>
-            ) : (
+            )}
+
+            {mode === "class" && (
+              classOptions.length === 0
+                ? <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.amber }}>Öğrencilerin şubesi (ör. 12-A) girilmemiş — yönetici Kurulum ekranından girebilir.</div>
+                : (
+                  <div className="k-chip-row" role="group" aria-label="Şube" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    {classOptions.map((cn) => (
+                      <ToggleChip key={cn} active={classes.has(cn)} onClick={() => toggleIn(setClasses)(cn)} label={`${cn} şubesi`}>
+                        {cn} <span style={{ fontFamily: monoFont, opacity: 0.75 }}>({students.filter((s) => s.className === cn).length})</span>
+                      </ToggleChip>
+                    ))}
+                  </div>
+                )
+            )}
+
+            {mode === "pick" && (
               <>
-                {/* Onay kutulu satır listesi yerine avatar çipleri — 6 satırlık liste ~300px yer kaplıyordu. */}
                 <div role="group" aria-label="Öğrenciler" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  {eligibleStudents.map((s) => {
-                    const checked = checkedIds.has(s.id);
+                  {students.map((s) => {
+                    const checked = picked.has(s.id);
                     return (
                       <button
                         key={s.id}
                         type="button"
-                        onClick={() => toggleStudent(s.id)}
+                        onClick={() => toggleIn(setPicked)(s.id)}
                         aria-pressed={checked}
                         aria-label={s.className ? `${s.name}, ${s.className}` : s.name}
-                        title={s.name}
+                        title={s.className ? `${s.name} · ${s.className}` : s.name}
                         className="k-btn"
                         style={{
                           display: "inline-flex", alignItems: "center", gap: 7, height: 36, boxSizing: "border-box",
@@ -294,32 +374,28 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId, pr
                         }}
                       >
                         <Avatar name={s.name} size={28} />
-                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{chipLabels.get(s.id)}</span>
+                        <span style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</span>
                       </button>
                     );
                   })}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 12 }}>
-                  <button type="button" onClick={selectAll} className="k-link-btn" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: bodyFont, fontSize: 12.5, fontWeight: 700, color: C.accent }}>
+                  <button type="button" onClick={() => setPicked(new Set(students.map((s) => s.id)))} className="k-link-btn" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: bodyFont, fontSize: 12.5, fontWeight: 700, color: C.accent }}>
                     Tümünü seç
                   </button>
-                  <button type="button" onClick={selectNone} className="k-link-btn" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, color: C.muted }}>
+                  <button type="button" onClick={() => setPicked(new Set())} className="k-link-btn" style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, color: C.muted }}>
                     Hiçbirini seçme
                   </button>
                 </div>
               </>
-            )}
-            {gradeMissingCount > 0 && (
-              <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.amber, marginTop: 12, lineHeight: 1.45 }}>
-                {gradeMissingCount} öğrencinin sınıf düzeyi girilmemiş ya da güncel değil, listede görünmüyor (yönetici Kullanıcılar sayfasından 11/12 olarak girebilir).
-              </div>
             )}
           </section>
         </Card>
 
         <Card style={{ padding: 16, marginBottom: 12 }}>
           <section aria-labelledby="create-group-what">
-            <GroupHeader n={2} id="create-group-what" title="Ne" subtitle="ders ve konu" />
+            <GroupHeader n={2} id="create-group-what" title="Ne" subtitle={branches.length ? `ders ve konu · branşın: ${branches.join(", ")}` : "ders ve konu"} />
+            <Segmented label="Sınav türü" value={examType} onChange={setExamType} options={[{ value: "TYT", label: "TYT" }, { value: "AYT", label: "AYT" }]} />
             <div style={FIELD_GRID}>
               <Select label="Ders" value={subject} onChange={(e) => setSubject(e.target.value)}>
                 {subjectOptions.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -328,8 +404,12 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId, pr
               <div style={{ minWidth: 0 }}>
                 <TopicField label="Konu" examType={examType} subject={subject} value={topic} onChange={setTopic} placeholder="ör. Temel kavramlar" required />
               </div>
-              <Input label="Kaynak kitap" list="source-book-suggestions" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} placeholder="opsiyonel" />
-              <Input label="Sayfa / soru" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="ör. 45-60" />
+              <Input
+                label="Kaynak kitap" list="source-book-suggestions" value={sourceBook}
+                onChange={(e) => { sourceTouchedRef.current = true; setSourceBook(e.target.value); }}
+                placeholder="opsiyonel"
+              />
+              <Input label="Sayfa / soru" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="opsiyonel — ör. 45-60" />
             </div>
             <datalist id="source-book-suggestions">
               {sourceBooks.map((b) => <option key={b} value={b} />)}
@@ -359,8 +439,8 @@ export default function AssignmentCreateScreen({ onCreated, initialStudentId, pr
         <div className="k-sticky-action" style={{ background: C.surface, borderTop: `1px solid ${C.border}`, padding: "12px 16px 14px", marginTop: 16 }}>
           {error && <div role="alert" style={{ color: C.red, fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, textAlign: "center", marginBottom: 10 }}>{error}</div>}
           {success && <div role="status" style={{ color: C.green, fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, textAlign: "center", marginBottom: 10 }}>{success}</div>}
-          <Button full type="submit" disabled={saving || checkedIds.size === 0}>
-            {saving ? "Kaydediliyor..." : sendMode === "MANUAL_NOW" ? `${checkedIds.size} öğrenciye ata` : "Takvime kaydet"}
+          <Button full type="submit" disabled={saving || recipients.length === 0}>
+            {saving ? "Kaydediliyor..." : sendMode === "MANUAL_NOW" ? `${recipients.length} öğrenciye ata` : "Takvime kaydet"}
           </Button>
           {summary && (
             <div style={{ fontFamily: bodyFont, fontSize: 11.5, fontWeight: 500, color: C.mutedLight, textAlign: "center", marginTop: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>

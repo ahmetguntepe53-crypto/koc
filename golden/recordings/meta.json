@@ -1,5 +1,5 @@
 {
- "now": "2026-09-27T20:56:48.507Z",
+ "now": "2026-09-28T07:32:24.997Z",
  "password": "Golden1234",
  "personas": {
   "ogrenci": {
@@ -8,6 +8,10 @@
   },
   "koc": {
    "username": "ayse.yilmaz",
+   "password": "Golden1234"
+  },
+  "duzKoc": {
+   "username": "burak.sen",
    "password": "Golden1234"
   },
   "admin": {
@@ -20,8 +24,8 @@
   }
  },
  "ids": {
-  "zeynep": "cmukau6yq000gjdq9tu1jeebe",
-  "firstLogin": "cmukau6zw0018jdq9xcgzje63",
-  "admin": "cmukau6y70000jdq96q6oizkf"
+  "zeynep": "cmukxjl9r000go5x2eb2cuvfn",
+  "firstLogin": "cmukxjlaw0018o5x2yk20ruxw",
+  "admin": "cmukxjl940000o5x2wocv2sq1"
  }
 }

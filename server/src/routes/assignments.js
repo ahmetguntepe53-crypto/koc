@@ -2,7 +2,7 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
-import { isValidSubject, trackForGrade, trackForExamType, EXAM_TYPES } from "../subjects.js";
+import { isValidSubject, trackForGrade, trackForExamType, EXAM_TYPES, branchOfSubject, GRADE_LEVELS } from "../subjects.js";
 import { notifyUser } from "../notify.js";
 
 // Bu router server/src/app.js'de requireAuth ile mount edilir (rol karışık: TEACHER oluşturur/
@@ -50,12 +50,26 @@ export async function notifyRecipientsAssignmentSent(assignment, teacherName) {
   }
 }
 
+// Ödevi kimin atayabileceği ve hangi öğrencileri hedefleyebileceği — 2026-09-28'de okulun kararıyla
+// değişti: ödev YALNIZCA branş öğretmenlerinden gider, koçlar takip eder. Branş öğretmeni kendi
+// koçluk ettiği öğrencilerle sınırlı değildir, okuldaki HERKESİ (ya da bir sınıf düzeyini / şubeyi)
+// hedefleyebilir; buna karşılık yalnızca KENDİ branşındaki dersten ödev verebilir (Coğrafya öğretmeni
+// Coğrafya-1/2 ve TYT Coğrafya). İstemci de aynı kuralı uygular (Ata sekmesi yalnızca branş
+// öğretmenlerinde görünür), burası eski sürüm uygulamalar için son sınır.
+async function assertCanAssign(userId, subject) {
+  const me = await prisma.user.findUnique({ where: { id: userId }, select: { name: true, isSubjectTeacher: true, teachingSubjects: true } });
+  assert(me?.isSubjectTeacher && me.teachingSubjects.length > 0, "Ödev atama yetkisi branş öğretmenlerinde — koçlar ödevlerin takibini yapar", 403);
+  assert(me.teachingSubjects.includes(branchOfSubject(subject)), "Bu ders senin branşında değil", 403);
+  return me;
+}
+
 assignmentsRouter.post("/", async (req, res) => {
   try {
     assert(req.userRole === "TEACHER", "Bu işlem için yetkin yok", 403);
     const { examType, subject, topic, sourceBook, pageRange, period, scheduledDate, endDate, sendMode, studentIds } = req.body || {};
     assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü");
     assert(isValidSubject(examType, subject), "Geçersiz ders");
+    const me = await assertCanAssign(req.userId, subject);
     assert(topic && String(topic).trim(), "Konu gerekli");
     assert(PERIODS.includes(period), "Geçersiz periyot");
     assert(scheduledDate && !Number.isNaN(new Date(scheduledDate).getTime()), "Geçerli bir başlangıç tarihi gerekli");
@@ -76,18 +90,21 @@ assignmentsRouter.post("/", async (req, res) => {
     // yapıyor — burası son bir güvenlik kontrolü (ör. gradeLevel form açıkken değiştiyse).
     const targetTrack = trackForExamType(examType);
     const uniqueIds = [...new Set(studentIds)];
+    // teacherId filtresi YOK: branş öğretmeni okuldaki her öğrenciyi hedefleyebilir (yetki yukarıda
+    // assertCanAssign ile doğrulandı). Sınıf düzeyi girilmemiş öğrenci seçilemez — o öğrencinin hangi
+    // sınav türüne hazırlandığı bilinmiyor demektir (bkz. trackForGrade).
     const candidates = await prisma.user.findMany({
-      where: { id: { in: uniqueIds }, role: "STUDENT", teacherId: req.userId, banned: false },
+      where: { id: { in: uniqueIds }, role: "STUDENT", banned: false },
       select: { id: true, gradeLevel: true },
     });
-    assert(candidates.length === uniqueIds.length, "Seçilen öğrencilerden bazıları sana atanmamış ya da askıda");
-    const mismatched = candidates.filter((s) => { const t = trackForGrade(s.gradeLevel); return t !== null && t !== targetTrack; });
-    assert(mismatched.length === 0, "Seçilen öğrencilerden biri farklı bir sınav türüne hazırlanıyor — listeyi yenileyip tekrar dene");
+    assert(candidates.length === uniqueIds.length, "Seçilen öğrencilerden bazıları bulunamadı ya da askıya alınmış — listeyi yenileyip tekrar dene");
+    const mismatched = candidates.filter((s) => trackForGrade(s.gradeLevel) !== targetTrack);
+    assert(mismatched.length === 0, "Seçilen öğrencilerden birinin sınıf düzeyi bu sınav türüyle uyuşmuyor — listeyi yenileyip tekrar dene");
 
     // targetMode yalnızca arayüzde "kime gönderildi" bilgisini özetlemek için — 1 kişiyse tekil,
-    // roster'daki (aynı sınav türündeki) HERKES seçiliyse toplu, aksi halde tik ile yapılmış bir seçim.
-    const activeRosterCount = await prisma.user.count({ where: { role: "STUDENT", teacherId: req.userId, banned: false } });
-    const targetMode = uniqueIds.length === 1 ? "SINGLE_STUDENT" : uniqueIds.length === activeRosterCount ? "WHOLE_GROUP" : "SELECTED_STUDENTS";
+    // o sınav türündeki TÜM okul seçiliyse okul çapı, aksi halde seçilmiş bir alt küme.
+    const schoolCount = await prisma.user.count({ where: { role: "STUDENT", banned: false, gradeLevel: { in: GRADE_LEVELS } } });
+    const targetMode = uniqueIds.length === 1 ? "SINGLE_STUDENT" : uniqueIds.length >= schoolCount ? "SCHOOL_WIDE" : "SELECTED_STUDENTS";
 
     // Elle-şimdi-gönder seçilirse ödev DRAFT aşamasını hiç görmeden doğrudan yayınlanır — koç
     // "Takvime Kaydet" yerine bilinçli olarak anında göndermeyi seçmiş demektir.
@@ -111,11 +128,28 @@ assignmentsRouter.post("/", async (req, res) => {
       },
       include: recipientInclude,
     });
-    if (publishNow) {
-      const teacher = await prisma.user.findUnique({ where: { id: req.userId }, select: { name: true } });
-      await notifyRecipientsAssignmentSent(assignment, teacher.name);
-    }
+    if (publishNow) await notifyRecipientsAssignmentSent(assignment, me.name);
     res.status(201).json({ assignment });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Branş öğretmeninin ödev gönderebileceği öğrenciler — kendi koçluk ettikleriyle sınırlı DEĞİL,
+// okuldaki tüm (sınıf düzeyi girilmiş, askıda olmayan) öğrenciler. İstemci bunları "tümü / sınıf
+// düzeyi / şube / tek tek seç" olarak gruplar. Koç hesapları bu listeyi göremez (403) — ödev atama
+// yetkisi onlarda yok (bkz. assertCanAssign). /:id ile çakışmaması için ondan ÖNCE tanımlanmalı.
+assignmentsRouter.get("/audience", async (req, res) => {
+  try {
+    assert(req.userRole === "TEACHER", "Bu işlem için yetkin yok", 403);
+    const me = await prisma.user.findUnique({ where: { id: req.userId }, select: { isSubjectTeacher: true, teachingSubjects: true } });
+    assert(me?.isSubjectTeacher && me.teachingSubjects.length > 0, "Ödev atama yetkisi branş öğretmenlerinde — koçlar ödevlerin takibini yapar", 403);
+    const students = await prisma.user.findMany({
+      where: { role: "STUDENT", banned: false, gradeLevel: { in: GRADE_LEVELS } },
+      select: { id: true, name: true, gradeLevel: true, className: true },
+      orderBy: [{ gradeLevel: "asc" }, { className: "asc" }, { name: "asc" }],
+    });
+    res.json({ students, teachingSubjects: me.teachingSubjects });
   } catch (e) {
     handleErr(res, e);
   }
