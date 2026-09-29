@@ -184,6 +184,11 @@ model Assignment {
   targetMode    AssignmentTarget
   // Plan kaydından yayınlanan ödevin hedef sınıf düzeyi (null = 11 ve 12) — branş ekranı kişi sayısını buna göre verir.
   targetGrade   Int?
+  // Branş öğretmeninin Ata ekranında "Kime" için seçtiği okunabilir etiket — "Tüm okul", "12. sınıflar",
+  // "12-A" gibi (bkz. src/screens/teacher/AssignmentCreateScreen.jsx). Tek tek öğrenci seçildiyse
+  // (mod "Seçerek") BİLEREK null bırakılır: "Son gönderdiklerim" o zaman alıcı sayısını ve isimleri
+  // görmek için bir bağlantı gösterir — bir sınıf/okul etiketi tek tek seçimi yanlış özetlerdi.
+  audienceLabel String?
   sentAt        DateTime?
   createdAt     DateTime         @default(now())
   // endDate geçtiğinde, hâlâ tamamlamamış öğrencisi varsa koça BİR KEZ gönderilen özet bildirimin

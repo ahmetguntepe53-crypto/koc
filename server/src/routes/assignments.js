@@ -66,7 +66,7 @@ async function assertCanAssign(userId, subject) {
 assignmentsRouter.post("/", async (req, res) => {
   try {
     assert(req.userRole === "TEACHER", "Bu işlem için yetkin yok", 403);
-    const { examType, subject, topic, sourceBook, pageRange, period, scheduledDate, endDate, sendMode, studentIds } = req.body || {};
+    const { examType, subject, topic, sourceBook, pageRange, period, scheduledDate, endDate, sendMode, studentIds, audienceLabel } = req.body || {};
     assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü");
     assert(isValidSubject(examType, subject), "Geçersiz ders");
     const me = await assertCanAssign(req.userId, subject);
@@ -122,6 +122,10 @@ assignmentsRouter.post("/", async (req, res) => {
         endDate: end,
         sendMode,
         targetMode,
+        // Yalnızca görüntüleme etiketi (bkz. schema.prisma > Assignment.audienceLabel) — hiçbir yetki/
+        // hedefleme kararı buna dayanmaz, o yüzden istemciden geldiği gibi (uzunluğu sınırlanarak) kabul
+        // edilir. "Seçerek" modunda istemci bunu BİLEREK göndermez (null kalır).
+        audienceLabel: audienceLabel ? String(audienceLabel).trim().slice(0, 80) : null,
         status: publishNow ? "SENT" : "DRAFT",
         sentAt: publishNow ? new Date() : null,
         recipients: { create: candidates.map((s) => ({ studentId: s.id })) },

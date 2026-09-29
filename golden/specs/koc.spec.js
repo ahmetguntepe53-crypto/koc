@@ -60,6 +60,10 @@ test("Ödev ata", async ({ golden, page }) => {
   await golden.snap("ata-sube");
   await page.getByRole("tab", { name: "Son gönderdiklerim" }).click();
   await golden.snap("ata-son-gonderilenler");
+  // audienceLabel'sız (mod "Seçerek") bir ödevde sayı yerine "Listeyi gör" var — tek tek alıcı isimleri.
+  await page.getByText("Sözcükte Anlam tekrarı").click();
+  await golden.settle();
+  await golden.snap("ata-listeyi-gor");
 });
 
 test("Öğrenci gelişim raporu (koç görünümü), ders dökümü, PDF", async ({ golden, page }) => {

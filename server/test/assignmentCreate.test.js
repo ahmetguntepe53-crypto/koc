@@ -155,3 +155,25 @@ describe("toplu gönderimde bildirimler", () => {
     expect(await prisma.notification.count({ where: { type: "assignment" } })).toBe(before);
   });
 });
+
+describe("audienceLabel — 'Son gönderdiklerim'de sınıf/okul etiketi", () => {
+  it("gönderilen etiket kaydedilir ve olduğu gibi döner", async () => {
+    const r = await create(t.branch, { studentIds: [w.grade12[0].id, w.grade12[1].id], topic: "Etiketli konu", audienceLabel: "12-A" });
+    expect(r.status).toBe(201);
+    expect(r.body.assignment.audienceLabel).toBe("12-A");
+    const saved = await prisma.assignment.findUnique({ where: { id: r.body.assignment.id } });
+    expect(saved.audienceLabel).toBe("12-A");
+  });
+
+  it("etiket gönderilmezse ('Seçerek' modu) null kalır — sayı + liste bu durumda gösterilir", async () => {
+    const r = await create(t.branch, { studentIds: [w.grade12[0].id], topic: "Etiketsiz konu" });
+    expect(r.status).toBe(201);
+    expect(r.body.assignment.audienceLabel).toBeNull();
+  });
+
+  it("çok uzun bir etiket kırpılır (yalnızca görüntüleme metni, yetki buna dayanmaz)", async () => {
+    const r = await create(t.branch, { studentIds: [w.grade12[0].id], topic: "Uzun etiket", audienceLabel: "a".repeat(200) });
+    expect(r.status).toBe(201);
+    expect(r.body.assignment.audienceLabel).toHaveLength(80);
+  });
+});

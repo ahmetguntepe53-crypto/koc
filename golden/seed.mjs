@@ -139,11 +139,11 @@ for (const [username, subject] of Object.entries(branchOf)) {
 // --- Ayşe Yılmaz'ın kişisel ödevleri (koç ödevi) ---
 const ayse = teachers["ayse.yilmaz"];
 const ayseStudents = Object.values(students).filter((s) => s.teacherId === ayse.id);
-async function coachAssignment(topic, subject, start, end, pageRange, doneFor = [], teacher = ayse, targetStudents = ayseStudents) {
+async function coachAssignment(topic, subject, start, end, pageRange, doneFor = [], teacher = ayse, targetStudents = ayseStudents, audienceLabel = null) {
   const a = await prisma.assignment.create({
     data: {
       teacherId: teacher.id, examType: "TYT", subject, topic, pageRange, period: "WEEKLY", scheduledDate: start, endDate: end,
-      sendMode: "MANUAL_NOW", targetMode: "WHOLE_GROUP", status: "SENT", sentAt: start,
+      sendMode: "MANUAL_NOW", targetMode: "WHOLE_GROUP", status: "SENT", sentAt: start, audienceLabel,
       recipients: { create: targetStudents.map((s) => ({ studentId: s.id })) },
     },
     include: { recipients: true },
@@ -155,9 +155,11 @@ async function coachAssignment(topic, subject, start, end, pageRange, doneFor = 
   }
   return a;
 }
-await coachAssignment("Sayı basamakları tekrarı", "Matematik", day(-4), day(-1), "20 soru", ["1204", "1205", "1206"]);
+// audienceLabel: "Son gönderdiklerim"de sınıf/okul etiketi (bkz. Assignment.audienceLabel) — Sözcükte
+// Anlam BİLİNÇLİ olarak null: "Seçerek" modunu (sayı + "Listeyi gör") de golden'da göstersin diye.
+await coachAssignment("Sayı basamakları tekrarı", "Matematik", day(-4), day(-1), "20 soru", ["1204", "1205", "1206"], ayse, ayseStudents, "12-A");
 await coachAssignment("Sözcükte Anlam tekrarı", "Türkçe", day(-3), day(0), "20 soru", ["1204", "1206"]);
-await coachAssignment("Limit tekrarı", "Matematik", day(-1), day(3), "25 soru", []);
+await coachAssignment("Limit tekrarı", "Matematik", day(-1), day(3), "25 soru", [], ayse, ayseStudents, "Tüm okul");
 // Burak Şen (branşsız koç) — bu değişiklikten ÖNCEKİ dönemden kalma, kendi öğrencilerine kendi
 // verdiği bir ödev: yeni kuralda koçlar artık ödev veremez, ama eski kayıtlar "Ödevler" sekmesinde
 // durmaya devam eder (bkz. golden/specs/koc.spec.js > "Düz koç ödevleri").

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { C, bodyFont, displayFont, monoFont } from "../../theme.js";
-import { Card, Button, Input, Select, Avatar, EmptyState, LoadingState, ListRow, ListGroup } from "../../components/common.jsx";
+import { Card, Button, Input, Select, Avatar, EmptyState, LoadingState, ListRow, ListGroup, Modal } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { subjectsForBranches } from "../../subjects.js";
 import { todayISO } from "../../dates.js";
@@ -127,6 +127,7 @@ function shortDateRange(start, end) {
 function RecentAssignments({ refreshKey }) {
   const [rows, setRows] = useState(null);
   const [error, setError] = useState("");
+  const [listFor, setListFor] = useState(null); // tek tek seçilmiş bir ödevin id/başlığı — "Listeyi gör"
   useEffect(() => {
     let alive = true;
     api.listAssignments({ status: "SENT" })
@@ -139,16 +140,60 @@ function RecentAssignments({ refreshKey }) {
   if (!rows) return <LoadingState />;
   if (!rows.length) return <EmptyState text="Henüz ödev göndermedin. “Yeni ödev” sekmesinden ilk ödevini oluşturabilirsin." />;
   return (
-    <ListGroup>
-      {rows.map((a) => (
-        <ListRow
-          key={a.id}
-          title={a.topic}
-          subtitle={`${a.examType} ${a.subject} · ${shortDate(a.scheduledDate)}${a.sourceBook ? ` · ${a.sourceBook}` : ""}`}
-          right={<span style={{ fontFamily: monoFont, fontSize: 12.5, color: C.mutedLight, flexShrink: 0 }}>{a.recipients?.length || 0} öğrenci</span>}
-        />
-      ))}
-    </ListGroup>
+    <>
+      <ListGroup>
+        {rows.map((a) => {
+          const count = a.recipients?.length || 0;
+          // audienceLabel yoksa (mod "Seçerek", ya da bu alanın eklendiği 2026-09-29'dan önceki bir
+          // ödev) sınıf/okul etiketi yerine sayı + isimleri görmek için bir bağlantı gösterilir.
+          return (
+            <ListRow
+              key={a.id}
+              title={a.topic}
+              subtitle={`${a.examType} ${a.subject} · ${shortDate(a.scheduledDate)}${a.sourceBook ? ` · ${a.sourceBook}` : ""}`}
+              right={a.audienceLabel
+                ? <span style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 600, color: C.text2, flexShrink: 0, textAlign: "right", maxWidth: 120 }}>{a.audienceLabel}</span>
+                : (
+                  <span style={{ textAlign: "right", flexShrink: 0 }}>
+                    <span style={{ display: "block", fontFamily: monoFont, fontSize: 12.5, color: C.mutedLight }}>{count} öğrenci</span>
+                    <span style={{ display: "block", fontFamily: bodyFont, fontSize: 11.5, fontWeight: 700, color: C.accent, marginTop: 1 }}>Listeyi gör</span>
+                  </span>
+                )}
+              onClick={a.audienceLabel ? undefined : () => setListFor({ id: a.id, topic: a.topic })}
+            />
+          );
+        })}
+      </ListGroup>
+      {listFor && <RecipientListModal assignmentId={listFor.id} topic={listFor.topic} onClose={() => setListFor(null)} />}
+    </>
+  );
+}
+
+// "Listeyi gör" — tek tek seçilmiş (audienceLabel'sız) bir ödevin alıcı isimleri. Bilerek yalnızca
+// isim gösterir; tamamlanma durumu/sonuç YOK — branş öğretmeni takip yapmaz (bkz. App.jsx > tabsFor
+// yorumu), bu yalnızca "kime gitmişti" sorusuna cevap.
+function RecipientListModal({ assignmentId, topic, onClose }) {
+  const [names, setNames] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let alive = true;
+    api.getAssignment(assignmentId)
+      .then(({ assignment }) => { if (alive) setNames(assignment.recipients.map((r) => r.student.name).sort((a, b) => a.localeCompare(b, "tr"))); })
+      .catch((e) => { if (alive) setError(e.message || "Yüklenemedi"); });
+    return () => { alive = false; };
+  }, [assignmentId]);
+  return (
+    <Modal title={topic} onClose={onClose}>
+      {error ? <EmptyState compact text={error} /> : !names ? <LoadingState rows={3} /> : (
+        <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 8, maxHeight: "60vh", overflowY: "auto" }}>
+          {names.map((n, i) => (
+            <li key={i} style={{ display: "flex", alignItems: "center", gap: 10, fontFamily: bodyFont, fontSize: 14, color: C.text }}>
+              <Avatar name={n} size={30} />{n}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Modal>
   );
 }
 
@@ -214,6 +259,16 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
     return students.filter((s) => picked.has(s.id));
   }, [mode, students, grades, classes, picked]);
 
+  // "Son gönderdiklerim"de sayı yerine gösterilecek kısa etiket (bkz. Assignment.audienceLabel) —
+  // "Seçerek" modunda BİLEREK null: tek tek seçilmiş bir liste bir sınıf/okul etiketiyle özetlenemez,
+  // orada sayı + "Listeyi gör" gösterilir.
+  const audienceLabel = useMemo(() => {
+    if (mode === "all") return "Tüm okul";
+    if (mode === "grade" && grades.size) return `${[...grades].sort((a, b) => a - b).join(" ve ")}. sınıflar`;
+    if (mode === "class" && classes.size) return [...classes].sort((a, b) => a.localeCompare(b, "tr")).join(", ");
+    return null;
+  }, [mode, grades, classes]);
+
   const subjectOptions = useMemo(() => subjectsForBranches(examType, branches), [examType, branches.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!subjectOptions.includes(subject)) setSubject(subjectOptions.includes(prefill?.subject) ? prefill.subject : subjectOptions[0] || "");
@@ -246,7 +301,7 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
         studentIds: recipients.map((s) => s.id),
         examType, subject, topic: topic.trim(),
         sourceBook: sourceBook.trim() || undefined, pageRange: pageRange.trim() || undefined,
-        period, scheduledDate, endDate, sendMode,
+        period, scheduledDate, endDate, sendMode, audienceLabel: audienceLabel || undefined,
       });
       setSuccess(assignment.status === "SENT"
         ? `Ödev ${recipients.length} öğrenciye gönderildi.`
