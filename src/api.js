@@ -127,6 +127,8 @@ export const api = {
   adminSetTeacherSubjects: (id, subjects) => request(`/admin/users/${id}/subject-teacher`, { method: "POST", body: { subjects } }),
   // Okul analizi — okul geneli ödevlerin toplu sonuçları (weeks: 4 | 8 | 16; gradeLevel: 11 | 12, boş = tümü).
   adminAnalytics: (weeks, gradeLevel) => request(`/admin/analytics?weeks=${encodeURIComponent(weeks)}${gradeLevel ? `&gradeLevel=${encodeURIComponent(gradeLevel)}` : ""}`),
+  // Aktivite — günlük/haftalık giriş sayıları, kim hiç girmedi (days: 7 | 14 | 30).
+  adminActivity: (days) => request(`/admin/activity?days=${encodeURIComponent(days)}`),
 
   // --- okul ayarları (herkese salt-okunur) ---
   getExamDates: () => request("/settings"),

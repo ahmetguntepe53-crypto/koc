@@ -4,7 +4,7 @@ import { test } from "../support.js";
 test("Z6 kurulum sekmeleri", async ({ golden, page }) => {
   await golden.open("admin");
   await golden.snap("z6-koc-eslestirme");
-  for (const [tab, name] of [["Hesaplar", "z6-hesaplar"], ["Branşlar", "z6-branslar"], ["Sistem", "z6-sistem"]]) {
+  for (const [tab, name] of [["Hesaplar", "z6-hesaplar"], ["Branşlar", "z6-branslar"], ["Aktivite", "z6-aktivite"], ["Sistem", "z6-sistem"]]) {
     await page.getByRole("button", { name: tab, exact: true }).click();
     await golden.settle();
     await golden.snap(name);

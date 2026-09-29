@@ -237,6 +237,24 @@ for (let i = 0; i < notes.length; i++) {
   await prisma.notification.update({ where: { id: notes[i].id }, data: { createdAt: new Date(NOW.getTime() - (notes.length - i) * 5 * 3600e3), read: i < notes.length - 4 } });
 }
 
+// Aktivite sekmesi için birkaç günlük giriş kaydı — hepsi sıfır görünmesin diye (gerçek giriş sayıları
+// requireAuth üzerinden birikir, burada elle uydurma tarihlerle döşenir).
+{
+  const { trTodayAsDateOnly } = await import("../server/src/quietHours.js");
+  const today = trTodayAsDateOnly(NOW);
+  const teacherList = Object.values(teachers);
+  const studentList = Object.values(students);
+  const loginRows = [];
+  for (let d = 0; d < 10; d++) {
+    const day = new Date(today.getTime() - d * DAY);
+    // Hafta sonu (golden'da sabit bir "bugün" olduğu için gerçek gün adı önemli değil) daha düşük katılım.
+    const weekendish = d % 6 === 5;
+    teacherList.forEach((t, i) => { if ((i + d) % (weekendish ? 3 : 2) === 0) loginRows.push({ userId: t.id, day }); });
+    studentList.forEach((s, i) => { if ((i + d) % (weekendish ? 4 : 2) === 0) loginRows.push({ userId: s.id, day }); });
+  }
+  await prisma.loginDay.createMany({ data: loginRows, skipDuplicates: true });
+}
+
 const meta = {
   now: NOW.toISOString(),
   password: PASSWORD,

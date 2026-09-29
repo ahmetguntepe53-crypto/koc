@@ -143,7 +143,7 @@ describe("AdminAnalytics (Okul analizi)", () => {
     api.adminStats.mockResolvedValue({ teacherCount: 0, studentCount: 0, studentsWithoutTeacher: 0, teachersWithoutStudents: 0 });
     render(<AdminUsersScreen />);
     const tabs = screen.getByRole("group", { name: "Kurulum bölümleri" });
-    expect(within(tabs).getAllByRole("button").map((b) => b.textContent)).toEqual(["Koç eşleştirme", "Hesaplar", "Branşlar", "Okul analizi", "Sistem"]);
+    expect(within(tabs).getAllByRole("button").map((b) => b.textContent)).toEqual(["Koç eşleştirme", "Hesaplar", "Branşlar", "Aktivite", "Okul analizi", "Sistem"]);
     fireEvent.click(within(tabs).getByRole("button", { name: "Okul analizi" }));
     // Sekme tembel yüklenir (React.lazy) — ilk dönüşüm yük altında 1 sn'yi aşabilir.
     await screen.findByText("DİKKAT GEREKTİREN ÖDEVLER", {}, { timeout: 10000 });

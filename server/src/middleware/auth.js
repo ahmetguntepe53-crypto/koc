@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import { prisma } from "../db.js";
+import { trTodayAsDateOnly } from "../quietHours.js";
 
 // Her istekte banned/tokenVersion DB'den yeniden doğrulanır — banlanan bir kullanıcının hâlâ geçerli
 // (süresi dolmamış) bir JWT'si olsa bile bir sonraki istekte anında reddedilir. tokenVersion da aynı
@@ -62,10 +63,14 @@ export async function requireAuth(req, res, next) {
   req.userId = payload.userId;
   req.userRole = user.role;
   // Son kullanım zamanı (koç panosundaki "4 gündür giriş yok") — her istekte değil, en fazla 10 dakikada
-  // bir yazılır; isteği bekletmez, yazılamazsa isteği bozmaz.
+  // bir yazılır; isteği bekletmez, yazılamazsa isteği bozmaz. Aynı aralıkta "bugün giriş yaptı" kaydı da
+  // (LoginDay) açılır — lastSeenAt yalnızca EN SONU tutar, LoginDay geçmişe dönük kalır (bkz. admin
+  // Kurulum > Aktivite). Gün ortasında en az bir istek 10 dakikalık eşiği geçtiği sürece o gün işaretlenir.
   const now = Date.now();
   if (!user.lastSeenAt || now - user.lastSeenAt.getTime() > LAST_SEEN_THROTTLE_MS) {
     prisma.user.update({ where: { id: payload.userId }, data: { lastSeenAt: new Date(now) } }).catch(() => {});
+    const day = trTodayAsDateOnly(new Date(now));
+    prisma.loginDay.upsert({ where: { userId_day: { userId: payload.userId, day } }, create: { userId: payload.userId, day }, update: {} }).catch(() => {});
   }
   next();
 }

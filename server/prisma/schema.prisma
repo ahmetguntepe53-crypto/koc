@@ -140,6 +140,9 @@ model User {
   planEntries          PlanEntry[]
   // Aralıklı tekrar hatırlatmalarının günlüğü (bkz. ReviewReminderLog) — yalnızca öğrencide dolu.
   reviewReminders      ReviewReminderLog[]
+  // Giriş yapılan her Türkiye takvim günü bir kayıt (bkz. LoginDay) — admin Aktivite ekranındaki
+  // günlük/haftalık giriş sayıları buradan.
+  loginDays            LoginDay[]
 
   @@index([role])
   @@index([teacherId])
@@ -520,4 +523,19 @@ model ReviewReminderLog {
 
   @@unique([studentId, key, stage])
   @@index([sentAt])
+}
+
+// Bir kullanıcının bir Türkiye takvim gününde en az bir kez giriş yaptığının işareti — requireAuth
+// lastSeenAt'i güncellerken (en fazla 10 dakikada bir, bkz. middleware/auth.js) o gün için de (yoksa)
+// bir satır açar. lastSeenAt yalnızca EN SON görülme anını tutar ve üzerine yazılır; bunun aksine bu
+// tablo geçmişe dönük kalır — admin Kurulum > Aktivite ekranındaki günlük/haftalık giriş sayıları ve
+// "bu hafta hiç girmedi" listeleri buradan okunur. Aynı gün tekrar giriş ikinci satır açmaz (tekil kısıt).
+model LoginDay {
+  id     String   @id @default(cuid())
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  day    DateTime // Türkiye takvim günü, UTC gece yarısı (bkz. quietHours.js > trTodayAsDateOnly)
+
+  @@unique([userId, day])
+  @@index([day])
 }
