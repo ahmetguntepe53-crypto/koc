@@ -12,6 +12,7 @@ import { GRADE_LEVELS, BRANCHES, normalizeField } from "../subjects.js";
 import { recipientPhotosDir } from "../uploads.js";
 import { adminAnalyticsRouter } from "./adminAnalytics.js";
 import { adminActivityRouter } from "./adminActivity.js";
+import { adminLeaderboardRouter } from "./adminLeaderboard.js";
 
 // Bu router server/src/app.js'de zaten requireAuth + requireRole("ADMIN") ile mount edilir —
 // buradaki her uç nokta yalnızca kimlik doğrulanmış bir ADMIN tarafından çağrılabilir.
@@ -21,6 +22,8 @@ export const adminRouter = Router();
 adminRouter.use("/analytics", adminAnalyticsRouter);
 // Günlük/haftalık giriş sayıları, kim hiç girmedi — bkz. routes/adminActivity.js.
 adminRouter.use("/activity", adminActivityRouter);
+// Öğrenci adıyla genel başarı sıralaması — bkz. routes/adminLeaderboard.js.
+adminRouter.use("/leaderboard", adminLeaderboardRouter);
 
 // 7 gün: öğrenciler kurulum e-postasını çoğu zaman ertesi gün (ya da hafta sonu) açıyor — 1 saatlik
 // süre bu linklerin çoğunu kullanılamaz hale getiriyordu. "Şifremi unuttum" linki ise kullanıcının

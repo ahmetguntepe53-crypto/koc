@@ -10,15 +10,18 @@ import { FIELD_OPTIONS, FIELD_SHORT, normalizeField } from "../../studentField.j
 // herkesin açılış paketine girmesin (App.jsx > ReportScreen ile aynı gerekçe).
 const AdminAnalytics = lazy(() => import("./AdminAnalytics.jsx"));
 const AdminActivity = lazy(() => import("./AdminActivity.jsx"));
+const AdminLeaderboard = lazy(() => import("./AdminLeaderboard.jsx"));
 
 // Admin — Kurulum (şartname Z6). Sekmeler: Koç eşleştirme (varsayılan) · Hesaplar · Branşlar · Aktivite ·
-// Okul analizi · Sistem. "Okul analizi": okul geneli ödevlerin toplu sonuçları (öğrenci adı yok) — bkz.
-// AdminAnalytics.jsx. "Aktivite": günlük/haftalık giriş sayıları — bkz. AdminActivity.jsx.
+// Sıralama · Okul analizi · Sistem. "Okul analizi": okul geneli ödevlerin toplu sonuçları (öğrenci adı
+// YOK) — bkz. AdminAnalytics.jsx. "Sıralama": öğrenci ADIYLA genel başarı sıralaması, bilinçli okul
+// kararıyla — bkz. AdminLeaderboard.jsx. "Aktivite": günlük/haftalık giriş sayıları — bkz. AdminActivity.jsx.
 const TABS = [
   { id: "coaches", label: "Koç eşleştirme" },
   { id: "accounts", label: "Hesaplar" },
   { id: "branches", label: "Branşlar" },
   { id: "activity", label: "Aktivite" },
+  { id: "leaderboard", label: "Sıralama" },
   { id: "analytics", label: "Okul analizi" },
   { id: "system", label: "Sistem" },
 ];
@@ -266,6 +269,8 @@ export default function AdminUsersScreen() {
       )}
 
       {tab === "activity" && <Suspense fallback={<LoadingState />}><AdminActivity /></Suspense>}
+
+      {tab === "leaderboard" && <Suspense fallback={<LoadingState />}><AdminLeaderboard /></Suspense>}
 
       {tab === "analytics" && <Suspense fallback={<LoadingState />}><AdminAnalytics /></Suspense>}
 

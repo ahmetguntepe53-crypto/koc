@@ -129,6 +129,8 @@ export const api = {
   adminAnalytics: (weeks, gradeLevel) => request(`/admin/analytics?weeks=${encodeURIComponent(weeks)}${gradeLevel ? `&gradeLevel=${encodeURIComponent(gradeLevel)}` : ""}`),
   // Aktivite — günlük/haftalık giriş sayıları, kim hiç girmedi (days: 7 | 14 | 30).
   adminActivity: (days) => request(`/admin/activity?days=${encodeURIComponent(days)}`),
+  // Sıralama — öğrenci adıyla genel başarı sıralaması (tüm zamanlar, tüm dersler toplamı).
+  adminLeaderboard: () => request("/admin/leaderboard"),
 
   // --- okul ayarları (herkese salt-okunur) ---
   getExamDates: () => request("/settings"),
