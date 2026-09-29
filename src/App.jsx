@@ -70,6 +70,14 @@ export default function App() {
   useEffect(() => {
     setStatusBarTheme(theme === "dark");
     const root = document.documentElement.style;
+    // index.html'deki <meta name="color-scheme"> yalnızca "ikisini de destekliyorum" der — hangisinin
+    // kullanılacağına tarayıcı işletim sistemi tercihine bakarak karar verir, uygulamanın kendi Ben >
+    // Görünüm anahtarına değil. Bu ikisi ayrışınca (ör. telefon açık modda ama uygulama koyu temada,
+    // ya da tersi) tarih alanının (<input type="date">) takvim ikonu YANLIŞ zeminde çiziliyordu — açık
+    // temada beyaz zemin üstüne beyaz ikon, görünmez oluyordu. color-scheme'i burada uygulamanın kendi
+    // temasına eşitlemek takvim ikonunu (ve kaydırma çubuğu, onay kutusu gibi diğer yerli kontrolleri)
+    // her zaman doğru zeminde çizdirir.
+    root.setProperty("color-scheme", theme);
     root.setProperty("--focus-color", C.mutedLight);
     root.setProperty("--focus-glow", theme === "dark" ? "rgba(140,149,163,0.18)" : "rgba(94,103,117,0.16)");
     root.setProperty("--surface-hover", C.surfaceHover);

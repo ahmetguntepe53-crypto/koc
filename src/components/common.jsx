@@ -132,11 +132,20 @@ function fieldBaseStyle() {
 }
 
 export function Input({ label, error, style, ...props }) {
+  // type="date"/"time" gibi yerli seçici açan alanlarda tarayıcı yalnızca küçük takvim ikonuna
+  // tıklanınca seçiciyi açar; metin kısmına (ör. "gg.aa.yyyy") dokunmak çoğu WebView'de hiçbir şey
+  // yapmaz — kullanıcı "tarihe de dokununca açılsın" dedi. showPicker() alanın HERHANGİ bir yerine
+  // dokununca seçiciyi açar; desteklemeyen eski bir tarayıcıda sessizce yok sayılır, ikon yine çalışır.
+  const opensPicker = props.type === "date" || props.type === "time" || props.type === "datetime-local";
+  const onClick = opensPicker
+    ? (e) => { props.onClick?.(e); try { e.currentTarget.showPicker?.(); } catch (_) { /* desteklenmiyorsa ikon yine çalışır */ } }
+    : props.onClick;
   return (
     <label style={{ display: "block", marginBottom: 16 }}>
       <FieldLabel>{label}</FieldLabel>
       <input
         {...props}
+        onClick={onClick}
         className="k-field"
         style={{ ...fieldBaseStyle(), borderColor: error ? C.red : C.border, ...style }}
       />
