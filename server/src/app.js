@@ -13,6 +13,7 @@ import { studySessionsRouter } from "./routes/studySessions.js";
 import { statsRouter } from "./routes/stats.js";
 import { planEntriesRouter } from "./routes/planEntries.js";
 import { settingsRouter } from "./routes/settings.js";
+import { appVersionRouter } from "./routes/appVersion.js";
 import { branchRouter } from "./routes/branch.js";
 import { aiAnalysisRouter } from "./routes/aiAnalysis.js";
 import { practiceExamsRouter } from "./routes/practiceExams.js";
@@ -77,6 +78,10 @@ app.get("/api/health", async (req, res) => {
   res.set("Cache-Control", "no-store");
   res.status(body.ok ? 200 : 503).json(body);
 });
+
+// Zorunlu güncelleme eşiği — bkz. routes/appVersion.js. GENEL erişimli: oturum daha doğrulanmadan,
+// giriş ekranından ÖNCE kontrol edilir (src/App.jsx).
+app.use("/api/app-version", appVersionRouter);
 
 // Kanıt fotoğrafları requireAuth OLMADAN servis edilir: <img src> tarayıcıdan Authorization header'ı
 // gönderemez, token'ı URL'e koymak (query param) log/tarayıcı geçmişinde sızdırır. Bunun yerine

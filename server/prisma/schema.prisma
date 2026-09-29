@@ -407,6 +407,13 @@ model SchoolSettings {
   // Yapay zekâ incelemesi (aylık raporda koça öneriler) — varsayılan KAPALI: anonimleştirilmiş sonuç
   // özetleri yurt dışındaki bir hizmete (Anthropic) gider; okul KVKK açısından onaylayınca admin açar.
   aiEnabled   Boolean   @default(false)
+  // Zorunlu güncelleme eşiği — Android versionCode / iOS CURRENT_PROJECT_VERSION (build.gradle,
+  // project.pbxproj'daki "sürüm (N)" ile aynı sayı). null = o platformda zorlama yok. AYRI tutulur:
+  // Play Store ve App Store bağımsız yayınlanır, biri onaylanmadan diğerini zorlamak o mağazadaki
+  // TÜM kullanıcıları kilitler. Play Store'da KADEMELİ yayın sürüyorsa bunu YÜKSELTME — o yüzdeye
+  // henüz ulaşmamış kullanıcı güncelleyemeden kilitlenir (bkz. routes/appVersion.js yorumu).
+  minAndroidBuild Int?
+  minIosBuild     Int?
   updatedAt   DateTime  @updatedAt
 }
 

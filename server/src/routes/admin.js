@@ -430,15 +430,28 @@ adminRouter.get("/settings", async (req, res) => {
   try {
     const settings = await prisma.schoolSettings.findUnique({ where: { id: "singleton" } });
     // aiConfigured: sunucuda Anthropic API anahtarı tanımlı mı (anahtarın kendisi asla dönmez).
-    res.json({ yksExamDate: settings?.yksExamDate ?? null, lgsExamDate: settings?.lgsExamDate ?? null, aiEnabled: !!settings?.aiEnabled, aiConfigured: !!process.env.ANTHROPIC_API_KEY });
+    res.json({
+      yksExamDate: settings?.yksExamDate ?? null, lgsExamDate: settings?.lgsExamDate ?? null,
+      aiEnabled: !!settings?.aiEnabled, aiConfigured: !!process.env.ANTHROPIC_API_KEY,
+      minAndroidBuild: settings?.minAndroidBuild ?? null, minIosBuild: settings?.minIosBuild ?? null,
+    });
   } catch (e) {
     handleErr(res, e);
   }
 });
 
+// Bir sınıf düzeyi ya da null kabul eden yardımcı — minAndroidBuild/minIosBuild ikisi de aynı şekli
+// paylaşıyor: boş/null zorlamayı kaldırır, aksi halde pozitif bir tam sayı olmalı.
+const parseMinBuild = (v, label) => {
+  if (v === null || v === "") return null;
+  const n = Number(v);
+  assert(Number.isInteger(n) && n > 0, `Geçerli bir ${label} sayısı gir`);
+  return n;
+};
+
 adminRouter.put("/settings", async (req, res) => {
   try {
-    const { yksExamDate, lgsExamDate, aiEnabled } = req.body || {};
+    const { yksExamDate, lgsExamDate, aiEnabled, minAndroidBuild, minIosBuild } = req.body || {};
     const data = {};
     if (aiEnabled !== undefined) data.aiEnabled = !!aiEnabled;
     if (yksExamDate !== undefined) {
@@ -455,12 +468,20 @@ adminRouter.put("/settings", async (req, res) => {
         data.lgsExamDate = new Date(lgsExamDate);
       }
     }
+    // Android ve iOS AYRI alanlar, birbirini etkilemez — bkz. schema.prisma > SchoolSettings yorumu
+    // (biri için zorunlu kılınan bir sürüm diğer mağazadaki kullanıcıyı asla etkilememeli).
+    if (minAndroidBuild !== undefined) data.minAndroidBuild = parseMinBuild(minAndroidBuild, "Android build");
+    if (minIosBuild !== undefined) data.minIosBuild = parseMinBuild(minIosBuild, "iOS build");
     const settings = await prisma.schoolSettings.upsert({
       where: { id: "singleton" },
       create: { id: "singleton", ...data },
       update: data,
     });
-    res.json({ yksExamDate: settings.yksExamDate, lgsExamDate: settings.lgsExamDate, aiEnabled: settings.aiEnabled, aiConfigured: !!process.env.ANTHROPIC_API_KEY });
+    res.json({
+      yksExamDate: settings.yksExamDate, lgsExamDate: settings.lgsExamDate,
+      aiEnabled: settings.aiEnabled, aiConfigured: !!process.env.ANTHROPIC_API_KEY,
+      minAndroidBuild: settings.minAndroidBuild, minIosBuild: settings.minIosBuild,
+    });
   } catch (e) {
     handleErr(res, e);
   }

@@ -96,6 +96,10 @@ async function uploadFile(path, file) {
 }
 
 export const api = {
+  // Zorunlu güncelleme eşiği — kimlik GEREKMEZ, App.jsx açılışta giriş ekranından ÖNCE çağırır
+  // (bkz. server/src/routes/appVersion.js).
+  appVersion: () => request("/app-version"),
+
   // --- auth ---
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
   me: () => request("/auth/me"),

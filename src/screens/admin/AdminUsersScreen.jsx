@@ -279,6 +279,7 @@ export default function AdminUsersScreen() {
           <SectionHeader title="Dönem ayarları" style={{ marginTop: 4 }} />
           <ExamDatesCard />
           <AiSettingsCard />
+          <ForcedUpdateCard />
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {[
               ["Bildirim sessiz saatleri", "23:00 – 07:00", "Bu aralıkta hiçbir bildirim telefona gitmez; gece yayınlanan ödevin bildirimi sabah 07:00'de tek özet olarak gider."],
@@ -444,6 +445,63 @@ function AiSettingsCard() {
         {!state.configured && " Sunucuda yapay zekâ anahtarı tanımlı değil — açılsa da çalışmaz."}
       </div>
       <Button small variant={state.enabled ? "secondary" : "primary"} disabled={saving} onClick={toggle}>{saving ? "Kaydediliyor..." : state.enabled ? "Kapat" : "Aç"}</Button>
+      {msg && <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 8, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</div>}
+    </Card>
+  );
+}
+
+// Zorunlu güncelleme (bkz. server/src/routes/appVersion.js, src/screens/UpdateRequiredScreen.jsx) —
+// Android ve iOS AYRI alanlar, bilerek birbirinden bağımsız: Play Store ve App Store farklı hızda
+// onaylanır/yayılır, biri için yükseltilen bir eşik diğer mağazadaki kullanıcıyı etkilememeli. Değer,
+// build.gradle'daki versionCode / project.pbxproj'daki CURRENT_PROJECT_VERSION ile aynı sayı (Kurulum
+// öncesi commit mesajlarındaki "Sürüm X.Y (N)" — N budur), sürüm adı (1.6) değil.
+function ForcedUpdateCard() {
+  const [android, setAndroid] = useState("");
+  const [ios, setIos] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState(null);
+  useEffect(() => {
+    api.adminGetSettings()
+      .then((s) => { setAndroid(s.minAndroidBuild ?? ""); setIos(s.minIosBuild ?? ""); setLoaded(true); })
+      .catch(() => setLoaded(true));
+  }, []);
+  if (!loaded) return null;
+
+  const save = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const s = await api.adminUpdateSettings({
+        minAndroidBuild: android === "" ? null : Number(android),
+        minIosBuild: ios === "" ? null : Number(ios),
+      });
+      setAndroid(s.minAndroidBuild ?? "");
+      setIos(s.minIosBuild ?? "");
+      setMsg({ type: "ok", text: "Kaydedildi." });
+    } catch (e) {
+      setMsg({ type: "error", text: e.message || "Kaydedilemedi" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Card style={{ padding: 18, marginBottom: 16 }}>
+      <div style={{ fontFamily: bodyFont, fontSize: 13.5, fontWeight: 800, color: C.text, marginBottom: 3 }}>Zorunlu güncelleme</div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.muted, marginBottom: 4, lineHeight: 1.5 }}>
+        Buradaki build'in ALTINDAKİ bir sürümle açan kullanıcı, giriş ekranını hiç görmeden "Güncelleme gerekli"nde kalır — atlama yolu yok.
+        Boş bırakmak o platformda zorlamayı tamamen kaldırır. Android ve iOS birbirinden bağımsız.
+      </div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 700, color: C.amber, marginBottom: 12, lineHeight: 1.5, padding: "8px 10px", background: C.amberSoft, borderRadius: 10 }}>
+        Play Store'da KADEMELİ yayın sürerken Android eşiğini o sürüme YÜKSELTME — yayın henüz ulaşmadığı
+        kullanıcı güncelleyemeden kilitlenir. Yalnızca %100 (tam) yayına çıktıktan sonra yükseltin.
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", columnGap: 12 }}>
+        <Input label="Android — en az build" type="number" min="1" placeholder="zorlama yok" value={android} onChange={(e) => setAndroid(e.target.value)} />
+        <Input label="iOS — en az build" type="number" min="1" placeholder="zorlama yok" value={ios} onChange={(e) => setIos(e.target.value)} />
+      </div>
+      <Button small disabled={saving} onClick={save}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
       {msg && <div style={{ fontSize: 12.5, fontWeight: 600, marginTop: 8, color: msg.type === "error" ? C.red : C.green }}>{msg.text}</div>}
     </Card>
   );

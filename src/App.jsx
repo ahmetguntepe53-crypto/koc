@@ -6,10 +6,11 @@ import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, Head
 import { api } from "./api.js";
 import { registerPush, unregisterPush, ensurePushRegistered } from "./native/push.js";
 import { setAppBadge } from "./native/badge.js";
-import { onBackButton, exitApp, setStatusBarTheme } from "./native/index.js";
+import { onBackButton, exitApp, setStatusBarTheme, nativeBuild, platform } from "./native/index.js";
 import { studyPrefillFromNotification } from "./notificationTargets.js";
 import { clearStudentStatusCache } from "./studentStatus.js";
 import LoginScreen from "./screens/LoginScreen.jsx";
+import UpdateRequiredScreen from "./screens/UpdateRequiredScreen.jsx";
 import ForcePasswordScreen from "./screens/ForcePasswordScreen.jsx";
 import ProfileScreen from "./screens/ProfileScreen.jsx";
 import NotificationsScreen from "./screens/NotificationsScreen.jsx";
@@ -44,9 +45,39 @@ function readStoredTheme() {
   } catch (_) { return DEFAULT_THEME; }
 }
 
+// Zorunlu güncelleme (bkz. UpdateRequiredScreen.jsx) — null: henüz kontrol edilmedi/gerekmiyor
+// (web'de her zaman böyle kalır, native'de sunucuya sorulup geçilir), true: bu sürüm artık
+// desteklenmiyor. Sunucuya ulaşılamazsa (offline, geçici kesinti) BİLEREK engellenmez — yanlış
+// pozitifle tüm okulu kilitlemektense bir sonraki açılışta tekrar denenir.
+async function checkForcedUpdate() {
+  // Tek bir try: nativeBuild/api.appVersion'dan HERHANGİ bir hata (ağ, eski test/mock'ta eksik
+  // fonksiyon, vb.) "engelleme gerekmiyor" sayılır — bir istemci hatası yüzünden tüm okulun
+  // kilitlenmesindense, gerçekten eski bir sürümün bir sonraki açılışta yakalanması tercih edilir.
+  try {
+    const build = await nativeBuild();
+    if (build == null) return false;
+    const { minAndroidBuild, minIosBuild } = await api.appVersion();
+    const min = platform === "android" ? minAndroidBuild : platform === "ios" ? minIosBuild : null;
+    return min != null && build < min;
+  } catch (_) { return false; }
+}
+
 export default function App() {
   const [authUser, setAuthUser] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [updateRequired, setUpdateRequired] = useState(false);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    checkForcedUpdate().then((required) => { if (alive) setUpdateRequired(required); });
+    return () => { alive = false; };
+  }, []);
+  const retryUpdateCheck = async () => {
+    setUpdateChecking(true);
+    const required = await checkForcedUpdate();
+    setUpdateRequired(required);
+    setUpdateChecking(false);
+  };
   // Açılışta oturum doğrulanamadıysa (ağ/sunucu hatası — token korunur, bkz. useAuthSession) giriş
   // ekranı yerine "Tekrar dene" gösterilir. sessionNotice: oturum sunucu tarafından sonlandırılınca
   // giriş ekranında nedenini göstermek için.
@@ -329,6 +360,12 @@ export default function App() {
       setScreen(DEFAULT_SCREEN_BY_ROLE[authUser.role] || "profile");
     });
   }, [authUser, screen, assignmentDetailReturnTo, reportReturnTo, assignmentCreateReturnTo, selectedStudentId, returnToReport]);
+
+  // Zorunlu güncelleme, oturum durumundan TAMAMEN bağımsız — giriş ekranından da, "Tekrar dene"
+  // ekranından da ÖNCE gelir; atlama yolu yok (bkz. UpdateRequiredScreen.jsx).
+  if (updateRequired) {
+    return <UpdateRequiredScreen platform={platform} onRetry={retryUpdateCheck} retrying={updateChecking} />;
+  }
 
   if (!authChecked) {
     return <div style={{ minHeight: "100vh", background: C.bg }} />;

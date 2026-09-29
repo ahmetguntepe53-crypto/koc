@@ -12,6 +12,19 @@ import { setTokenMirror } from "../api.js";
 export const isNative = Capacitor.isNativePlatform();
 export const platform = Capacitor.getPlatform(); // "ios" | "android" | "web"
 
+// Zorunlu güncelleme kontrolü için (bkz. App.jsx) — "build", Android'de versionCode'u, iOS'ta
+// CURRENT_PROJECT_VERSION'ı verir (build.gradle/project.pbxproj'daki "sürüm (N)" ile aynı sayı,
+// bkz. deploy notlarındaki "Unified Android/iOS versioning" kuralı). Web'de zorlama YOK (tarayıcı
+// her zaman en güncel dağıtılan kodu çalıştırır) — null döner.
+export async function nativeBuild() {
+  if (!isNative) return null;
+  try {
+    const info = await CapApp.getInfo();
+    const n = Number(info.build);
+    return Number.isFinite(n) ? n : null;
+  } catch (_) { return null; }
+}
+
 const TOKEN_KEY = "kocluk:token";
 
 // localStorage tek başına güvenilir değil (bkz. api.js > setTokenMirror): WKWebView'ın deposu
