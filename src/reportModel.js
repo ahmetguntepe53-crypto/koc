@@ -368,8 +368,16 @@ export function buildReport(raw, opts = {}) {
   const comparable = hwRecords.filter((r) => r.kind === "school" && r.item.school && r.item.school.pct != null);
 
   // --- ders listesi
-  const subjectKeys = new Set([...records.map((r) => r.key), ...items.map((it) => it.key)]);
-  const allSubjects = [...subjectKeys].map((key) => {
+  // Sıra kayıtların gelişine değil müfredata bağlı (TYT önce, sonra ders sırası, listede olmayan en sonda adına göre) —
+  // aynı veride iki çizim aynı sırayı versin (sunucu eşit tarihli kayıtları her seferinde aynı sırada döndürmüyor).
+  const examRank = (e) => (e === "TYT" ? 0 : e === "AYT" ? 1 : 2);
+  const subjectRank = (e, sub) => { const i = Object.keys(TOPICS_BY_EXAM[e] || {}).indexOf(sub); return i < 0 ? 999 : i; };
+  const subjectKeys = [...new Set([...records.map((r) => r.key), ...items.map((it) => it.key)])].sort((a, b) => {
+    const [ea, sa] = a.split("|");
+    const [eb, sb] = b.split("|");
+    return examRank(ea) - examRank(eb) || subjectRank(ea, sa) - subjectRank(eb, sb) || sa.localeCompare(sb, "tr");
+  });
+  const allSubjects = subjectKeys.map((key) => {
     const [examType, subject] = key.split("|");
     return { key, examType, subject, name: `${examType} ${subject}`, weight: yksWeight(examType, subject), tracked: isTracked(key) };
   });
