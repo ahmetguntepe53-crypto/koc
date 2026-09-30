@@ -8,7 +8,7 @@ import { describe, it, expect, beforeAll } from "vitest";
 import { prisma, resetDatabase, seedSchool, createUser, loginAll, api } from "./helpers.js";
 
 const BASE = {
-  examType: "TYT", subject: "Matematik", topic: "Yetki testi konusu",
+  examType: "TYT", subject: "Matematik", topic: "Yetki testi konusu", sourceBook: "Test Yayınları",
   period: "WEEKLY", scheduledDate: "2027-02-01", endDate: "2027-02-07", sendMode: "MANUAL_NOW",
 };
 let w, t, banned, gradeless;
@@ -75,6 +75,43 @@ describe("ödev atama yetkisi", () => {
     const r = await create(t.branch, { examType: "AYT", subject: "Fizik", studentIds: [w.grade12[0].id], topic: "AYT Fizik konusu" });
     expect(r.status).toBe(201);
     expect(r.body.assignment.examType).toBe("AYT");
+  });
+});
+
+describe("yeni Ödev ata kuralları (2026-09-30)", () => {
+  it("kaynak kitap zorunlu", async () => {
+    for (const sourceBook of [undefined, "", "   "]) {
+      const r = await create(t.branch, { studentIds: [w.grade12[0].id], sourceBook });
+      expect(r.status).toBe(400);
+      expect(r.body.error).toMatch(/Kaynak kitap/);
+    }
+  });
+
+  it("'Tüm okul' hedefiyle gelen istek reddedilir", async () => {
+    const a = await create(t.branch, { studentIds: [w.grade12[0].id], audienceLabel: "Tüm okul" });
+    expect(a.status).toBe(400);
+    expect(a.body.error).toMatch(/Tüm okula/);
+    const b = await create(t.branch, { studentIds: [w.grade12[0].id], targetMode: "SCHOOL_WIDE" });
+    expect(b.status).toBe(400);
+  });
+
+  it("başlangıç, gönderim ve periyot gelmezse bugün / hemen / haftalık; sayfa/soru istenmez", async () => {
+    const { scheduledDate, sendMode, period, ...rest } = BASE;
+    const end = new Date(Date.now() + 3 * 86400e3).toISOString().slice(0, 10);
+    const r = await api(t.branch).post("/api/assignments", { ...rest, endDate: end, studentIds: [w.grade12[0].id], topic: "Varsayılanlar" });
+    expect(r.status).toBe(201);
+    expect(r.body.assignment.status).toBe("SENT");
+    expect(r.body.assignment.sendMode).toBe("MANUAL_NOW");
+    expect(r.body.assignment.period).toBe("WEEKLY");
+    expect(r.body.assignment.pageRange).toBeNull();
+    const tr = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    expect(r.body.assignment.scheduledDate.slice(0, 10)).toBe(tr);
+  });
+
+  it("kaynak kitap önerileri derse göre süzülür", async () => {
+    await create(t.branch, { studentIds: [w.grade12[1].id], subject: "Fizik", sourceBook: "Fizik Yayınları", topic: "Fizik kaynağı" });
+    const r = await api(t.branch).get("/api/assignments/source-books?examType=TYT&subject=Fizik");
+    expect(r.body.sourceBooks).toEqual(["Fizik Yayınları"]);
   });
 });
 

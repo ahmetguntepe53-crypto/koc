@@ -5,6 +5,7 @@ import { assert } from "../validators.js";
 import { isValidSubject, trackForGrade, trackForExamType, EXAM_TYPES, branchOfSubject, GRADE_LEVELS } from "../subjects.js";
 import { notifyUser } from "../notify.js";
 import { netOf, questionCountOf } from "../weekStats.js";
+import { trTodayAsDateOnly } from "../quietHours.js";
 
 // Bu router server/src/app.js'de requireAuth ile mount edilir (rol karışık: TEACHER oluşturur/
 // düzenler, ADMIN yalnızca okur) — her uç nokta kendi içinde req.userRole'e göre yetki kontrolü yapar.
@@ -92,13 +93,22 @@ async function assertCanAssign(userId, subject) {
 assignmentsRouter.post("/", async (req, res) => {
   try {
     assert(req.userRole === "TEACHER", "Bu işlem için yetkin yok", 403);
-    const { examType, subject, topic, sourceBook, pageRange, period, scheduledDate, endDate, sendMode, studentIds, audienceLabel } = req.body || {};
+    const body = req.body || {};
+    const { examType, subject, topic, sourceBook, pageRange, endDate, studentIds, audienceLabel } = body;
+    // Varsayılanlar (2026-09-30, yeni "Ödev ata" ekranı): periyot gönderilmezse haftalık, başlangıç gönderilmezse
+    // bugün (Türkiye), gönderim gönderilmezse hemen. Sayfa/soru artık istenmiyor; eski sürümler gönderirse saklanır.
+    const period = body.period ?? "WEEKLY";
+    const sendMode = body.sendMode ?? "MANUAL_NOW";
+    const scheduledDate = body.scheduledDate ?? trTodayAsDateOnly(new Date());
     assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü");
     assert(isValidSubject(examType, subject), "Geçersiz ders");
     const me = await assertCanAssign(req.userId, subject);
     assert(topic && String(topic).trim(), "Konu gerekli");
+    assert(sourceBook && String(sourceBook).trim(), "Kaynak kitap seçmelisin");
+    // "Tüm okul" hedefi kaldırıldı — eski sürümün bu seçenekle gönderdiği istek reddedilir.
+    assert(body.targetMode !== "SCHOOL_WIDE" && audienceLabel !== "Tüm okul", "Tüm okula ödev gönderme kaldırıldı — sınıf düzeyi, şube ya da öğrenci seç");
     assert(PERIODS.includes(period), "Geçersiz periyot");
-    assert(scheduledDate && !Number.isNaN(new Date(scheduledDate).getTime()), "Geçerli bir başlangıç tarihi gerekli");
+    assert(!Number.isNaN(new Date(scheduledDate).getTime()), "Geçerli bir başlangıç tarihi gerekli");
     const start = new Date(scheduledDate);
     // Bitiş tarihi verilmezse (ör. eski istemci) başlangıçla aynı kabul edilir — tek günlük ödev.
     let end = start;
@@ -192,6 +202,7 @@ assignmentsRouter.get("/source-books", async (req, res) => {
     const { examType } = req.query || {};
     const where = { teacherId: req.userId, sourceBook: { not: null } };
     if (examType) { assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü"); where.examType = examType; }
+    if (req.query.subject) where.subject = String(req.query.subject);
     const rows = await prisma.assignment.findMany({ where, distinct: ["sourceBook"], select: { sourceBook: true }, take: 20, orderBy: { createdAt: "desc" } });
     res.json({ sourceBooks: rows.map((r) => r.sourceBook).filter(Boolean) });
   } catch (e) {

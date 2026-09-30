@@ -378,7 +378,6 @@ function StudentCard({ r, net, pct, state, Q, isSent, best, endDate, onPhoto, as
 function EditAssignmentModal({ assignment, onClose, onSaved }) {
   const [topic, setTopic] = useState(assignment.topic);
   const [sourceBook, setSourceBook] = useState(assignment.sourceBook || "");
-  const [pageRange, setPageRange] = useState(assignment.pageRange || "");
   const [endDate, setEndDate] = useState(ymd(assignment.endDate));
   const [note, setNote] = useState(assignment.note || "");
   const [saving, setSaving] = useState(false);
@@ -391,7 +390,6 @@ function EditAssignmentModal({ assignment, onClose, onSaved }) {
     const patch = {};
     if (topic.trim() !== assignment.topic) patch.topic = topic.trim();
     if (sourceBook.trim() !== (assignment.sourceBook || "")) patch.sourceBook = sourceBook.trim();
-    if (pageRange.trim() !== (assignment.pageRange || "")) patch.pageRange = pageRange.trim();
     if (note.trim() !== (assignment.note || "")) patch.note = note.trim();
     if (endDate !== ymd(assignment.endDate)) patch.endDate = endDate;
     if (!Object.keys(patch).length) { onClose(); return; }
@@ -410,7 +408,6 @@ function EditAssignmentModal({ assignment, onClose, onSaved }) {
     <Modal title="Ödevi düzenle" onClose={onClose}>
       <Input label="Konu" value={topic} onChange={(e) => setTopic(e.target.value)} />
       <Input label="Kaynak kitap" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} placeholder="opsiyonel" />
-      <Input label="Sayfa / soru" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="ör. 20 soru" />
       <Input label="Son gün" type="date" value={endDate} min={minEnd} onChange={(e) => setEndDate(e.target.value)} />
       <Textarea label="Not" value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="opsiyonel" />
       {assignment.status === "SENT" && (

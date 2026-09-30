@@ -51,18 +51,11 @@ test("Ödev ata", async ({ golden, page }) => {
   await golden.open("koc");
   await golden.tab("Ödev ata");
   await golden.snap("ata");
-  // Kime: branş öğretmeni kendi öğrencileriyle sınırlı değil — sınıf düzeyi ve şube bazlı gönderim.
-  await page.getByRole("button", { name: "Sınıf düzeyi" }).click();
+  // Kime: sınıf düzeyi (varsayılan) ve şube bazlı gönderim; "Tüm okul" 2026-09-30'da kaldırıldı.
   await page.getByRole("button", { name: "12. sınıf" }).click();
   await golden.snap("ata-sinif-duzeyi");
   await page.getByRole("button", { name: "Şube" }).click();
   await golden.snap("ata-sube");
-  await page.getByRole("tab", { name: "Son gönderdiklerim" }).click();
-  await golden.snap("ata-son-gonderilenler");
-  // audienceLabel'sız (mod "Seçerek") bir ödevde sayı yerine "Listeyi gör" var — tek tek alıcı isimleri.
-  await page.getByText("Sözcükte Anlam tekrarı").click();
-  await golden.settle();
-  await golden.snap("ata-listeyi-gor");
 });
 
 test("Öğrenci gelişim raporu (koç görünümü), ders dökümü, PDF", async ({ golden, page }) => {

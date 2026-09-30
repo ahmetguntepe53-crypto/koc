@@ -160,7 +160,10 @@ export const api = {
   deleteAssignment: (id) => request(`/assignments/${id}`, { method: "DELETE" }),
   sendAssignmentNow: (id) => request(`/assignments/${id}/send-now`, { method: "POST" }),
   remindRecipient: (assignmentId, recipientId) => request(`/assignments/${assignmentId}/recipients/${recipientId}/remind`, { method: "POST" }),
-  listSourceBooks: (examType) => request(`/assignments/source-books${examType ? `?examType=${encodeURIComponent(examType)}` : ""}`),
+  listSourceBooks: (examType, subject) => {
+    const qs = new URLSearchParams(Object.entries({ examType, subject }).filter(([, v]) => v)).toString();
+    return request(`/assignments/source-books${qs ? `?${qs}` : ""}`);
+  },
   // Branş öğretmeninin ödev gönderebileceği okul genelindeki öğrenciler (yalnızca branş öğretmenleri).
   assignmentAudience: () => request("/assignments/audience"),
 

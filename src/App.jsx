@@ -91,7 +91,7 @@ export default function App() {
   const [screen, setScreen] = useState(null);
   // Mor üst alanlı ekran: genel başlık gizlenir (ekran kendi başlığını mor alanın içinde çizer), durum
   // çubuğu şeridi de aynı mora boyanır — yoksa saatin olduğu şerit ile mor alan arasında renk kırılırdı.
-  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview"].includes(screen);
+  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview"].includes(screen) || (screen === "assignmentCreate" && authUser?.isSubjectTeacher);
   useEffect(() => {
     if (heroScreen) setStatusBarTheme(true, C.brand);
     else setStatusBarTheme(false);
@@ -511,6 +511,7 @@ export default function App() {
             coachNoteOpen, onCloseNote: () => setCoachNoteOpen(false),
             openNotificationTarget: goToNotificationTarget,
             unreadCount, openNotifications: () => setScreen("notifications"), openProfile: () => setScreen("profile"), setAuthUser,
+            createBack: screen === "assignmentCreate" ? headerBack : undefined,
             setHeader: setHeaderOverride,
             openStudyLog: () => { setStudyPrefill(null); setReturnToReport(false); setScreen("studyLog"); },
             openRecipientFromReport,
@@ -606,7 +607,7 @@ function renderScreen({
   selectedStudentName, reportReturnTo, openReport, backFromReport,
   coachNoteOpen, onCloseNote, openNotificationTarget, setHeader, openStudyLog, openPlan,
   reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill, openStudyLogPrefilled, openAssignPrefilled,
-  openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly, openProfile, setAuthUser,
+  openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly, openProfile, setAuthUser, createBack,
 }) {
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} onUserUpdated={setAuthUser} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
@@ -649,7 +650,7 @@ function renderScreen({
     if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenReport={() => openReport("studentOverview", selectedStudentId, selectedStudentName)} onOpenAssignment={openAssignment} onCreateAssignment={authUser.isSubjectTeacher ? createAssignmentForStudent : undefined} />;
     // Ödev atama yalnızca branş öğretmenlerinde (bkz. tabsFor); koç hesabı bu ekrana hiç giremez —
     // sunucu da aynı kuralı uygular (routes/assignments.js > assertCanAssign).
-    if (screen === "assignmentCreate" && authUser.isSubjectTeacher) return <AssignmentCreateScreen user={authUser} key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} />;
+    if (screen === "assignmentCreate" && authUser.isSubjectTeacher) return <AssignmentCreateScreen user={authUser} key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} onBack={createBack} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} user={authUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
     if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
     if (screen === "plan") return <PlanScreen user={authUser} />;
