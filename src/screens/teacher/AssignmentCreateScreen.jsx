@@ -382,7 +382,7 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
               <div className="k-chip-row" role="group" aria-label="Sınıf düzeyi" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {gradeOptions.map((g) => (
                   <ToggleChip key={g} active={grades.has(g)} onClick={() => toggleIn(setGrades)(g)} label={`${g}. sınıf`}>
-                    {g}. sınıf <span style={{ fontFamily: monoFont, opacity: 0.75 }}>({students.filter((s) => s.gradeLevel === g).length})</span>
+                    {g}. sınıf <span style={{ fontFamily: monoFont }}>({students.filter((s) => s.gradeLevel === g).length})</span>
                   </ToggleChip>
                 ))}
               </div>
@@ -395,7 +395,7 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
                   <div className="k-chip-row" role="group" aria-label="Şube" style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     {classOptions.map((cn) => (
                       <ToggleChip key={cn} active={classes.has(cn)} onClick={() => toggleIn(setClasses)(cn)} label={`${cn} şubesi`}>
-                        {cn} <span style={{ fontFamily: monoFont, opacity: 0.75 }}>({students.filter((s) => s.className === cn).length})</span>
+                        {cn} <span style={{ fontFamily: monoFont }}>({students.filter((s) => s.className === cn).length})</span>
                       </ToggleChip>
                     ))}
                   </div>

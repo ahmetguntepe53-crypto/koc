@@ -1,101 +1,6 @@
-// İki tema — ikisi de "Koçluk arayüz yenileme" şartnamesinin renk kuralına uyar: MARKA RENGİ YOK.
-// Ekrandaki tek doygun renkler sınavın kendi dili — doğru yeşili, yanlış kırmızısı, uyarı sarısı —
-// böylece görülen her renk bir veri anlamı taşır. Birincil düğme fildişi zemin + koyu yazı (açık temada
-// tersi). Tek istisna koç ödevi etiketinin morudur (koc/kocSoft).
-// "dark" varsayılan (şartnamenin kendi paleti); "light" aynı kurallarla açık zemin isteyenler için.
-// Metin tonları: şartnamedeki --t4 (#5E6775) koyu zeminde 3.3:1 kalıyordu (AA 4.5:1) — soluk metin
-// --t3'e (#8C95A3, 6.3:1), ikincil metin t2 ile t3 arasına çekildi; --t4/--t5 yalnızca dekor (ok, çizgi).
+// Tek tema: açık (2026-09-30'da koyu tema kaldırıldı — kullanıcının kararı). Durum renkleri (doğru yeşili,
+// yanlış kırmızısı, uyarı sarısı) veri anlamı taşır; mor/lime marka paleti yeniden tasarlanan ekranlarda.
 export const THEMES = {
-  dark: {
-    bg: "#0D1014",              // --bg   sayfa
-    surface: "#14181E",         // --k1   kart, alt bar, menü
-    surface2: "#1A1F26",        // --k2   iç kutu, pasif çip
-    surfaceHover: "#20262E",    // --k3   avatar, ders karesi, üzerine gelme
-    fieldBg: "#1A1F26",
-    border: "#232931",          // --bd   kart kenarı
-    borderStrong: "#2C333C",    // --bd2  vurgulu kenar
-    divider: "#1E242B",         // --ciz  ayırıcı çizgi
-    text: "#F2F4F7",            // --t1
-    text2: "#C3C9D4",           // --t2
-    muted: "#A3ABB8",
-    mutedLight: "#8C95A3",      // --t3
-    faintest: "#434B57",        // --t5 (yalnızca dekor)
-
-    // "Vurgu" artık marka rengi değil: birincil düğme / aktif çip fildişi, üstündeki yazı koyu.
-    accent: "#F2F4F7",
-    accentHover: "#FFFFFF",
-    accentSoft: "#20262E",
-    accent2: "#C3C9D4",
-    onAccent: "#0D1014",
-
-    green: "#34D399",           // --dogru
-    greenSoft: "rgba(52,211,153,0.13)",
-    amber: "#FBBF24",           // --uyari
-    amberSoft: "rgba(251,191,36,0.13)",
-    red: "#F87171",             // --yanlis
-    redSoft: "rgba(248,113,113,0.13)",
-    onRed: "#1A0808",           // açık kırmızı üzerinde beyaz okunmuyor
-    // Eski "mavi" rozetler (ör. "Okul çapında") nötre döner — yalnızca durum renkleri doygun.
-    blue: "#C3C9D4",
-    blueSoft: "#1A1F26",
-    koc: "#8B7FD4",             // tek istisna: koç ödevi etiketi
-    kocSoft: "rgba(139,127,212,0.14)",
-    blank: "#8C95A3",           // --bos
-    blankSoft: "rgba(140,149,163,0.12)",
-
-    sidebarBg: "#14181E",
-    sidebarBgAlt: "#1A1F26",
-    sidebarText: "#8C95A3",
-    sidebarTextActive: "#F2F4F7",
-    sidebarActiveBg: "#1A1F26",
-    sidebarAccent: "#F2F4F7",
-    sidebarBorder: "#232931",
-
-    // Derinlik gölgeden değil kenarlıktan gelir — yalnızca pencereler gölgeli.
-    shadowSm: "none",
-    shadowMd: "none",
-    shadowLg: "0 16px 40px rgba(0,0,0,0.55)",
-
-    // "Ödev detayı" yeniden tasarımı (2026-09-30) — mor/lime marka paleti. Bu bölüm yukarıdaki "marka
-    // rengi yok" kuralının bilinçli istisnası (kullanıcının tasarımı). Beyaz/ink metin bu zeminlerde AA.
-    brand: "#3A2FD0",
-    brandText: "#AFA8FF",       // koyu zeminde brand yazı okunmuyor — açık tonu
-    brandTint: "rgba(58,47,208,0.24)",
-    lime: "#D4F35B",            // üstündeki yazı HER ZAMAN ink
-    ink: "#17163A",             // lime üstü yazı, alt menü zemini (iki temada aynı)
-    inkText: "#F2F4F7",
-    inkMuted: "#A3ABB8",
-    pageTint: "#0D1014",
-    cardDivider: "#232931",
-    brandOutline: "#2C333C",
-    success: "#127A5A",
-    successTint: "rgba(18,122,90,0.24)",
-    successText: "#6EE7B7",
-    danger: "#C93A2C",
-    dangerTint: "rgba(201,58,44,0.14)",
-    dangerBorder: "rgba(201,58,44,0.42)",
-    dangerText: "#FFB4A8",
-    warningTint: "rgba(245,166,35,0.16)",
-    warningText: "#F5B84A",
-    barWrong: "#FF8A78",
-    barEmpty: "#3A404B",
-    track: "#232931",
-    navInactive: "#B9B8D6",
-    onBrand: "#FFFFFF",
-    onBrandMuted: "rgba(255,255,255,0.82)",
-    onBrandSoft: "rgba(255,255,255,0.16)",
-    onBrandTrack: "rgba(255,255,255,0.18)",
-    onBrandBadge: "rgba(255,255,255,0.22)",
-    onBrandBox: "rgba(255,255,255,0.12)",
-    decorWhite: "rgba(255,255,255,0.07)",
-    decorLime: "rgba(212,243,91,0.12)",
-    avatar1: "#3A2FD0",
-    avatar2: "#A8590A",         // tasarımdaki #B8620A beyazla 4.4:1 kalıyordu — 5.1:1'e koyulaştırıldı
-    avatar3: "#C93A2C",
-    avatar4: "#127A5A",
-    shadowCard: "0 12px 32px rgba(0,0,0,0.45)",
-    shadowNav: "0 12px 28px rgba(0,0,0,0.5)",
-  },
   light: {
     bg: "#F4F5F7",
     surface: "#FFFFFF",
@@ -144,7 +49,7 @@ export const THEMES = {
     shadowMd: "none",
     shadowLg: "0 16px 40px rgba(13,16,20,0.18)",
 
-    // "Ödev detayı" mor/lime paleti — bkz. dark'taki not.
+    // "Ödev detayı" ve diğer yeniden tasarlanan ekranların mor/lime paleti (bilinçli marka rengi).
     brand: "#3A2FD0",
     brandText: "#3A2FD0",
     brandTint: "#EFEDFF",
@@ -185,12 +90,9 @@ export const THEMES = {
   },
 };
 
-export const DEFAULT_THEME = "dark";
+export const DEFAULT_THEME = "light";
 
-// Aktif paleti taşıyan TEK, paylaşılan, MUTABLE nesne — bileşenler her zaman C.* okur. Tema değişince
-// (bkz. App.jsx > Object.assign(C, THEMES[theme])) bu nesnenin içeriği YERİNDE güncellenir, referans
-// hiç değişmez; App'in bir üst render'ı sırasında yapıldığı için tüm alt bileşenler bir sonraki
-// render'da otomatik güncel değerleri görür (ayrı bir Context/prop-drilling gerekmez).
+// Paleti taşıyan TEK, paylaşılan nesne — bileşenler her zaman C.* okur.
 export const C = {
   ...THEMES[DEFAULT_THEME],
   radiusSm: 11,   // çip, küçük düğme, satır

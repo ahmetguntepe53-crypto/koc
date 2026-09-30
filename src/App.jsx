@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3 } from "lucide-react";
-import { C, THEMES, DEFAULT_THEME, bodyFont, monoFont } from "./theme.js";
+import { C, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID, LoadingState } from "./components/common.jsx";
 import { api } from "./api.js";
@@ -35,16 +35,6 @@ const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "
 // Kompozisyon kökü: router yok, `screen` string state'i hangi ekranın render edileceğini belirler
 // (PP'deki HalisahaApp.jsx ile aynı desen). Düzen: sol kenar çubuğu (rol'e göre sekmeler) + sağda
 // sayfa başlığı + içerik.
-// localStorage tek başına güvenilir değil (bkz. api.js), ama bir tema tercihi kaybolursa yalnızca
-// varsayılana (koyu) döner — auth token'ın aksine veri kaybı riski yok, bu yüzden Preferences köprüsü
-// gerektirmeden doğrudan burada okunur/yazılır.
-function readStoredTheme() {
-  try {
-    const t = localStorage.getItem("kocluk-theme");
-    return THEMES[t] ? t : DEFAULT_THEME;
-  } catch (_) { return DEFAULT_THEME; }
-}
-
 // Zorunlu güncelleme (bkz. UpdateRequiredScreen.jsx) — null: henüz kontrol edilmedi/gerekmiyor
 // (web'de her zaman böyle kalır, native'de sunucuya sorulup geçilir), true: bu sürüm artık
 // desteklenmiyor. Sunucuya ulaşılamazsa (offline, geçici kesinti) BİLEREK engellenmez — yanlış
@@ -84,36 +74,17 @@ export default function App() {
   const [authError, setAuthError] = useState("");
   const [authRetrying, setAuthRetrying] = useState(false);
   const [sessionNotice, setSessionNotice] = useState("");
-  // "light" | "dark" — profilden değiştirilir. HalisahaApp.jsx ile AYNI desen: Object.assign(C, ...)
-  // doğrudan render gövdesinde (bir effect İÇİNDE DEĞİL) çağrılır, böylece theme state'i her
-  // değiştiğinde App zaten yeniden render olur ve TÜM alt bileşenler bir sonraki render'da C'nin
-  // güncel değerlerini görür — ayrı bir Context/"temayı yaydır" mekanizması gerekmez.
-  const [theme, setThemeState] = useState(readStoredTheme);
-  Object.assign(C, THEMES[theme] || THEMES[DEFAULT_THEME]);
-  const setTheme = (t) => {
-    setThemeState(t);
-    try { localStorage.setItem("kocluk-theme", t); } catch (_) { /* tercih kalıcı olmasa da uygulama çalışmaya devam eder */ }
-  };
-  // Durum çubuğu şeridi ve (native'de) sistem durum çubuğu simgeleri, ayrıca index.html'deki inline
-  // style'larla ifade edilemeyen birkaç CSS kuralı (:focus/:hover/::selection — bkz. index.html üstteki
-  // not) C.* içinde DEĞİL, imperatif bir DOM/native yan etki olduğu için render gövdesi yerine
-  // effect'te, yalnızca theme değişince güncellenir.
+  // index.html'deki inline style'larla ifade edilemeyen birkaç CSS kuralı (:focus/:hover — bkz. index.html).
+  // Eski sürümlerin sakladığı tema tercihi (koyu tema kaldırıldı) temizlenir.
   useEffect(() => {
     const root = document.documentElement.style;
-    // index.html'deki <meta name="color-scheme"> yalnızca "ikisini de destekliyorum" der — hangisinin
-    // kullanılacağına tarayıcı işletim sistemi tercihine bakarak karar verir, uygulamanın kendi Ben >
-    // Görünüm anahtarına değil. Bu ikisi ayrışınca (ör. telefon açık modda ama uygulama koyu temada,
-    // ya da tersi) tarih alanının (<input type="date">) takvim ikonu YANLIŞ zeminde çiziliyordu — açık
-    // temada beyaz zemin üstüne beyaz ikon, görünmez oluyordu. color-scheme'i burada uygulamanın kendi
-    // temasına eşitlemek takvim ikonunu (ve kaydırma çubuğu, onay kutusu gibi diğer yerli kontrolleri)
-    // her zaman doğru zeminde çizdirir.
-    root.setProperty("color-scheme", theme);
     root.setProperty("--focus-color", C.mutedLight);
-    root.setProperty("--focus-glow", theme === "dark" ? "rgba(140,149,163,0.18)" : "rgba(94,103,117,0.16)");
+    root.setProperty("--focus-glow", "rgba(94,103,117,0.16)");
     root.setProperty("--surface-hover", C.surfaceHover);
     root.setProperty("--border-strong", C.borderStrong);
     document.body.style.background = C.bg;
-  }, [theme]);
+    try { localStorage.removeItem("kocluk-theme"); } catch (_) { /* yalnızca temizlik */ }
+  }, []);
   // null = henüz role uygun bir varsayılan atanmadı (mount'ta oturum geri yüklenirken YA DA
   // logout()'un bıraktığı "login" değerinden sonra) — aşağıdaki effect authUser hazır olur olmaz
   // buna role uygun bir başlangıç ekranı atar.
@@ -123,8 +94,8 @@ export default function App() {
   const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview"].includes(screen);
   useEffect(() => {
     if (heroScreen) setStatusBarTheme(true, C.brand);
-    else setStatusBarTheme(theme === "dark");
-  }, [heroScreen, theme]);
+    else setStatusBarTheme(false);
+  }, [heroScreen]);
   // Ekranın kendi başlığı/bağlam satırı (ör. branş ekranında ders adı, koç panosunda öğrenci sayısı) —
   // ekran değişince sıfırlanır; ekran veriyi yükleyince setHeader ile doldurur.
   const [headerOverride, setHeaderOverride] = useState(null);
@@ -532,7 +503,7 @@ export default function App() {
         {/* key={screen}: ekran değişince hafif belirme animasyonu (index.html > .k-screen). */}
         <div key={screen} className="k-screen" style={{ flex: 1 }}>
           {renderScreen({
-            screen, authUser, logout, theme, setTheme,
+            screen, authUser, logout,
             selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated, assignmentDetailReturnTo,
             selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
             selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
@@ -628,7 +599,7 @@ const TABS_BY_ROLE = {
 };
 
 function renderScreen({
-  screen, authUser, logout, theme, setTheme,
+  screen, authUser, logout,
   selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated, assignmentDetailReturnTo,
   selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
   selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
@@ -637,7 +608,7 @@ function renderScreen({
   reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill, openStudyLogPrefilled, openAssignPrefilled,
   openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly,
 }) {
-  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} />;
+  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
   if (screen === "reports" && (authUser.role !== "TEACHER" || selectedStudentId)) {
     return (

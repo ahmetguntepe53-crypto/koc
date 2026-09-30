@@ -6,11 +6,6 @@ test("Z1 bu hafta", async ({ golden }) => {
   await golden.snap("z1-bu-hafta");
 });
 
-test("Z1 bu hafta — açık tema", async ({ golden }) => {
-  await golden.open("ogrenci", { theme: "light" });
-  await golden.snap("z1-bu-hafta-acik");
-});
-
 test("Z2 sonuç girişi — açık ödev, girilmiş sonuç, pas sebebi", async ({ golden, page }) => {
   await golden.open("ogrenci");
   await page.getByText("Limit tekrarı").first().click();

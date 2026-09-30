@@ -163,7 +163,7 @@ export const test = base.extend({
   golden: async ({ page }, use, testInfo) => {
     const ctx = { persona: null, fresh: {}, misses: new Set(), errors: [], net: { inflight: 0, last: Date.now() } };
     await use({
-      open: async (persona, { theme = "dark" } = {}) => {
+      open: async (persona, { theme = "light" } = {}) => {
         await setupPage(page, persona, theme, ctx);
         await page.goto("/");
         // Playwright'ın context'teki reducedMotion:"reduce" ayarı ve toHaveScreenshot'ın kendi

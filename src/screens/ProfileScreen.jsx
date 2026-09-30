@@ -1,16 +1,10 @@
 import { useState } from "react";
-import { Sun, Moon } from "lucide-react";
 import { C, displayFont, bodyFont } from "../theme.js";
 import { Card, Button, Input, Pill, Avatar, roleLabel } from "../components/common.jsx";
 import { api, setToken } from "../api.js";
 import { gradeLabel } from "../subjects.js";
 
-const THEME_OPTIONS = [
-  { value: "dark", label: "Koyu", icon: Moon },
-  { value: "light", label: "Açık", icon: Sun },
-];
-
-export default function ProfileScreen({ user, onLogout, onOpenReport, theme, onChangeTheme }) {
+export default function ProfileScreen({ user, onLogout, onOpenReport }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [msg, setMsg] = useState(null);
@@ -52,34 +46,6 @@ export default function ProfileScreen({ user, onLogout, onOpenReport, theme, onC
         </div>
       </Card>
       {/* Öğrencinin raporu artık alt menüdeki "Gelişim" sekmesinde. */}
-      {onChangeTheme && (
-        <Card style={{ marginBottom: 18 }}>
-          <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, marginBottom: 3, color: C.text }}>Görünüm</div>
-          <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.muted, marginBottom: 14 }}>Uygulamanın açık/koyu temasını seç.</div>
-          <div style={{ display: "flex", gap: 8 }}>
-            {THEME_OPTIONS.map((opt) => {
-              const active = theme === opt.value;
-              const Icon = opt.icon;
-              return (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => onChangeTheme(opt.value)}
-                  style={{
-                    flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 7,
-                    padding: "12px 14px", borderRadius: C.radiusSm, cursor: "pointer",
-                    border: `1.5px solid ${active ? C.accent : C.border}`,
-                    background: active ? C.accentSoft : C.surface2,
-                    color: active ? C.accent : C.muted, fontFamily: bodyFont, fontWeight: 700, fontSize: 13.5,
-                  }}
-                >
-                  <Icon size={16} /> {opt.label}
-                </button>
-              );
-            })}
-          </div>
-        </Card>
-      )}
       <Card style={{ marginBottom: 18 }}>
         <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, marginBottom: 14, color: C.text }}>Şifremi Değiştir</div>
         <form onSubmit={submit}>

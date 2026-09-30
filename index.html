@@ -3,18 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="color-scheme" content="dark light" />
+    <meta name="color-scheme" content="light" />
     <title>Koçluk</title>
-    <script>
-      // React'in kendi tema mantığı (App.jsx) devreye girmeden ÖNCE, ilk boya (paint) sırasında
-      // açık tema kullanıcısına koyu zemin göstermemek için (varsayılan koyu) — stil sayfası okunur
-      // okunmaz senkron çalışır. Değer theme.js > THEMES.light.bg ile elle senkron tutulmalı.
-      try {
-        if (localStorage.getItem("kocluk-theme") === "light") {
-          document.write('<style>body{background:#F4F5F7 !important}</style>');
-        }
-      } catch (_) {}
-    </script>
     <link rel="icon" href="/logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -23,7 +13,7 @@
       *, *::before, *::after { box-sizing: border-box; }
       html, body, #root { height: 100%; margin: 0; }
       body {
-        background: #0D1014;
+        background: #F4F5F7;
         font-family: 'Outfit', -apple-system, 'Segoe UI', Arial, sans-serif;
         -webkit-font-smoothing: antialiased;
         text-rendering: optimizeLegibility;
@@ -175,7 +165,7 @@
       .k-app-root { padding-top: env(safe-area-inset-top); }
       .k-app-root::before {
         content: ""; position: fixed; top: 0; left: 0; right: 0;
-        height: env(safe-area-inset-top); background: var(--status-strip-bg, #0D1014); z-index: 60; pointer-events: none;
+        height: env(safe-area-inset-top); background: var(--status-strip-bg, #F4F5F7); z-index: 60; pointer-events: none;
       }
 
       /* Kenar çubuğu sticky/100vh — kök artık üstten dolgulu olduğu için ikisi de kaydırılmalı,

@@ -6,11 +6,6 @@ test("Z3 öğrencilerim", async ({ golden }) => {
   await golden.snap("z3-ogrencilerim");
 });
 
-test("Z3 öğrencilerim — açık tema", async ({ golden }) => {
-  await golden.open("koc", { theme: "light" });
-  await golden.snap("z3-ogrencilerim-acik");
-});
-
 test("Z4 öğrenci detayı — bugün, bu hafta, not", async ({ golden, page }) => {
   await golden.open("koc");
   await page.getByText("Zeynep Kaya").first().click();
