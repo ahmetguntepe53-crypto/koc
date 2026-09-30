@@ -253,13 +253,11 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
     const weekNet = hasNet(weekItems) ? sumNet(weekItems) : null;
     const lastItems = sent.filter((r) => inWeek(r.assignment.endDate, lastWeek));
     const lastNet = hasNet(lastItems) ? sumNet(lastItems) : null;
-    const counts = { done: 0, missed: 0, skipped: 0, open: 0 };
-    weekItems.forEach((r) => { counts[recipientStatus(r)] += 1; });
     const overall = weeklySeries(sent);
     const branches = BOARD_BRANCHES.map((b) => ({ ...b, series: weeklySeries(sent, (r) => boardBranchOf(r.assignment.subject) === b.key) }))
       .filter((b) => b.series.some(Boolean));
     const falling = branches.filter((b) => declining(b.series));
-    return { weekItems, weekNet, lastNet, counts, overall, branches, falling };
+    return { weekItems, weekNet, lastNet, overall, branches, falling };
   }, [data]);
 
   const page = (children) => <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>{children}</div>;
@@ -288,8 +286,13 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
   const branchItems = visible.filter((r) => isSchoolWide(r.assignment));
   const mineItems = visible.filter((r) => !isSchoolWide(r.assignment) && r.assignment.teacherId === coachId);
   const otherItems = visible.filter((r) => !isSchoolWide(r.assignment) && r.assignment.teacherId !== coachId);
+  // Özet sayılar aşağıdaki listelerle AYNI kümeden (seçili dönem) — önceden her zaman "bitişi bu haftada olan"
+  // ödevleri sayıyordu; "Bugün" seçiliyken liste 1, özet 3 ödev gösteriyordu. Taslaklar öğrenciye gitmediği için sayılmaz.
+  const counts = { done: 0, missed: 0, skipped: 0, open: 0 };
+  const periodItems = visible.filter((r) => r.assignment.status === "SENT");
+  periodItems.forEach((r) => { counts[recipientStatus(r)] += 1; });
 
-  const { weekItems, weekNet, lastNet, counts, overall, branches, falling } = computed;
+  const { weekNet, lastNet, overall, branches, falling } = computed;
   const delta = weekNet != null && lastNet != null ? weekNet - lastNet : null;
   const gradeOk = GRADE_LEVELS.includes(student.gradeLevel);
 
@@ -327,9 +330,9 @@ export default function StudentOverviewScreen({ studentId, onOpenAssignment, onC
             {delta != null && <span style={{ fontFamily: monoFont, fontSize: 15, fontWeight: 700, color: delta >= 0 ? C.green : C.red }}>{delta >= 0 ? "+" : "−"}{formatNet(Math.abs(delta), 2)}</span>}
           </div>
           <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, marginTop: 6 }}>
-            {weekItems.length
-              ? <><span style={{ fontFamily: monoFont }}>{weekItems.length}</span> ödev · <span style={{ fontFamily: monoFont }}>{counts.done}</span> girildi{counts.missed ? <> · <span style={{ fontFamily: monoFont }}>{counts.missed}</span> gecikti</> : null}{counts.skipped ? <> · <span style={{ fontFamily: monoFont }}>{counts.skipped}</span> pas</> : null}</>
-              : "Bu hafta ödevi yok"}
+            {periodItems.length
+              ? <><span style={{ fontFamily: monoFont }}>{periodItems.length}</span> ödev · <span style={{ fontFamily: monoFont }}>{counts.done}</span> girildi{counts.missed ? <> · <span style={{ fontFamily: monoFont }}>{counts.missed}</span> gecikti</> : null}{counts.skipped ? <> · <span style={{ fontFamily: monoFont }}>{counts.skipped}</span> pas</> : null}</>
+              : "Bu dönemde ödev yok"}
           </div>
         </div>
         <MiniBars values={overall.map((w) => (w ? w.net : null))} height={40} barWidth={8} colorFor={(v, i) => (i === WEEKS - 1 ? C.green : `${C.green}66`)} />
