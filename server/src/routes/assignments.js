@@ -4,6 +4,7 @@ import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
 import { isValidSubject, trackForGrade, trackForExamType, EXAM_TYPES, branchOfSubject, GRADE_LEVELS } from "../subjects.js";
 import { notifyUser } from "../notify.js";
+import { netOf, questionCountOf } from "../weekStats.js";
 
 // Bu router server/src/app.js'de requireAuth ile mount edilir (rol karışık: TEACHER oluşturur/
 // düzenler, ADMIN yalnızca okur) — her uç nokta kendi içinde req.userRole'e göre yetki kontrolü yapar.
@@ -23,6 +24,31 @@ export const recipientInclude = {
     },
   },
 };
+
+// Bir ödevin "başarı yüzdesi" — branş öğretmeninin "Gönderdiğim Ödevler" listesinde ve detayında
+// görünür (2026-09-30). Yalnızca TESLİM EDİLMİŞ (submission'ı olan) alıcılardan hesaplanır — henüz
+// çözmemiş/pas geçmiş öğrenci bu ortalamayı aşağı çekmez, o zaten ayrı bir sinyal (bekliyor/gecikti).
+// AYNI formül daha önce "Branş" ekranında kullanılmıştı (bkz. routes/branch.js > summarize) — iki yerde
+// ayrı ayrı yazmak yerine burada da BİREBİR aynı hesap: alıcı başına net (D − Y/4) ortalanır, ödevin
+// beklenen soru sayısına (pageRange'teki "N soru", yoksa girilen D+Y+B'lerin ortalaması) bölünür.
+function successStats(recipients, pageRange) {
+  const nets = [];
+  let answered = 0;
+  for (const r of recipients) {
+    const net = netOf(r.submission);
+    if (net == null) continue;
+    nets.push(net);
+    answered += r.submission.correctCount + r.submission.wrongCount + r.submission.blankCount;
+  }
+  const avgNet = nets.length ? nets.reduce((a, b) => a + b, 0) / nets.length : null;
+  const q = questionCountOf(pageRange);
+  const perStudentQ = q || (nets.length ? answered / nets.length : null);
+  const successPct = avgNet != null && perStudentQ ? Math.round((avgNet / perStudentQ) * 100) : null;
+  return { avgNet: avgNet != null ? Math.round(avgNet * 100) / 100 : null, successPct, completedCount: nets.length };
+}
+function withSuccessStats(assignment) {
+  return { ...assignment, ...successStats(assignment.recipients, assignment.pageRange) };
+}
 
 // Bir ödev DRAFT'tan SENT'e geçtiğinde (elle "şimdi gönder" ya da scheduler.js'in otomatik akışı)
 // her alıcıya kendi AssignmentRecipient.id'siyle bildirim gider — AssignmentSubmitScreen bu id ile
@@ -185,7 +211,7 @@ assignmentsRouter.get("/", async (req, res) => {
     if (examType) { assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü"); where.examType = examType; }
     if (subject) where.subject = String(subject);
     const assignments = await prisma.assignment.findMany({ where, orderBy: { scheduledDate: "desc" }, include: recipientInclude });
-    res.json({ assignments });
+    res.json({ assignments: assignments.map(withSuccessStats) });
   } catch (e) {
     handleErr(res, e);
   }
@@ -201,7 +227,7 @@ assignmentsRouter.get("/:id", async (req, res) => {
     const isOwner = req.userRole === "TEACHER" && assignment.teacherId === req.userId;
     if (isOwner || req.userRole === "ADMIN") {
       // readOnly: "Şimdi Gönder"/"Sil" yalnızca ödevin sahibi öğretmene açık (bkz. loadOwnedDraftAssignment).
-      return res.json({ assignment: { ...assignment, readOnly: !isOwner } });
+      return res.json({ assignment: { ...withSuccessStats(assignment), readOnly: !isOwner } });
     }
     // Koç, öğrencisinin özet ekranında BAŞKA bir öğretmenin (ör. ders öğretmeninin okul çapındaki ya
     // da önceki koçun) gönderdiği ödevleri de görür — tıklayınca 403 yerine salt okunur açılır, ama
@@ -213,7 +239,10 @@ assignmentsRouter.get("/:id", async (req, res) => {
     });
     const coachedIds = new Set(coached.map((s) => s.id));
     assert(coachedIds.size > 0, "Bu işlem için yetkin yok", 403);
-    res.json({ assignment: { ...assignment, recipients: assignment.recipients.filter((r) => coachedIds.has(r.studentId)), readOnly: true } });
+    // Başarı yüzdesi de yalnızca kendi öğrencilerinin sonuçlarından — okulun tamamının ortalaması
+    // buraya sızmaz (bkz. yukarıdaki gizlilik notu).
+    const own = assignment.recipients.filter((r) => coachedIds.has(r.studentId));
+    res.json({ assignment: { ...assignment, recipients: own, ...successStats(own, assignment.pageRange), readOnly: true } });
   } catch (e) {
     handleErr(res, e);
   }

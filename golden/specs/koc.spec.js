@@ -40,7 +40,18 @@ test("Düz koç: yalnızca Öğrenciler sekmesi", async ({ golden }) => {
   await golden.snap("duz-koc-ogrencilerim");
 });
 
-// Branş öğretmeni: ödev VERİR ama takip ETMEZ — takip koçun işi (yukarıdaki test).
+// Branş öğretmeni artık ödevini de takip edebiliyor (2026-09-30) — okulun tamamına gönderdiği için
+// takip koçların işine değil (kendi öğrencisiyle sınırlı değil), kendi "Gönderdiğim Ödevler" sekmesine
+// taşındı: liste her ödevde başarı yüzdesini gösterir, detayda öğrenci öğrenci net ve genel yüzde var.
+test("Gönderdiğim Ödevler: liste ve detay", async ({ golden, page }) => {
+  await golden.open("koc");
+  await golden.tab("Gönderdiğim Ödevler");
+  await golden.snap("gonderdigim-odevler");
+  await page.getByText("Sayı basamakları tekrarı").click();
+  await golden.settle();
+  await golden.snap("gonderdigim-odev-detay");
+});
+
 test("Ödev ata", async ({ golden, page }) => {
   await golden.open("koc");
   await golden.tab("Ata");

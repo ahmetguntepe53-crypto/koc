@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Send, Trash2, ChevronRight } from "lucide-react";
-import { C, bodyFont } from "../../theme.js";
+import { C, bodyFont, monoFont } from "../../theme.js";
 import { Card, Button, Select, Pill, EmptyState, LoadingState, confirmDialog } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { STATUS_LABELS, ALL_SUBJECTS, subjectIconUrl } from "../../subjects.js";
@@ -107,6 +107,11 @@ export default function AssignmentListScreen({ onOpen, refreshKey }) {
                     </div>
                   </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+                    {/* successPct: yalnızca teslim eden/tamamlayanların net ortalamasından, o ödeve özel
+                        (bkz. server > successStats). Hiç teslim yoksa null — o zaman hiçbir şey gösterilmez. */}
+                    {a.successPct != null && (
+                      <span style={{ fontFamily: monoFont, fontSize: 15, fontWeight: 700, color: C.text, marginRight: 2 }}>%{a.successPct}</span>
+                    )}
                     {a.status === "DRAFT" && (
                       <>
                         <IconButton title="Şimdi gönder" icon={Send} disabled={busyId === a.id} onClick={(e) => { e.stopPropagation(); sendNow(a.id); }} />

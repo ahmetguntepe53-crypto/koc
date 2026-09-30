@@ -1,10 +1,19 @@
 import { useEffect, useState } from "react";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
-import { C, displayFont, bodyFont } from "../../theme.js";
+import { C, displayFont, bodyFont, monoFont } from "../../theme.js";
 import { Card, Button, Pill, EmptyState, Avatar, Modal, LoadingState, confirmDialog, SectionHeader } from "../../components/common.jsx";
 import { api, photoUrl } from "../../api.js";
 import { SEND_MODE_LABELS, STATUS_LABELS } from "../../subjects.js";
 import { formatDate, formatDateRange, daysUntil } from "../../dates.js";
+
+// reportModel.js'teki fmtNet ile aynı biçim (ondalık virgül, gereksiz sıfır yok) — o modülü (ağır,
+// zaten ayrı bir lazy chunk'ta) yalnızca bu tek biçimlendirme için bu ekrana çekmemek adına burada
+// küçük bir kopyası var.
+function fmtNet(v) {
+  if (v == null || Number.isNaN(v)) return "—";
+  return Number(v).toLocaleString("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+const netOf = (s) => (s ? s.correctCount - s.wrongCount / 4 : null);
 
 export default function AssignmentDetailScreen({ assignmentId, onBack, backLabel = "Ödevlerime dön" }) {
   const [assignment, setAssignment] = useState(null);
@@ -55,10 +64,20 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, backLabel
       {backButton}
 
       <Card style={{ marginBottom: 20 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6 }}>
-          <span style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text }}>{assignment.subject} — {assignment.topic}</span>
-          <Pill tone={assignment.status === "SENT" ? "green" : "amber"}>{STATUS_LABELS[assignment.status]}</Pill>
-          <Pill>{assignment.examType}</Pill>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 6, minWidth: 0 }}>
+            <span style={{ fontFamily: displayFont, fontSize: 18, fontWeight: 800, color: C.text }}>{assignment.subject} — {assignment.topic}</span>
+            <Pill tone={assignment.status === "SENT" ? "green" : "amber"}>{STATUS_LABELS[assignment.status]}</Pill>
+            <Pill>{assignment.examType}</Pill>
+          </div>
+          {/* Başarı yüzdesi: yalnızca bu ödevi teslim edip tamamlayanların net ortalamasından (bkz.
+              server > successStats) — bekleyen/pas geçen bu sayıyı düşürmez. Hiç teslim yoksa gösterilmez. */}
+          {assignment.successPct != null && (
+            <div style={{ textAlign: "right", flexShrink: 0 }}>
+              <div style={{ fontFamily: monoFont, fontSize: 24, fontWeight: 700, color: C.text, lineHeight: 1.1 }}>%{assignment.successPct}</div>
+              <div style={{ fontFamily: bodyFont, fontSize: 11, color: C.mutedLight, whiteSpace: "nowrap" }}>başarı yüzdesi</div>
+            </div>
+          )}
         </div>
         {readOnly && assignment.teacher?.name && <DetailRow label="Veren öğretmen" value={assignment.teacher.name} />}
         <DetailRow label="Tarih" value={formatDateRange(assignment.scheduledDate, assignment.endDate)} />
@@ -92,7 +111,10 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, backLabel
                 </div>
               </div>
               {r.submission ? (
-                <Pill tone="green">D:{r.submission.correctCount} Y:{r.submission.wrongCount} B:{r.submission.blankCount}</Pill>
+                <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontFamily: monoFont, fontSize: 15, fontWeight: 700, color: C.text }}>{fmtNet(netOf(r.submission))} net</span>
+                  <Pill tone="green">D:{r.submission.correctCount} Y:{r.submission.wrongCount} B:{r.submission.blankCount}</Pill>
+                </span>
               ) : assignment.status === "SENT" && daysUntil(assignment.endDate) < 0 ? (
                 <Pill tone="red">Gecikti</Pill>
               ) : (

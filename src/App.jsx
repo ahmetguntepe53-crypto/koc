@@ -490,7 +490,7 @@ export default function App() {
       <Sidebar user={authUser} tabs={tabs} activeId={activeTabId} onSelect={selectTab} onLogout={logout} />
       <div className="k-content-col" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         <PageHeader
-          title={headerOverride?.title || screenTitle(screen, authUser.role, { selectedStudentName, reportReturnTo })}
+          title={headerOverride?.title || screenTitle(screen, authUser.role, { selectedStudentName, reportReturnTo, isSubjectTeacher: authUser.isSubjectTeacher })}
           subtitle={headerOverride?.subtitle ?? screenSubtitle(screen, authUser)}
           onBack={headerBack}
           right={
@@ -550,10 +550,13 @@ export default function App() {
   );
 }
 
-function screenTitle(screen, role, { selectedStudentName } = {}) {
+function screenTitle(screen, role, { selectedStudentName, isSubjectTeacher } = {}) {
   if (screen === "studentOverview" && selectedStudentName) return selectedStudentName;
   if (screen === "reports" && role === "TEACHER" && selectedStudentName) return `${selectedStudentName} — Rapor`;
   if (screen === "monthlyReports") return "Aylık raporlar";
+  // Branş öğretmeninin "Ödevler"i koçunkinden farklı bir şey: kendi koçluk ettikleriyle sınırlı
+  // olmadan okulun tamamına gönderdiği ödevler — alt menüdeki etiketle aynı başlık (bkz. tabsFor).
+  if (screen === "assignments" && isSubjectTeacher) return "Gönderdiğim Ödevler";
   const titles = {
     profile: "Ben", notifications: "Bildirimler", users: "Kurulum", photos: "Kanıt fotoğrafları",
     students: "Öğrencilerim", assignmentCreate: "Ödev ata", assignments: "Ödevlerim", branch: "Branş",
@@ -585,13 +588,15 @@ function screenSubtitle(screen, authUser) {
 // gizli — ekran ve sunucu ucu duruyor, plan kayıtları da veritabanında; geri açmak sekmeyi eklemek kadar.
 function tabsFor(user) {
   if (user.role === "TEACHER" && user.isSubjectTeacher) {
-    // "Ödevler" (tam takip: kim tamamladı/etmedi) burada YOK — branş öğretmeni okulun tamamına ödev
-    // gönderiyor ama takibi koçların işi (her koç kendi öğrencisini TABS_BY_ROLE.TEACHER'daki "Ödevler"
-    // sekmesinden izler). "Ata" içindeki "Son gönderdiklerim" yalnızca ne gönderdiğini hatırlatır,
-    // tamamlanma durumu göstermez (bkz. AssignmentCreateScreen > RecentAssignments).
+    // "Gönderdiğim Ödevler" (2026-09-30) — branş öğretmeni okulun tamamına (kendi koçluk ettiği
+    // öğrencilerle sınırlı olmadan) ödev gönderdiği için takibi de KENDİSİ yapabilmeli: kim çözmüş/
+    // çözmemiş, kaç net yapmış, ödevin başarı yüzdesi. AssignmentListScreen/AssignmentDetailScreen
+    // zaten koçlar için vardı — GET /assignments teacherId=own'a göre süzdüğü için ekstra bir kod
+    // gerekmedi, aynı ekranlar burada da doğru veriyi getiriyor.
     return [
       { id: "students", label: "Öğrenciler", icon: Users },
       { id: "assignmentCreate", label: "Ata", icon: PlusCircle },
+      { id: "assignments", label: "Gönderdiğim Ödevler", icon: ClipboardList },
     ];
   }
   return TABS_BY_ROLE[user.role] || [];
