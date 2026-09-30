@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3 } from "lucide-react";
+import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3, LayoutDashboard, GraduationCap } from "lucide-react";
+import { PrincipalOverviewScreen, PrincipalStudentsScreen, PrincipalTeachersScreen } from "./screens/principal/PrincipalScreens.jsx";
 import { C, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID, LoadingState } from "./components/common.jsx";
@@ -30,7 +31,7 @@ const ReportScreen = lazy(() => import("./screens/ReportScreen.jsx"));
 import BranchScreen from "./screens/teacher/BranchScreen.jsx";
 import MonthlyReportsScreen from "./screens/teacher/MonthlyReportsScreen.jsx";
 
-const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments" };
+const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments", PRINCIPAL: "principalOverview" };
 
 // Kompozisyon kökü: router yok, `screen` string state'i hangi ekranın render edileceğini belirler
 // (PP'deki HalisahaApp.jsx ile aynı desen). Düzen: sol kenar çubuğu (rol'e göre sekmeler) + sağda
@@ -93,7 +94,7 @@ export default function App() {
   const [screen, setScreen] = useState(null);
   // Mor üst alanlı ekran: genel başlık gizlenir (ekran kendi başlığını mor alanın içinde çizer), durum
   // çubuğu şeridi de aynı mora boyanır — yoksa saatin olduğu şerit ile mor alan arasında renk kırılırdı.
-  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview", "myAssignments", "studyLog", "profile", "assignmentSubmit"].includes(screen)
+  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview", "myAssignments", "studyLog", "profile", "assignmentSubmit", "principalOverview", "principalStudents", "principalTeachers"].includes(screen)
     || (screen === "assignmentCreate" && authUser?.isSubjectTeacher);
   // Oturum açıkken her ekranın üstü mor (kendi üst alanı ya da mor PageHeader) — şerit de mor.
   const signedIn = !!authUser;
@@ -440,7 +441,7 @@ export default function App() {
     setScreen(id);
   };
 
-  const tabs = [...tabsFor(authUser), { id: "profile", label: authUser.role === "TEACHER" ? "Profil" : "Ben", icon: UserCircle2 }];
+  const tabs = [...tabsFor(authUser), { id: "profile", label: authUser.role === "STUDENT" ? "Ben" : "Profil", icon: UserCircle2 }];
   // Başlıktaki geri düğmesi — detay ekranlarında (sayfa içindeki "← … dön" bağlantılarının yerine).
   const backToOverviewFromCreate = () => {
     const to = assignmentCreateReturnTo === "reports" ? "reports" : "studentOverview";
@@ -598,6 +599,12 @@ const TABS_BY_ROLE = {
   TEACHER: [
     { id: "students", label: "Öğrenciler", icon: Users },
   ],
+  // Okul müdürü: yalnızca takip (bkz. screens/principal/PrincipalScreens.jsx).
+  PRINCIPAL: [
+    { id: "principalOverview", label: "Genel bakış", icon: LayoutDashboard },
+    { id: "principalStudents", label: "Öğrenciler", icon: Users },
+    { id: "principalTeachers", label: "Öğretmenler", icon: GraduationCap },
+  ],
   STUDENT: [
     { id: "myAssignments", label: "Bu hafta", icon: ClipboardList },
     { id: "studyLog", label: "Çalışmam", icon: BookOpen },
@@ -617,6 +624,12 @@ function renderScreen({
 }) {
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} onUserUpdated={setAuthUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
+  if (authUser.role === "PRINCIPAL" || authUser.role === "ADMIN") {
+    const common = { user: authUser, unreadCount, onOpenNotifications: openNotifications };
+    if (screen === "principalOverview") return <PrincipalOverviewScreen {...common} />;
+    if (screen === "principalStudents") return <PrincipalStudentsScreen {...common} />;
+    if (screen === "principalTeachers") return <PrincipalTeachersScreen {...common} />;
+  }
   if (screen === "reports" && (authUser.role !== "TEACHER" || selectedStudentId)) {
     return (
       <Suspense fallback={<div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}><LoadingState /></div>}>

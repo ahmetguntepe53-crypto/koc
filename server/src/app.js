@@ -13,6 +13,7 @@ import { studySessionsRouter } from "./routes/studySessions.js";
 import { statsRouter } from "./routes/stats.js";
 import { planEntriesRouter } from "./routes/planEntries.js";
 import { settingsRouter } from "./routes/settings.js";
+import { principalRouter } from "./routes/principal.js";
 import { appVersionRouter } from "./routes/appVersion.js";
 import { branchRouter } from "./routes/branch.js";
 import { aiAnalysisRouter } from "./routes/aiAnalysis.js";
@@ -109,6 +110,8 @@ app.use("/api/stats", requireAuth, statsRouter);
 app.use("/api/plan-entries", requireAuth, requireRole("TEACHER"), planEntriesRouter);
 app.use("/api/settings", requireAuth, settingsRouter);
 app.use("/api/branch", requireAuth, requireRole("TEACHER"), branchRouter);
+// Okul müdürü paneli — yalnızca okur (yönetici de görebilir).
+app.use("/api/principal", requireAuth, requireRole("PRINCIPAL", "ADMIN"), principalRouter);
 app.use("/api/ai", requireAuth, requireRole("TEACHER", "ADMIN"), aiAnalysisRouter);
 // Deneme sınavları — rol karışık (öğrenci kendisi, koç kendi öğrencisi yazar; admin okur), yetki handler içinde.
 app.use("/api/practice-exams", requireAuth, practiceExamsRouter);

@@ -195,6 +195,7 @@ export default function AdminUsersScreen() {
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
             <Button small icon={UserPlus} onClick={() => setAddModalRole("TEACHER")}>Öğretmen ekle</Button>
             <Button small icon={UserPlus} variant="secondary" onClick={() => setAddModalRole("STUDENT")}>Öğrenci ekle</Button>
+            <Button small icon={UserPlus} variant="secondary" onClick={() => setAddModalRole("PRINCIPAL")}>Müdür ekle</Button>
             <Button small icon={Upload} variant="secondary" onClick={() => setBulkModalOpen(true)}>Toplu içe aktar</Button>
           </div>
           <form onSubmit={runSearch} style={{ display: "flex", gap: 10, marginBottom: 4, flexWrap: "wrap", alignItems: "flex-start" }}>
@@ -204,6 +205,7 @@ export default function AdminUsersScreen() {
                 <option value="ADMIN">Yönetici</option>
                 <option value="TEACHER">Öğretmen</option>
                 <option value="STUDENT">Öğrenci</option>
+                <option value="PRINCIPAL">Müdür</option>
               </Select>
             </div>
             <div style={{ flex: "3 1 180px", minWidth: 0 }}>
@@ -614,7 +616,7 @@ function AddUserModal({ role, teachers, onClose, onCreated }) {
   };
 
   return (
-    <Modal title={role === "TEACHER" ? "Öğretmen Ekle" : "Öğrenci Ekle"} onClose={onClose}>
+    <Modal title={role === "TEACHER" ? "Öğretmen Ekle" : role === "PRINCIPAL" ? "Müdür Ekle" : "Öğrenci Ekle"} onClose={onClose}>
       <form onSubmit={submit}>
         <Input label="Ad Soyad" value={name} onChange={(e) => setName(e.target.value)} required />
         <Input

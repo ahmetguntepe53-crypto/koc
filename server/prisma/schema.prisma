@@ -11,6 +11,8 @@ enum Role {
   ADMIN
   TEACHER
   STUDENT
+  // Okul müdürü: yalnızca okur — sınıf/öğrenci/ders/öğretmen bazında takip (routes/principal.js); hesap yönetemez.
+  PRINCIPAL
 }
 
 // LGS: 7-8. sınıf (ortaokul, liselere geçiş sınavı). TYT/AYT: 9-12. sınıf (lise, YKS'nin iki bileşeni).
