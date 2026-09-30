@@ -1,30 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Clock, ChevronRight } from "lucide-react";
-import { C, displayFont, bodyFont, SKIP_REASONS, STATUS_LABEL, statusTone } from "../../theme.js";
-import { EmptyState, Avatar, LoadingState, StatusSquare, Card } from "../../components/common.jsx";
+import { C, displayFont, bodyFont, SKIP_REASONS } from "../../theme.js";
+import { EmptyState, Avatar, LoadingState, Card } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, HeroTextButton, StatusChip, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
 import { loadStudentStatuses, getCachedStatus } from "../../studentStatus.js";
-import { BOARD_BRANCHES, boardBranchOf, GRADE_LEVELS, gradeLabel } from "../../subjects.js";
+import { GRADE_LEVELS, gradeLabel } from "../../subjects.js";
 import { weekBounds, shortDate, lastSeenInfo } from "../../work.js";
 import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
-// Koç — Öğrencilerim (şartname Z3). Her kartta 7 kare: 7 branş dersinin bu haftaki ödevi, sıra her
-// öğrencide aynı. Sağdaki yüzde tamamlama oranı: tüm öğretmenlerin ödevlerinden öğrencinin sorumlu olduğu
+// Koç — Öğrencilerim (şartname Z3). Sağdaki yüzde tamamlama oranı: tüm öğretmenlerin ödevlerinden öğrencinin sorumlu olduğu
 // (tamamladığı ya da süresi dolmuş) ödevlerin yüzde kaçını tamamladığı (server > teacher.js > completionRate).
 // Sıralama: önce ödevi geciken, sonra tamamlama oranı düşük olan; eşitlikte en geriden (giriş yok, pas).
 // Kartın altındaki gerekçe çipi (ör. "2 sessiz ödev (14 gün)") raporun koç panelindeki gerekçelerin
 // ilki — src/studentStatus.js raporun modelini öğrenci öğrenci çalıştırır; liste onu beklemeden çizilir.
-
-// Bir branşın bu haftaki ödev(ler)inin toplam durumu (TYT ve AYT ayrı ödev olabilir): biri yapılmadıysa
-// kırmızı, pas varsa sarı, açık varsa nötr, hepsi çözüldüyse yeşil. O hafta ödevi yoksa null (soluk kare).
-function branchStatus(items) {
-  if (!items.length) return null;
-  if (items.some((i) => i.status === "missed")) return "missed";
-  if (items.some((i) => i.status === "skipped")) return "skipped";
-  if (items.some((i) => i.status === "open")) return "open";
-  return "done";
-}
 
 // Uygulamayı açmadığı gün sayısı (giriş yoksa sıralamada öne çıkar); aktifse 0.
 function inactiveDays(s) {
@@ -78,16 +67,6 @@ function StudentCard({ s, st, onOpen }) {
           <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1, color: s.completionRate != null ? C.inkText : C.inkMuted }}>{s.completionRate != null ? `%${s.completionRate}` : "—"}</div>
           <div style={{ fontFamily: bodyFont, fontSize: 11, color: C.inkMuted, marginTop: 3 }}>tamamlama</div>
         </div>
-      </div>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 4, marginTop: 12 }}>
-        {BOARD_BRANCHES.map((b) => {
-          const status = branchStatus(s.week.filter((w) => w.schoolWide && boardBranchOf(w.subject) === b.key));
-          return (
-            <span key={b.key} style={{ opacity: status ? 1 : 0.45, display: "inline-flex" }}>
-              <StatusSquare subject={b.icon} status={status || "open"} size={38} title={`${b.label}: ${status ? STATUS_LABEL[status] : "bu hafta ödev yok"}`} />
-            </span>
-          );
-        })}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.cardDivider}` }}>
         {chips.map((c) => (
@@ -144,7 +123,6 @@ export default function TeacherStudentsScreen({ user, onOpen, unreadCount, onOpe
   const skippedWeek = students.reduce((n, s) => n + s.week.filter((w) => w.status === "skipped").length, 0);
   const rates = students.map((s) => s.completionRate).filter((n) => n != null);
   const avgRate = rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : null;
-  const legend = [["done", "Çözüldü"], ["skipped", "Pas geçti"], ["missed", "Yapılmadı"], ["open", "Süresi dolmadı"]];
 
   return (
     <div>
@@ -179,17 +157,7 @@ export default function TeacherStudentsScreen({ user, onOpen, unreadCount, onOpe
           <EmptyState text="Henüz sana atanmış bir öğrenci yok — okul yöneticinden öğrenci ataması istemen gerekebilir." />
         ) : (
           <>
-            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginBottom: 10 }}>
-              <h2 style={{ margin: 0, fontFamily: displayFont, fontSize: 19, fontWeight: 800, color: C.inkText }}>Bu haftanın durumu</h2>
-              <span style={{ ...NUM, fontSize: 12, color: C.inkMuted }}>{BOARD_BRANCHES.length} branş ödevi</span>
-            </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 12 }}>
-              {legend.map(([st, label]) => (
-                <span key={st} style={{ display: "inline-flex", alignItems: "center", gap: 6, height: 28, padding: "0 10px", borderRadius: 999, background: C.surface, fontFamily: bodyFont, fontSize: 12, fontWeight: 600, color: C.inkText }}>
-                  <span aria-hidden="true" style={{ width: 10, height: 10, borderRadius: 3, background: st === "open" ? C.barEmpty : statusTone(st).fg }} />{label}
-                </span>
-              ))}
-            </div>
+            <h2 style={{ margin: "0 0 12px", fontFamily: displayFont, fontSize: 19, fontWeight: 800, color: C.inkText }}>Bu haftanın durumu</h2>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {sorted.map((s) => <StudentCard key={s.id} s={s} st={statuses[s.id]} onOpen={onOpen} />)}
             </div>
