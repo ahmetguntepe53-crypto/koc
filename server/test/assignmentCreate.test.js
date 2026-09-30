@@ -108,10 +108,18 @@ describe("yeni Ödev ata kuralları (2026-09-30)", () => {
     expect(r.body.assignment.scheduledDate.slice(0, 10)).toBe(tr);
   });
 
+  it("hiç geçmişi olmayan derste de okulun kaynakları (Bilgi Sarmalı) önerilir, tekrarlanmaz", async () => {
+    const empty = await api(t.branch).get("/api/assignments/source-books?examType=AYT&subject=Matematik");
+    expect(empty.body.sourceBooks).toEqual(["Bilgi Sarmalı"]);
+    await create(t.branch, { studentIds: [w.grade12[3].id], examType: "AYT", subject: "Matematik", sourceBook: "Bilgi Sarmalı", topic: "Sarmal" });
+    const again = await api(t.branch).get("/api/assignments/source-books?examType=AYT&subject=Matematik");
+    expect(again.body.sourceBooks).toEqual(["Bilgi Sarmalı"]);
+  });
+
   it("kaynak kitap önerileri derse göre süzülür", async () => {
     await create(t.branch, { studentIds: [w.grade12[1].id], subject: "Fizik", sourceBook: "Fizik Yayınları", topic: "Fizik kaynağı" });
     const r = await api(t.branch).get("/api/assignments/source-books?examType=TYT&subject=Fizik");
-    expect(r.body.sourceBooks).toEqual(["Fizik Yayınları"]);
+    expect(r.body.sourceBooks).toEqual(["Fizik Yayınları", "Bilgi Sarmalı"]);
   });
 });
 

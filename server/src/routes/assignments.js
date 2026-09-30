@@ -196,6 +196,9 @@ assignmentsRouter.get("/audience", async (req, res) => {
 });
 
 // /:id ile çakışmaması için parametreli rotadan ÖNCE tanımlanmalı.
+// Okulun kullandığı kaynak kitaplar — her derste ve sınav türünde önerilir, öğretmenin kendi geçmişinin ardından.
+const SOURCE_BOOK_CATALOG = ["Bilgi Sarmalı"];
+
 assignmentsRouter.get("/source-books", async (req, res) => {
   try {
     assert(req.userRole === "TEACHER", "Bu işlem için yetkin yok", 403);
@@ -204,7 +207,8 @@ assignmentsRouter.get("/source-books", async (req, res) => {
     if (examType) { assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü"); where.examType = examType; }
     if (req.query.subject) where.subject = String(req.query.subject);
     const rows = await prisma.assignment.findMany({ where, distinct: ["sourceBook"], select: { sourceBook: true }, take: 20, orderBy: { createdAt: "desc" } });
-    res.json({ sourceBooks: rows.map((r) => r.sourceBook).filter(Boolean) });
+    const history = rows.map((r) => r.sourceBook).filter(Boolean);
+    res.json({ sourceBooks: [...history, ...SOURCE_BOOK_CATALOG.filter((b) => !history.includes(b))] });
   } catch (e) {
     handleErr(res, e);
   }
