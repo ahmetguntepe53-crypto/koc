@@ -37,13 +37,16 @@ teacherRouter.get("/students", async (req, res) => {
     const { mon, sun, prevMon } = trWeekRange(now);
     const byStudent = new Map();
     for (const r of recipients) {
-      const e = byStudent.get(r.studentId) || { total: 0, completed: 0, overdue: 0, week: [], weekNet: 0, prevWeekNet: null, mineDone: 0, mineTotal: 0 };
+      const e = byStudent.get(r.studentId) || { total: 0, completed: 0, due: 0, overdue: 0, week: [], weekNet: 0, prevWeekNet: null, mineDone: 0, mineTotal: 0 };
       const status = recipientStatus(r, now);
       const end = r.assignment.endDate.getTime();
       const net = netOf(r.submission);
       e.total += 1;
       if (r.completed) e.completed += 1;
       else if (status === "missed") e.overdue += 1;
+      // Sorumlu olduğu ödev: tamamladığı ya da süresi dolmuş olan (pas geçtiği dahil) — süresi dolmamış
+      // açık ödev henüz "yapmadı" sayılmaz.
+      if (status !== "open") e.due += 1;
       if (end >= mon.getTime() && end <= sun.getTime()) {
         const schoolWide = r.assignment.targetMode === "SCHOOL_WIDE";
         e.week.push({ id: r.id, subject: r.assignment.subject, topic: r.assignment.topic, schoolWide, status, net, skipReason: r.skipReason });
@@ -61,7 +64,8 @@ teacherRouter.get("/students", async (req, res) => {
       const e = byStudent.get(s.id);
       return {
         ...s,
-        completionRate: e && e.total ? Math.round((e.completed / e.total) * 100) : null,
+        // Tamamlama oranı: tüm öğretmenlerin ödevlerinden sorumlu olduklarının yüzde kaçını tamamladı.
+        completionRate: e && e.due ? Math.round((e.completed / e.due) * 100) : null,
         assignmentCount: e?.total || 0,
         overdueCount: e?.overdue || 0,
         week: e?.week || [],

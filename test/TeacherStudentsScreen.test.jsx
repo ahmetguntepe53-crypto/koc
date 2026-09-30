@@ -97,17 +97,20 @@ describe("TeacherStudentsScreen", { timeout: 30000 }, () => {
     expect(document.body.textContent).not.toMatch(/zayıf|kötü|başarısız|tembel|hile/i);
   });
 
-  it("sıra: önce gecikmesi olanlar, sonra 'benim ödevim' oranı düşük olanlar", async () => {
+  it("sıra: önce gecikmesi olanlar, sonra tamamlama oranı düşük olanlar; kartta tamamlama yüzdesi", async () => {
     api.teacherListStudents.mockResolvedValue({ students: [
-      row("s-ada", "Ada Kurgu", { mine: { done: 2, total: 2 } }),
-      row("s-bora", "Bora Örnek", { mine: { done: 0, total: 2 } }),
-      row("s-cem", "Cem Deneme", { overdueCount: 1, mine: { done: 3, total: 3 } }),
-      row("s-dila", "Dila Taslak", { mine: { done: 1, total: 2 } }),
-      row("s-ece", "Ece Model"),
+      row("s-ada", "Ada Kurgu", { completionRate: 100 }),
+      row("s-bora", "Bora Örnek", { completionRate: 20 }),
+      row("s-cem", "Cem Deneme", { overdueCount: 1, completionRate: 90 }),
+      row("s-dila", "Dila Taslak", { completionRate: 50 }),
+      row("s-ece", "Ece Model", { completionRate: null }),
     ] });
     render(<TeacherStudentsScreen user={coach} onOpen={vi.fn()} />);
     await screen.findByText("Ada Kurgu", {}, { timeout: 8000 });
     expect(order()).toEqual(["Cem", "Bora", "Dila", "Ada", "Ece"]);
+    expect(rowOf("Bora Örnek").textContent).toContain("%20");
+    expect(rowOf("Ece Model").textContent).toContain("—");
+    expect(screen.queryByText(/Benim ödevim/)).toBeNull();
   });
 
   it("geri dönünce önbellekteki gerekçeler ilk çizimde hazır, yeni istek yok", async () => {

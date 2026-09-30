@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart3, Clock, ChevronRight } from "lucide-react";
-import { C, displayFont, bodyFont, formatNet, SKIP_REASONS, STATUS_LABEL, statusTone } from "../../theme.js";
+import { C, displayFont, bodyFont, SKIP_REASONS, STATUS_LABEL, statusTone } from "../../theme.js";
 import { EmptyState, Avatar, LoadingState, StatusSquare, Card } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, HeroTextButton, StatusChip, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
@@ -10,8 +10,9 @@ import { weekBounds, shortDate, lastSeenInfo } from "../../work.js";
 import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
 // Koç — Öğrencilerim (şartname Z3). Her kartta 7 kare: 7 branş dersinin bu haftaki ödevi, sıra her
-// öğrencide aynı. Sıralama: önce ödevi geciken, sonra koçun kendi verdiği ödevlerde ("benim ödevim")
-// tamamlama oranı düşük olan; eşitlikte en geriden (giriş yok, pas, düşük net).
+// öğrencide aynı. Sağdaki yüzde tamamlama oranı: tüm öğretmenlerin ödevlerinden öğrencinin sorumlu olduğu
+// (tamamladığı ya da süresi dolmuş) ödevlerin yüzde kaçını tamamladığı (server > teacher.js > completionRate).
+// Sıralama: önce ödevi geciken, sonra tamamlama oranı düşük olan; eşitlikte en geriden (giriş yok, pas).
 // Kartın altındaki gerekçe çipi (ör. "2 sessiz ödev (14 gün)") raporun koç panelindeki gerekçelerin
 // ilki — src/studentStatus.js raporun modelini öğrenci öğrenci çalıştırır; liste onu beklemeden çizilir.
 
@@ -31,20 +32,16 @@ function inactiveDays(s) {
   return info.inactive ? info.days : 0;
 }
 
-const fmtNet = (v) => Number(v).toLocaleString("tr-TR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
-
-// Benim ödevim oranı; koçun verdiği ödev yoksa 1 (bekleyen yok) sayılır.
-const mineRatio = (s) => (s.mine?.total ? s.mine.done / s.mine.total : 1);
+// Sorumlu olduğu ödev yoksa (null) sıralamada 100 sayılır — geride değil.
+const rateOf = (s) => (s.completionRate == null ? 100 : s.completionRate);
 
 function compareStudents(a, b) {
   const lateA = a.overdueCount > 0 ? 1 : 0;
   const lateB = b.overdueCount > 0 ? 1 : 0;
   const skippedA = a.week.filter((w) => w.status === "skipped").length;
   const skippedB = b.week.filter((w) => w.status === "skipped").length;
-  const netA = a.weekNet == null ? -Infinity : a.weekNet;
-  const netB = b.weekNet == null ? -Infinity : b.weekNet;
-  return lateB - lateA || (b.overdueCount || 0) - (a.overdueCount || 0) || mineRatio(a) - mineRatio(b)
-    || inactiveDays(b) - inactiveDays(a) || skippedB - skippedA || netA - netB || (a.name || "").localeCompare(b.name || "", "tr");
+  return lateB - lateA || (b.overdueCount || 0) - (a.overdueCount || 0) || rateOf(a) - rateOf(b)
+    || inactiveDays(b) - inactiveDays(a) || skippedB - skippedA || (a.name || "").localeCompare(b.name || "", "tr");
 }
 
 // Kartın altındaki çipler: gecikme (kırmızı), giriş yok, pas, sınıf düzeyi sorunu; en sonda raporun gerekçesi.
@@ -69,25 +66,17 @@ function chipsOf(s, st) {
 function StudentCard({ s, st, onOpen }) {
   const chips = chipsOf(s, st);
   const late = s.overdueCount > 0;
-  const pct = s.mine?.total ? (s.mine.done / s.mine.total) * 100 : 0;
   return (
     <Card hover onClick={() => onOpen(s.id, s.name)} style={{ padding: 14, borderRadius: 20, border: "none", cursor: "pointer" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <Avatar name={s.name} size={44} tint />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{s.name}</div>
-          {s.mine?.total > 0 && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
-              <span style={{ ...NUM, fontSize: 12.5, color: C.inkMuted, whiteSpace: "nowrap" }}>Benim ödevim <b style={{ color: C.inkText }}>{s.mine.done}/{s.mine.total}</b></span>
-              <span aria-hidden="true" style={{ flex: 1, maxWidth: 90, height: 6, borderRadius: 3, background: C.track, overflow: "hidden" }}>
-                <span style={{ display: "block", width: `${pct}%`, height: "100%", borderRadius: 3, background: C.brand }} />
-              </span>
-            </div>
-          )}
+          {s.className && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>{s.className}</div>}
         </div>
         <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1, color: s.weekNet != null ? C.inkText : C.inkMuted }}>{s.weekNet != null ? fmtNet(s.weekNet) : "—"}</div>
-          <div style={{ fontFamily: bodyFont, fontSize: 11, color: C.inkMuted, marginTop: 3 }}>net</div>
+          <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1, color: s.completionRate != null ? C.inkText : C.inkMuted }}>{s.completionRate != null ? `%${s.completionRate}` : "—"}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 11, color: C.inkMuted, marginTop: 3 }}>tamamlama</div>
         </div>
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 4, marginTop: 12 }}>
@@ -153,8 +142,8 @@ export default function TeacherStudentsScreen({ user, onOpen, unreadCount, onOpe
 
   const behind = students.filter((s) => s.overdueCount > 0).length;
   const skippedWeek = students.reduce((n, s) => n + s.week.filter((w) => w.status === "skipped").length, 0);
-  const nets = students.map((s) => s.weekNet).filter((n) => n != null);
-  const avgNet = nets.length ? nets.reduce((a, b) => a + b, 0) / nets.length : null;
+  const rates = students.map((s) => s.completionRate).filter((n) => n != null);
+  const avgRate = rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : null;
   const legend = [["done", "Çözüldü"], ["skipped", "Pas geçti"], ["missed", "Yapılmadı"], ["open", "Süresi dolmadı"]];
 
   return (
@@ -175,7 +164,7 @@ export default function TeacherStudentsScreen({ user, onOpen, unreadCount, onOpe
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 18 }}>
             <HeroStat lime label="öğrenci takipte" value={behind} />
             <HeroStat label="ödev pas geçildi" value={skippedWeek} />
-            <HeroStat label="ortalama net" value={avgNet != null ? formatNet(avgNet, 1) : "—"} />
+            <HeroStat label="ort. tamamlama" value={avgRate != null ? `%${avgRate}` : "—"} />
           </div>
         )}
       </HeroHeader>
