@@ -1,6 +1,6 @@
 {
  "GET /api/auth/me": {
   "status": 200,
-  "body": "{\"user\":{\"id\":\"cmuod8oif0018jdqaoncvyi1m\",\"email\":null,\"username\":\"1247\",\"mustChangePassword\":true,\"role\":\"STUDENT\",\"name\":\"Nisa Ak\",\"phone\":null,\"banned\":false,\"termsAcceptedAt\":null,\"termsVersion\":null,\"className\":\"12-B\",\"gradeLevel\":12,\"field\":null,\"teacherId\":\"cmuod8oh20008jdqa7q8c54z3\",\"lastSeenAt\":null,\"isSubjectTeacher\":false,\"teachingSubjects\":[],\"createdAt\":\"2026-09-30T17:15:08.332Z\",\"coach\":{\"id\":\"cmuod8oh20008jdqa7q8c54z3\",\"name\":\"Burak Şen\"}}}"
+  "body": "{\"user\":{\"id\":\"cmuodmxl60018jdsd02amp5ln\",\"email\":null,\"username\":\"1247\",\"mustChangePassword\":true,\"role\":\"STUDENT\",\"name\":\"Nisa Ak\",\"phone\":null,\"banned\":false,\"termsAcceptedAt\":null,\"termsVersion\":null,\"className\":\"12-B\",\"gradeLevel\":12,\"field\":null,\"teacherId\":\"cmuodmxjk0008jdsdfojibzp8\",\"lastSeenAt\":null,\"isSubjectTeacher\":false,\"teachingSubjects\":[],\"createdAt\":\"2026-09-30T17:26:13.234Z\",\"coach\":{\"id\":\"cmuodmxjk0008jdsdfojibzp8\",\"name\":\"Burak Şen\"}}}"
  }
 }

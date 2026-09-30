@@ -38,3 +38,45 @@ describe("GET /teacher/students — completionRate", () => {
     expect(r.body.students.find((s) => s.id === S.id).completionRate).toBeNull();
   });
 });
+
+describe("GET /teacher/students — completion (günlük/haftalık/aylık)", () => {
+  it("her dönem yalnızca bitiş günü o döneme düşen ödevleri sayar", async () => {
+    const S = w.studentsOf(w.coachA)[0];
+    const r = await api(t.coach).get("/api/teacher/students");
+    const c = r.body.students.find((s) => s.id === S.id).completion;
+    expect(Object.keys(c).sort()).toEqual(["day", "month", "week"]);
+    for (const v of Object.values(c)) expect(v === null || (v >= 0 && v <= 100)).toBe(true);
+  });
+
+  it("bugün biten ve tamamlanan ödev üç döneme de girer; iki ay önce biten hiçbirine girmez", async () => {
+    const S = w.studentsOf(w.coachB)[0];
+    const tb = (await loginAll({ c: w.coachB })).c;
+    const tr = new Date(Date.now() + 3 * 60 * 60 * 1000); // Türkiye takvim günü (UTC+3)
+    const todayUtc = new Date(Date.UTC(tr.getUTCFullYear(), tr.getUTCMonth(), tr.getUTCDate()));
+    const a = await createAssignment({ teacher: w.branch, students: [S], scheduledDate: todayUtc, endDate: todayUtc });
+    await submitResult(recipientOf(a, S), { correct: 3 });
+    await createAssignment({ teacher: w.branch, students: [S], scheduledDate: daysAgo(70), endDate: daysAgo(65) }); // gecikti, eski
+    const r = await api(tb).get("/api/teacher/students");
+    const row = r.body.students.find((s) => s.id === S.id);
+    expect(row.completion.day).toBe(100);
+    expect(row.completion.week).toBe(100);
+    expect(row.completion.month).toBe(100);
+    expect(row.completionRate).toBe(50); // tüm zamanlar: 1 / 2
+  });
+});
+
+describe("PATCH /auth/me/field — öğrenci kendi YKS alanını seçer", () => {
+  it("öğrenci seçer, koç listede ve genel bakışta görür; geçersiz değer ve öğretmen reddedilir", async () => {
+    const S = w.studentsOf(w.coachA)[1];
+    const ts = (await loginAll({ s: S })).s;
+    const ok = await api(ts).patch("/api/auth/me/field", { field: "EA" });
+    expect(ok.status).toBe(200);
+    expect(ok.body.user.field).toBe("EA");
+    const list = await api(t.coach).get("/api/teacher/students");
+    expect(list.body.students.find((s) => s.id === S.id).field).toBe("EA");
+    expect((await api(ts).patch("/api/auth/me/field", { field: "XYZ" })).status).toBe(400);
+    expect((await api(t.coach).patch("/api/auth/me/field", { field: "SAY" })).status).toBe(403);
+    const cleared = await api(ts).patch("/api/auth/me/field", { field: null });
+    expect(cleared.body.user.field).toBeNull();
+  });
+});

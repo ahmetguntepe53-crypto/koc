@@ -510,7 +510,7 @@ export default function App() {
             selectedStudentName, reportReturnTo, openReport, backFromReport,
             coachNoteOpen, onCloseNote: () => setCoachNoteOpen(false),
             openNotificationTarget: goToNotificationTarget,
-            unreadCount, openNotifications: () => setScreen("notifications"),
+            unreadCount, openNotifications: () => setScreen("notifications"), openProfile: () => setScreen("profile"), setAuthUser,
             setHeader: setHeaderOverride,
             openStudyLog: () => { setStudyPrefill(null); setReturnToReport(false); setScreen("studyLog"); },
             openRecipientFromReport,
@@ -606,9 +606,9 @@ function renderScreen({
   selectedStudentName, reportReturnTo, openReport, backFromReport,
   coachNoteOpen, onCloseNote, openNotificationTarget, setHeader, openStudyLog, openPlan,
   reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill, openStudyLogPrefilled, openAssignPrefilled,
-  openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly,
+  openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly, openProfile, setAuthUser,
 }) {
-  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} />;
+  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} onUserUpdated={setAuthUser} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
   if (screen === "reports" && (authUser.role !== "TEACHER" || selectedStudentId)) {
     return (
@@ -655,7 +655,7 @@ function renderScreen({
     if (screen === "plan") return <PlanScreen user={authUser} />;
   }
   if (authUser.role === "STUDENT") {
-    if (screen === "myAssignments") return <StudentHomeScreen user={authUser} onOpen={openRecipient} onOpenStudyLog={openStudyLog} refreshKey={myAssignmentsRefreshKey} />;
+    if (screen === "myAssignments") return <StudentHomeScreen user={authUser} onOpen={openRecipient} onOpenStudyLog={openStudyLog} onOpenProfile={openProfile} refreshKey={myAssignmentsRefreshKey} />;
     // key: bildirimle başka bir ödeve geçilince bileşen yeniden kullanılıp önceki ödevin D/Y/B
     // değerleri ve notu formda kalıyor, yanlış ödeve gönderilebiliyordu — ödev değişince sıfırdan mount.
     if (screen === "assignmentSubmit" && selectedRecipientId) return <AssignmentSubmitScreen key={selectedRecipientId} user={authUser} recipientId={selectedRecipientId} onBack={backToMyAssignments} setHeader={setHeader} />;

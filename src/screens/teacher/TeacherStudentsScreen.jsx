@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Clock, ChevronRight } from "lucide-react";
+import { BarChart3, Clock, ChevronRight, ChevronDown, Check } from "lucide-react";
 import { C, displayFont, bodyFont, SKIP_REASONS } from "../../theme.js";
-import { EmptyState, Avatar, LoadingState, Card } from "../../components/common.jsx";
+import { EmptyState, Avatar, LoadingState, Modal } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, HeroTextButton, StatusChip, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
 import { loadStudentStatuses, getCachedStatus } from "../../studentStatus.js";
@@ -21,10 +21,24 @@ function inactiveDays(s) {
   return info.inactive ? info.days : 0;
 }
 
-// Sorumlu olduğu ödev yoksa (null) sıralamada 100 sayılır — geride değil.
-const rateOf = (s) => (s.completionRate == null ? 100 : s.completionRate);
+// Tamamlama oranının dönemi (yüzdeye dokununca seçilir) cihazda hatırlanır — okunamazsa haftalık.
+const PERIODS = [
+  { id: "day", label: "Günlük", word: "bugün", hint: "Bitiş günü bugün olan ödevler" },
+  { id: "week", label: "Haftalık", word: "bu hafta", hint: "Bitiş günü bu hafta (Pzt–Paz) olan ödevler" },
+  { id: "month", label: "Aylık", word: "bu ay", hint: "Bitiş günü bu ay olan ödevler" },
+];
+const PERIOD_KEY = "kocluk-completion-period";
+function readPeriod() {
+  try { const v = localStorage.getItem(PERIOD_KEY); return PERIODS.some((p) => p.id === v) ? v : "week"; } catch { return "week"; }
+}
+function writePeriod(v) {
+  try { localStorage.setItem(PERIOD_KEY, v); } catch { /* tercih yalnızca kolaylık */ }
+}
+const rateIn = (s, period) => s.completion?.[period] ?? null;
 
-function compareStudents(a, b) {
+function compareStudents(a, b, period) {
+  // Sorumlu olduğu ödev yoksa (null) sıralamada 100 sayılır — geride değil.
+  const rateOf = (s) => rateIn(s, period) ?? 100;
   const lateA = a.overdueCount > 0 ? 1 : 0;
   const lateB = b.overdueCount > 0 ? 1 : 0;
   const skippedA = a.week.filter((w) => w.status === "skipped").length;
@@ -52,21 +66,34 @@ function chipsOf(s, st) {
   return chips;
 }
 
-function StudentCard({ s, st, onOpen }) {
+// Kartın tamamı öğrenciyi açar (fare/dokunma); klavyede ad düğmesi. Yüzde ayrı bir düğme — dönem seçimini açar,
+// kartın açılmasını tetiklemez (iç içe etkileşimli öğe olmasın diye kart kendisi düğme değil).
+function StudentCard({ s, st, onOpen, period, onPickPeriod }) {
   const chips = chipsOf(s, st);
   const late = s.overdueCount > 0;
+  const rate = rateIn(s, period);
+  const word = PERIODS.find((p) => p.id === period).word;
   return (
-    <Card hover onClick={() => onOpen(s.id, s.name)} style={{ padding: 14, borderRadius: 20, border: "none", cursor: "pointer" }}>
+    <div data-student-card="" onClick={() => onOpen(s.id, s.name)} className="k-card-hover" style={{ background: C.surface, padding: 14, borderRadius: 20, cursor: "pointer" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <Avatar name={s.name} size={44} tint />
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{s.name}</div>
-          {s.className && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>{s.className}</div>}
-        </div>
-        <div style={{ textAlign: "right", flexShrink: 0 }}>
-          <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1, color: s.completionRate != null ? C.inkText : C.inkMuted }}>{s.completionRate != null ? `%${s.completionRate}` : "—"}</div>
-          <div style={{ fontFamily: bodyFont, fontSize: 11, color: C.inkMuted, marginTop: 3 }}>tamamlama</div>
-        </div>
+        <button type="button" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12, padding: 0, background: "none", border: "none", textAlign: "left", cursor: "pointer" }}>
+          <Avatar name={s.name} size={44} tint />
+          <span style={{ minWidth: 0 }}>
+            <span style={{ display: "block", fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{s.name}</span>
+            {s.className && <span style={{ display: "block", fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>{s.className}</span>}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onPickPeriod(); }}
+          aria-label={`Tamamlama ${word} ${rate != null ? `yüzde ${rate}` : "yok"} — dönemi değiştir`}
+          style={{ flexShrink: 0, minHeight: 44, minWidth: 64, padding: "2px 0 2px 8px", background: "none", border: "none", textAlign: "right", cursor: "pointer" }}
+        >
+          <span style={{ ...NUM, display: "block", fontSize: 22, fontWeight: 800, lineHeight: 1, color: rate != null ? C.inkText : C.inkMuted }}>{rate != null ? `%${rate}` : "—"}</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontFamily: bodyFont, fontSize: 11, color: C.inkMuted, marginTop: 3 }}>
+            {word}<ChevronDown size={12} aria-hidden="true" />
+          </span>
+        </button>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.cardDivider}` }}>
         {chips.map((c) => (
@@ -79,7 +106,41 @@ function StudentCard({ s, st, onOpen }) {
           <ChevronRight size={17} strokeWidth={2.4} />
         </span>
       </div>
-    </Card>
+    </div>
+  );
+}
+
+function PeriodModal({ value, onPick, onClose }) {
+  return (
+    <Modal title="Tamamlama oranı" onClose={onClose}>
+      <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.mutedLight, lineHeight: 1.5, marginBottom: 14 }}>
+        Tüm öğretmenlerin ödevlerinden, öğrencinin sorumlu olduklarının (tamamladığı ya da süresi dolmuş) yüzde kaçını tamamladığı.
+      </div>
+      <div role="radiogroup" aria-label="Dönem" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {PERIODS.map((p) => {
+          const on = p.id === value;
+          return (
+            <button
+              key={p.id}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => onPick(p.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 12, minHeight: 56, padding: "0 14px", borderRadius: 14, cursor: "pointer", textAlign: "left",
+                background: on ? C.brandTint : C.pageTint, border: `1.5px solid ${on ? C.brand : "transparent"}`,
+              }}
+            >
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: "block", fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{p.label}</span>
+                <span style={{ display: "block", fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>{p.hint}</span>
+              </span>
+              {on && <Check size={18} color={C.brandText} aria-hidden="true" />}
+            </button>
+          );
+        })}
+      </div>
+    </Modal>
   );
 }
 
@@ -89,6 +150,9 @@ export default function TeacherStudentsScreen({ user, onOpen, unreadCount, onOpe
   const [loadError, setLoadError] = useState("");
   // id → { status, statusLabel, reasons }; yalnızca gelenler (gerekçe çipi için). Önbellektekiler ilk çizimde hazır.
   const [statuses, setStatuses] = useState({});
+  const [period, setPeriod] = useState(readPeriod);
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const pickPeriod = (v) => { setPeriod(v); writePeriod(v); setPeriodOpen(false); };
 
   useEffect(() => {
     api.teacherListStudents()
@@ -106,22 +170,24 @@ export default function TeacherStudentsScreen({ user, onOpen, unreadCount, onOpe
   }, []);
 
   const week = weekBounds();
-  const sorted = useMemo(() => [...students].sort(compareStudents), [students]);
+  const sorted = useMemo(() => [...students].sort((a, b) => compareStudents(a, b, period)), [students, period]);
+  // Gerekçe yüklemesi dönem değişince yeniden başlamasın diye sıra, öğrenci listesinin ilk sırası.
+  const loadOrder = useMemo(() => [...students].sort((a, b) => compareStudents(a, b, readPeriod())), [students]);
 
   // Gerekçeler listedeki sırayla (üstteki önce) yüklenir; ekran kapanınca sıradakiler için istek başlatılmaz.
   useEffect(() => {
-    if (!sorted.length) return undefined;
+    if (!loadOrder.length) return undefined;
     const ctrl = new AbortController();
-    loadStudentStatuses(sorted.map((s) => s.id), {
+    loadStudentStatuses(loadOrder.map((s) => s.id), {
       signal: ctrl.signal,
       onStatus: (id, value) => setStatuses((prev) => (prev[id] === value ? prev : { ...prev, [id]: value })),
     });
     return () => ctrl.abort();
-  }, [sorted]);
+  }, [loadOrder]);
 
   const behind = students.filter((s) => s.overdueCount > 0).length;
   const skippedWeek = students.reduce((n, s) => n + s.week.filter((w) => w.status === "skipped").length, 0);
-  const rates = students.map((s) => s.completionRate).filter((n) => n != null);
+  const rates = students.map((s) => rateIn(s, period)).filter((n) => n != null);
   const avgRate = rates.length ? Math.round(rates.reduce((a, b) => a + b, 0) / rates.length) : null;
 
   return (
@@ -142,11 +208,12 @@ export default function TeacherStudentsScreen({ user, onOpen, unreadCount, onOpe
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 18 }}>
             <HeroStat lime label="öğrenci takipte" value={behind} />
             <HeroStat label="ödev pas geçildi" value={skippedWeek} />
-            <HeroStat label="ort. tamamlama" value={avgRate != null ? `%${avgRate}` : "—"} />
+            <HeroStat label={`ort. tamamlama · ${PERIODS.find((p) => p.id === period).word}`} value={avgRate != null ? `%${avgRate}` : "—"} />
           </div>
         )}
       </HeroHeader>
 
+      {periodOpen && <PeriodModal value={period} onPick={pickPeriod} onClose={() => setPeriodOpen(false)} />}
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "20px 16px 24px" }}>
         <PushPermissionBanner reason="Öğrencilerinin geciken ödev özetlerini kaçırmamak için." />
         {loading ? (
@@ -159,7 +226,7 @@ export default function TeacherStudentsScreen({ user, onOpen, unreadCount, onOpe
           <>
             <h2 style={{ margin: "0 0 12px", fontFamily: displayFont, fontSize: 19, fontWeight: 800, color: C.inkText }}>Bu haftanın durumu</h2>
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {sorted.map((s) => <StudentCard key={s.id} s={s} st={statuses[s.id]} onOpen={onOpen} />)}
+              {sorted.map((s) => <StudentCard key={s.id} s={s} st={statuses[s.id]} onOpen={onOpen} period={period} onPickPeriod={() => setPeriodOpen(true)} />)}
             </div>
           </>
         )}

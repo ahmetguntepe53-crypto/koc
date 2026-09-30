@@ -143,7 +143,7 @@ export const api = {
   teacherListStudents: () => request("/teacher/students"),
   teacherStudentOverview: (studentId) => request(`/teacher/students/${studentId}/overview`),
   // Öğrencinin YKS alanı (SAY / EA / SOZ / DIL; null = bilinmiyor) — yalnızca kendi öğrencisi.
-  teacherSetStudentField: (studentId, field) => request(`/teacher/students/${studentId}/field`, { method: "PATCH", body: { field } }),
+  setMyField: (field) => request("/auth/me/field", { method: "PATCH", body: { field } }),
   // Koçun tarihli özel notları — yalnızca yazan koç görür.
   teacherAddNote: (studentId, text) => request(`/teacher/students/${studentId}/notes`, { method: "POST", body: { text } }),
   teacherEditNote: (noteId, text) => request(`/teacher/notes/${noteId}`, { method: "PATCH", body: { text } }),

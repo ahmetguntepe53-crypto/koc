@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardCheck, Plus } from "lucide-react";
 import { C, bodyFont, monoFont, formatNet, recipientStatus, netOf } from "../../theme.js";
-import { Card, EmptyState, SectionHeader, LoadingState, StatusSquare, ListRow, ListGroup, SegmentBar, Legend, SourceTag, AlertBox, ShowMoreButton } from "../../components/common.jsx";
+import { Card, Button, EmptyState, SectionHeader, LoadingState, StatusSquare, ListRow, ListGroup, SegmentBar, Legend, SourceTag, AlertBox, ShowMoreButton } from "../../components/common.jsx";
 import { api } from "../../api.js";
 import { BOARD_BRANCHES, boardBranchOf } from "../../subjects.js";
 import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, questionCountOf, isSchoolWide } from "../../work.js";
@@ -160,7 +160,7 @@ function listRank(r) {
   return [2, dayKey(r.assignment.endDate)];
 }
 
-export default function StudentHomeScreen({ onOpen, onOpenStudyLog, refreshKey }) {
+export default function StudentHomeScreen({ user, onOpen, onOpenStudyLog, onOpenProfile, refreshKey }) {
   const [recipients, setRecipients] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -203,6 +203,12 @@ export default function StudentHomeScreen({ onOpen, onOpenStudyLog, refreshKey }
   return (
     <div className="k-page" style={{ padding: 28, maxWidth: 760, margin: "0 auto" }}>
       <PushPermissionBanner reason="Yeni ödevleri ve son gün hatırlatmalarını kaçırmamak için." />
+      {user && !user.field && onOpenProfile && (
+        <AlertBox tone="amber" title="YKS alanını seçmelisin" style={{ marginBottom: 12 }}>
+          Raporun AYT derslerini alanına göre izlesin diye profilinden alanını (SAY, EA, SÖZ, DİL) seç.
+          <div style={{ marginTop: 10 }}><Button small onClick={onOpenProfile}>Alanımı seç</Button></div>
+        </AlertBox>
+      )}
       {examDates && <YksCard examDate={examDates.yksExamDate} />}
 
       {loading ? (

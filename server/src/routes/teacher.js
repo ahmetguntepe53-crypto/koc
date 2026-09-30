@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
 import { trWeekRange, recipientStatus, netOf } from "../weekStats.js";
+import { trTodayAsDateOnly } from "../quietHours.js";
 import { buildMonthlySummary, monthBounds } from "../monthlySummary.js";
 import { normalizeField } from "../subjects.js";
 
@@ -35,9 +36,22 @@ teacherRouter.get("/students", async (req, res) => {
     // "X gün gecikti" ve zamanlayıcının gecikme kuralıyla aynı (bkz. scheduler.js).
     const now = new Date();
     const { mon, sun, prevMon } = trWeekRange(now);
+    // Dönemlik tamamlama oranı (Öğrencilerim'de günlük/haftalık/aylık seçilir): bitiş günü o döneme düşen
+    // ödevlerden sorumlu olunanların (tamamlanmış ya da süresi dolmuş) yüzde kaçı tamamlandı. [başlangıç, bitiş).
+    const DAY = 24 * 60 * 60 * 1000;
+    const today = trTodayAsDateOnly(now);
+    const monthStart = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
+    const periods = {
+      day: [today.getTime(), today.getTime() + DAY],
+      week: [mon.getTime(), mon.getTime() + 7 * DAY],
+      month: [monthStart.getTime(), Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1)],
+    };
     const byStudent = new Map();
     for (const r of recipients) {
-      const e = byStudent.get(r.studentId) || { total: 0, completed: 0, due: 0, overdue: 0, week: [], weekNet: 0, prevWeekNet: null, mineDone: 0, mineTotal: 0 };
+      const e = byStudent.get(r.studentId) || {
+        total: 0, completed: 0, due: 0, overdue: 0, week: [], weekNet: 0, prevWeekNet: null, mineDone: 0, mineTotal: 0,
+        per: { day: { due: 0, done: 0 }, week: { due: 0, done: 0 }, month: { due: 0, done: 0 } },
+      };
       const status = recipientStatus(r, now);
       const end = r.assignment.endDate.getTime();
       const net = netOf(r.submission);
@@ -46,7 +60,15 @@ teacherRouter.get("/students", async (req, res) => {
       else if (status === "missed") e.overdue += 1;
       // Sorumlu olduğu ödev: tamamladığı ya da süresi dolmuş olan (pas geçtiği dahil) — süresi dolmamış
       // açık ödev henüz "yapmadı" sayılmaz.
-      if (status !== "open") e.due += 1;
+      if (status !== "open") {
+        e.due += 1;
+        for (const [key, [from, to]] of Object.entries(periods)) {
+          if (end >= from && end < to) {
+            e.per[key].due += 1;
+            if (r.completed) e.per[key].done += 1;
+          }
+        }
+      }
       if (end >= mon.getTime() && end <= sun.getTime()) {
         const schoolWide = r.assignment.targetMode === "SCHOOL_WIDE";
         e.week.push({ id: r.id, subject: r.assignment.subject, topic: r.assignment.topic, schoolWide, status, net, skipReason: r.skipReason });
@@ -66,6 +88,10 @@ teacherRouter.get("/students", async (req, res) => {
         ...s,
         // Tamamlama oranı: tüm öğretmenlerin ödevlerinden sorumlu olduklarının yüzde kaçını tamamladı.
         completionRate: e && e.due ? Math.round((e.completed / e.due) * 100) : null,
+        completion: Object.fromEntries(Object.keys(periods).map((k) => {
+          const p = e?.per[k];
+          return [k, p && p.due ? Math.round((p.done / p.due) * 100) : null];
+        })),
         assignmentCount: e?.total || 0,
         overdueCount: e?.overdue || 0,
         week: e?.week || [],

@@ -38,7 +38,7 @@ const RAWS = {
   "s-ece": makeFixture({ sparse: true, seed: 7 }), // Yolunda
 };
 const expected = (id) => buildReport(RAWS[id], { window: "4w" }).coach;
-const rowOf = (name) => screen.getByRole("button", { name: new RegExp(name) });
+const rowOf = (name) => screen.getByRole("button", { name: new RegExp(name) }).closest("[data-student-card]");
 const order = () => screen.getAllByRole("button").map((b) => b.textContent).filter((t) => /Kurgu|Örnek|Deneme|Taslak|Model/.test(t)).map((t) => t.match(/Ada|Bora|Cem|Dila|Ece/)[0]);
 
 beforeEach(() => {
@@ -99,11 +99,11 @@ describe("TeacherStudentsScreen", { timeout: 30000 }, () => {
 
   it("sıra: önce gecikmesi olanlar, sonra tamamlama oranı düşük olanlar; kartta tamamlama yüzdesi", async () => {
     api.teacherListStudents.mockResolvedValue({ students: [
-      row("s-ada", "Ada Kurgu", { completionRate: 100 }),
-      row("s-bora", "Bora Örnek", { completionRate: 20 }),
-      row("s-cem", "Cem Deneme", { overdueCount: 1, completionRate: 90 }),
-      row("s-dila", "Dila Taslak", { completionRate: 50 }),
-      row("s-ece", "Ece Model", { completionRate: null }),
+      row("s-ada", "Ada Kurgu", { completion: { day: null, week: 100, month: 10 } }),
+      row("s-bora", "Bora Örnek", { completion: { day: null, week: 20, month: 90 } }),
+      row("s-cem", "Cem Deneme", { overdueCount: 1, completion: { day: null, week: 90, month: 90 } }),
+      row("s-dila", "Dila Taslak", { completion: { day: null, week: 50, month: 50 } }),
+      row("s-ece", "Ece Model", { completion: { day: null, week: null, month: null } }),
     ] });
     render(<TeacherStudentsScreen user={coach} onOpen={vi.fn()} />);
     await screen.findByText("Ada Kurgu", {}, { timeout: 8000 });
@@ -128,6 +128,27 @@ describe("TeacherStudentsScreen", { timeout: 30000 }, () => {
     // Yalnızca önbelleğe girmeyen (hata veren) öğrenci yeniden denenir.
     await waitFor(() => expect(api.getFullReport.mock.calls.length).toBe(calls + 1), { timeout: 8000 });
     expect(api.getFullReport.mock.calls.at(-1)[0]).toBe("s-dila");
+  });
+
+  it("yüzdeye dokununca dönem seçilir, tercih hatırlanır; kart açılmaz", async () => {
+    api.teacherListStudents.mockResolvedValue({ students: [
+      row("s-ada", "Ada Kurgu", { completion: { day: 100, week: 100, month: 10 } }),
+      row("s-bora", "Bora Örnek", { completion: { day: null, week: 20, month: 90 } }),
+    ] });
+    const onOpen = vi.fn();
+    render(<TeacherStudentsScreen user={coach} onOpen={onOpen} />);
+    await screen.findByText("Ada Kurgu", {}, { timeout: 8000 });
+    expect(order()).toEqual(["Bora", "Ada"]); // varsayılan haftalık: %20 önce
+    fireEvent.click(within(rowOf("Ada Kurgu")).getByRole("button", { name: /Tamamlama/ }));
+    expect(onOpen).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("radio", { name: /Aylık/ }));
+    expect(localStorage.getItem("kocluk-completion-period")).toBe("month");
+    expect(rowOf("Ada Kurgu").textContent).toContain("%10");
+    expect(order()).toEqual(["Ada", "Bora"]); // aylık: %10 önce
+    cleanup();
+    render(<TeacherStudentsScreen user={coach} onOpen={onOpen} />);
+    await screen.findByText("Ada Kurgu", {}, { timeout: 8000 });
+    expect(rowOf("Ada Kurgu").textContent).toContain("%10"); // tercih hatırlandı
   });
 
   it("karta dokununca öğrenci açılır", async () => {

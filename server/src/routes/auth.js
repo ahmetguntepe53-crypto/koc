@@ -11,6 +11,7 @@ import { sendPasswordResetEmail } from "../mailer.js";
 import { handleErr } from "../handleErr.js";
 import { loginLimiter, loginIpLimiter, forgotPasswordLimiter, forgotPasswordIpLimiter, resetPasswordLimiter, setPasswordLimiter, deleteAccountLimiter } from "../middleware/rateLimiters.js";
 import { assert, passwordProblem } from "../validators.js";
+import { normalizeField } from "../subjects.js";
 import { recipientPhotosDir } from "../uploads.js";
 
 // İstemciye dönen kullanıcı — öğrenciye koçunun adı eklenir (ana ekran başlığı "Koçun: …").
@@ -194,6 +195,21 @@ authRouter.get("/me", requireAuth, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
     if (!user) return res.status(404).json({ error: "Kullanıcı bulunamadı" });
+    res.json({ user: await meResponse(user) });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Öğrenci kendi YKS alanını (SAY / EA / SÖZ / DİL) profilinden seçer; koçu ve rapor bu alanı okur.
+// Gövde { field }: null ya da "" alanı siler.
+authRouter.patch("/me/field", requireAuth, async (req, res) => {
+  try {
+    assert(req.userRole === "STUDENT", "YKS alanını yalnızca öğrenci kendisi seçer", 403);
+    assert(req.body && Object.prototype.hasOwnProperty.call(req.body, "field"), "field gerekli");
+    const field = normalizeField(req.body.field);
+    assert(field !== undefined, "Geçersiz YKS alanı — SAY, EA, SÖZ ya da DİL olmalı");
+    const user = await prisma.user.update({ where: { id: req.userId }, data: { field } });
     res.json({ user: await meResponse(user) });
   } catch (e) {
     handleErr(res, e);
