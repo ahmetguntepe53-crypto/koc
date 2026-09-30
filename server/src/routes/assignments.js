@@ -256,10 +256,63 @@ async function loadOwnedDraftAssignment(req) {
   return assignment;
 }
 
+// Gönderilmiş ödevde yalnızca öğrencinin elindeki ödevi bozmayan alanlar düzenlenebilir: konu, kaynak,
+// sayfa/soru, not ve son gün. Ders/sınav türü/başlangıç/gönderim modu alıcılar sabitlendikten sonra değişmez.
+const SENT_EDITABLE = ["topic", "sourceBook", "pageRange", "note", "endDate"];
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+async function patchSentAssignment(req, existing) {
+  const body = req.body || {};
+  const locked = Object.keys(body).filter((k) => body[k] !== undefined && !SENT_EDITABLE.includes(k));
+  assert(locked.length === 0, "Gönderilmiş ödevde yalnızca konu, kaynak, sayfa/soru, not ve son gün değiştirilebilir", 409);
+  const { topic, sourceBook, pageRange, note, endDate } = body;
+  const data = {};
+  if (topic !== undefined) { assert(String(topic).trim(), "Konu gerekli"); data.topic = String(topic).trim(); }
+  if (sourceBook !== undefined) data.sourceBook = sourceBook ? String(sourceBook).trim() : null;
+  if (pageRange !== undefined) data.pageRange = pageRange ? String(pageRange).trim() : null;
+  if (note !== undefined) data.note = note ? String(note).trim() : null;
+  let extended = false;
+  if (endDate !== undefined) {
+    const end = new Date(endDate);
+    assert(!Number.isNaN(end.getTime()), "Geçerli bir bitiş tarihi gerekli");
+    assert(end >= existing.scheduledDate, "Bitiş tarihi başlangıç tarihinden önce olamaz");
+    extended = end > existing.endDate;
+    data.endDate = end;
+  }
+  const assignment = await prisma.$transaction(async (tx) => {
+    // Son gün ileri alındıysa, bitirmemiş öğrencilere "son gün" ve "gecikti" hatırlatmaları yeni tarihe
+    // göre yeniden gidebilsin.
+    if (extended) {
+      await tx.assignmentRecipient.updateMany({
+        where: { assignmentId: existing.id, completed: false },
+        data: { overdueReminderSentAt: null, dueReminderSentAt: null },
+      });
+    }
+    return tx.assignment.update({ where: { id: existing.id }, data, include: recipientInclude });
+  });
+  if (data.endDate && data.endDate.getTime() !== existing.endDate.getTime()) {
+    const due = data.endDate.toLocaleDateString("tr-TR", { day: "numeric", month: "long", timeZone: "UTC" });
+    const pending = assignment.recipients.filter((r) => !r.completed);
+    try {
+      await Promise.all(pending.map((r) => notifyUser(r.studentId, `"${assignment.subject} — ${assignment.topic}" ödevinin son günü ${due} olarak güncellendi.`, {
+        type: "assignment", data: { screen: "assignmentSubmit", recipientId: r.id, subject: assignment.subject },
+      })));
+    } catch (e) {
+      console.error(`[assignments] son gün bildirimi yazılamadı (assignment ${existing.id}):`, e.message);
+    }
+  }
+  return assignment;
+}
+
 assignmentsRouter.patch("/:id", async (req, res) => {
   try {
+    const owned = await prisma.assignment.findUnique({ where: { id: req.params.id } });
+    assert(owned, "Ödev bulunamadı", 404);
+    assert(req.userRole === "TEACHER" && owned.teacherId === req.userId, "Bu işlem için yetkin yok", 403);
+    if (owned.status === "SENT") return res.json({ assignment: withSuccessStats(await patchSentAssignment(req, owned)) });
+
     const existing = await loadOwnedDraftAssignment(req);
-    const { examType, subject, topic, sourceBook, pageRange, scheduledDate, endDate, sendMode, period } = req.body || {};
+    const { examType, subject, topic, sourceBook, pageRange, scheduledDate, endDate, sendMode, period, note } = req.body || {};
     const finalExamType = examType !== undefined ? examType : existing.examType;
     const data = {};
     if (examType !== undefined) {
@@ -285,6 +338,7 @@ assignmentsRouter.patch("/:id", async (req, res) => {
     if (topic !== undefined) { assert(String(topic).trim(), "Konu gerekli"); data.topic = String(topic).trim(); }
     if (sourceBook !== undefined) data.sourceBook = sourceBook ? String(sourceBook).trim() : null;
     if (pageRange !== undefined) data.pageRange = pageRange ? String(pageRange).trim() : null;
+    if (note !== undefined) data.note = note ? String(note).trim() : null;
     if (scheduledDate !== undefined) { assert(!Number.isNaN(new Date(scheduledDate).getTime()), "Geçerli bir başlangıç tarihi gerekli"); data.scheduledDate = new Date(scheduledDate); }
     if (endDate !== undefined) { assert(!Number.isNaN(new Date(endDate).getTime()), "Geçerli bir bitiş tarihi gerekli"); data.endDate = new Date(endDate); }
     if (data.scheduledDate || data.endDate) {
@@ -295,7 +349,37 @@ assignmentsRouter.patch("/:id", async (req, res) => {
     if (sendMode !== undefined) { assert(SEND_MODES.includes(sendMode), "Geçersiz gönderim modu"); data.sendMode = sendMode; }
     if (period !== undefined) { assert(PERIODS.includes(period), "Geçersiz periyot"); data.period = period; }
     const assignment = await prisma.assignment.update({ where: { id: req.params.id }, data, include: recipientInclude });
-    res.json({ assignment });
+    res.json({ assignment: withSuccessStats(assignment) });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// "Hatırlat": ödevin sahibi öğretmen, süresi geçmiş ve sonucunu girmemiş (pas da geçmemiş) bir öğrenciye
+// elle bildirim gönderir. Aynı öğrenciye aynı ödev için günde en fazla bir kez.
+assignmentsRouter.post("/:id/recipients/:recipientId/remind", async (req, res) => {
+  try {
+    const recipient = await prisma.assignmentRecipient.findUnique({
+      where: { id: req.params.recipientId },
+      include: { assignment: { include: { teacher: { select: { name: true } } } } },
+    });
+    assert(recipient && recipient.assignmentId === req.params.id, "Öğrenci bu ödevde bulunamadı", 404);
+    const a = recipient.assignment;
+    assert(req.userRole === "TEACHER" && a.teacherId === req.userId, "Bu işlem için yetkin yok", 403);
+    const now = new Date();
+    assert(a.status === "SENT" && a.endDate < now, "Bu ödevin süresi henüz dolmadı", 409);
+    assert(!recipient.completed && !recipient.skippedAt, "Bu öğrenci ödevi zaten tamamladı ya da pas geçti", 409);
+    assert(!recipient.manualReminderSentAt || now - recipient.manualReminderSentAt >= DAY_MS, "Bu öğrenciye bugün zaten hatırlatma gönderdin", 429);
+    // Koşullu güncelleme: çift tıklamada ikinci istek bildirim göndermesin.
+    const claim = await prisma.assignmentRecipient.updateMany({
+      where: { id: recipient.id, manualReminderSentAt: recipient.manualReminderSentAt },
+      data: { manualReminderSentAt: now },
+    });
+    assert(claim.count === 1, "Bu öğrenciye az önce hatırlatma gönderildi", 409);
+    await notifyUser(recipient.studentId, `${a.teacher.name} hatırlatıyor: "${a.subject} — ${a.topic}" ödevinin süresi geçti, sonucunu henüz girmedin.`, {
+      type: "assignment_overdue", data: { screen: "assignmentSubmit", recipientId: recipient.id }, now,
+    });
+    res.json({ manualReminderSentAt: now });
   } catch (e) {
     handleErr(res, e);
   }

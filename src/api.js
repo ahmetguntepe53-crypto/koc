@@ -159,6 +159,7 @@ export const api = {
   updateAssignment: (id, patch) => request(`/assignments/${id}`, { method: "PATCH", body: patch }),
   deleteAssignment: (id) => request(`/assignments/${id}`, { method: "DELETE" }),
   sendAssignmentNow: (id) => request(`/assignments/${id}/send-now`, { method: "POST" }),
+  remindRecipient: (assignmentId, recipientId) => request(`/assignments/${assignmentId}/recipients/${recipientId}/remind`, { method: "POST" }),
   listSourceBooks: (examType) => request(`/assignments/source-books${examType ? `?examType=${encodeURIComponent(examType)}` : ""}`),
   // Branş öğretmeninin ödev gönderebileceği okul genelindeki öğrenciler (yalnızca branş öğretmenleri).
   assignmentAudience: () => request("/assignments/audience"),

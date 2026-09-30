@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Bell, TrendingUp, Check, Clock, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, Bell, TrendingUp, Check, Clock, Star, Pencil } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
-import { Card, Button, EmptyState, Avatar, Modal, LoadingState, confirmDialog, SegmentBar, Legend, HeaderIconButton } from "../../components/common.jsx";
+import { Card, Button, EmptyState, Avatar, Modal, LoadingState, confirmDialog, SegmentBar, Legend, HeaderIconButton, Input, Textarea } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, OverlapCard, SegmentFilter, StatusChip, ProgressRing, NUM } from "../../components/brand.jsx";
 import { api, photoUrl } from "../../api.js";
 import { STATUS_LABELS } from "../../subjects.js";
@@ -12,6 +12,12 @@ function fmtNet(v) {
   return Number(v).toLocaleString("tr-TR", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 }
 const netOf = (s) => (s ? s.correctCount - s.wrongCount / 4 : null);
+const DAY_MS = 86400000;
+// <input type="date"> değeri — cihazın yerel takvim günü.
+const ymd = (iso) => {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 const shortDate = (iso) => new Date(iso).toLocaleDateString("tr-TR", { day: "numeric", month: "short" });
 const monthName = (d) => d.toLocaleDateString("tr-TR", { month: "long" });
 function rangeLabel(startIso, endIso) {
@@ -36,6 +42,7 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
   const [busy, setBusy] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { photos, index }
   const [filter, setFilter] = useState("all");
+  const [editing, setEditing] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -61,12 +68,11 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
     try { await api.deleteAssignment(assignmentId); onBack(); } catch (e) { setActionError(e.message); setBusy(false); }
   };
 
-  // Düzenle (kalem) düğmesi yok: istemcide ödev düzenleme ekranı bulunmuyor (sunucu yalnızca TASLAĞI
-  // düzenlemeye izin veriyor). TODO: düzenleme akışı eklenince buraya HeaderIconButton(Pencil).
   const header = (
     <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
       <HeaderIconButton onBrand icon={ChevronLeft} label="Geri" onClick={onBack} />
       <h1 style={{ flex: 1, minWidth: 0, margin: 0, fontFamily: displayFont, fontSize: 17, fontWeight: 600, color: C.onBrand }}>Ödev detayı</h1>
+      {assignment && !assignment.readOnly && <HeaderIconButton onBrand icon={Pencil} label="Ödevi düzenle" onClick={() => setEditing(true)} />}
       <HeroBell unreadCount={unreadCount} onClick={onOpenNotifications} />
     </div>
   );
@@ -189,11 +195,20 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
             <StudentCard
               key={r.id} r={r} net={net} pct={pct} state={state} Q={Q} isSent={isSent}
               best={bestNet != null && net === bestNet} endDate={assignment.endDate}
+              assignmentId={assignment.id} canRemind={!readOnly}
               onPhoto={(i) => setLightbox({ photos: r.photos, index: i })}
             />
           ))}
         </div>
       </div>
+
+      {editing && (
+        <EditAssignmentModal
+          assignment={assignment}
+          onClose={() => setEditing(false)}
+          onSaved={(updated) => { setAssignment((prev) => ({ ...prev, ...updated })); setEditing(false); }}
+        />
+      )}
 
       {lightbox && (
         <Modal title={`Kanıt Fotoğrafı (${lightbox.index + 1}/${lightbox.photos.length})`} onClose={() => setLightbox(null)}>
@@ -240,7 +255,23 @@ function StatBox({ icon: Icon, tint, color, label, value }) {
   );
 }
 
-function StudentCard({ r, net, pct, state, Q, isSent, best, endDate, onPhoto }) {
+function StudentCard({ r, net, pct, state, Q, isSent, best, endDate, onPhoto, assignmentId, canRemind }) {
+  const [remindedAt, setRemindedAt] = useState(r.manualReminderSentAt);
+  const [reminding, setReminding] = useState(false);
+  const [remindError, setRemindError] = useState("");
+  const reminded = remindedAt && Date.now() - new Date(remindedAt).getTime() < DAY_MS;
+  const remind = async () => {
+    setReminding(true);
+    setRemindError("");
+    try {
+      const res = await api.remindRecipient(assignmentId, r.id);
+      setRemindedAt(res.manualReminderSentAt);
+    } catch (e) {
+      setRemindError(e.message || "Hatırlatma gönderilemedi");
+    } finally {
+      setReminding(false);
+    }
+  };
   const sub = r.submission;
   const overdue = state === "overdue";
   const meta = sub ? `${shortDate(r.completedAt || sub.createdAt)} teslim`
@@ -290,19 +321,33 @@ function StudentCard({ r, net, pct, state, Q, isSent, best, endDate, onPhoto }) 
       {overdue && (
         <div style={{ marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
           <span style={{ ...NUM, fontSize: 12.5, color: C.dangerText }}>Son gün {shortDate(endDate)} geçti, teslim yok</span>
-          {/* Öğretmenin tek öğrenciye elle hatırlatma göndereceği bir servis YOK — gecikme hatırlatmasını
-              sunucudaki zamanlayıcı kendisi, bir kez atıyor (scheduler.js > overdueReminderSentAt). Burada o
-              gerçek durum gösteriliyor. TODO: elle hatırlatma ucu eklenince "Hatırlat" düğmesi (danger zemin). */}
-          {r.overdueReminderSentAt && (
-            <span title={`Otomatik hatırlatma: ${shortDate(r.overdueReminderSentAt)}`} style={{
-              minHeight: 40, padding: "0 14px", borderRadius: 999, background: C.surface, color: C.dangerText,
-              display: "inline-flex", alignItems: "center", gap: 6, fontFamily: bodyFont, fontSize: 13, fontWeight: 700,
+          {/* Öğretmen günde bir kez elle hatırlatabilir (server > .../remind); sunucunun kendi otomatik gecikme
+              hatırlatması ayrıca gider. */}
+          {canRemind && (reminded ? (
+            <span role="status" style={{
+              minHeight: 44, padding: "0 16px", borderRadius: 999, background: C.surface, color: C.dangerText,
+              display: "inline-flex", alignItems: "center", gap: 6, fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700,
             }}>
-              <Bell size={15} strokeWidth={2.4} aria-hidden="true" />Hatırlatıldı
+              <Check size={15} strokeWidth={2.6} aria-hidden="true" />Hatırlatıldı
             </span>
-          )}
+          ) : (
+            <button
+              type="button"
+              onClick={remind}
+              disabled={reminding}
+              className="k-btn"
+              style={{
+                minHeight: 44, padding: "0 18px", borderRadius: 999, border: "none", cursor: reminding ? "default" : "pointer",
+                background: C.danger, color: C.onBrand, opacity: reminding ? 0.7 : 1,
+                display: "inline-flex", alignItems: "center", gap: 6, fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700,
+              }}
+            >
+              <Bell size={15} strokeWidth={2.4} aria-hidden="true" />{reminding ? "Gönderiliyor…" : "Hatırlat"}
+            </button>
+          ))}
         </div>
       )}
+      {remindError && <div role="alert" style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.dangerText, marginTop: 8 }}>{remindError}</div>}
       {state === "skipped" && r.skipReason && (
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 8, fontStyle: "italic" }}>"{r.skipReason}"</div>
       )}
@@ -325,5 +370,59 @@ function StudentCard({ r, net, pct, state, Q, isSent, best, endDate, onPhoto }) 
         </div>
       )}
     </Card>
+  );
+}
+
+// Gönderilmiş ödevde sunucu yalnızca bu alanları kabul eder (ders/sınav türü/başlangıç kilitli); son gün
+// değişirse bitirmemiş öğrencilere bildirim gider.
+function EditAssignmentModal({ assignment, onClose, onSaved }) {
+  const [topic, setTopic] = useState(assignment.topic);
+  const [sourceBook, setSourceBook] = useState(assignment.sourceBook || "");
+  const [pageRange, setPageRange] = useState(assignment.pageRange || "");
+  const [endDate, setEndDate] = useState(ymd(assignment.endDate));
+  const [note, setNote] = useState(assignment.note || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const minEnd = ymd(assignment.scheduledDate);
+
+  const save = async () => {
+    if (!topic.trim()) { setError("Konu boş olamaz"); return; }
+    if (!endDate || endDate < minEnd) { setError("Son gün başlangıçtan önce olamaz"); return; }
+    const patch = {};
+    if (topic.trim() !== assignment.topic) patch.topic = topic.trim();
+    if (sourceBook.trim() !== (assignment.sourceBook || "")) patch.sourceBook = sourceBook.trim();
+    if (pageRange.trim() !== (assignment.pageRange || "")) patch.pageRange = pageRange.trim();
+    if (note.trim() !== (assignment.note || "")) patch.note = note.trim();
+    if (endDate !== ymd(assignment.endDate)) patch.endDate = endDate;
+    if (!Object.keys(patch).length) { onClose(); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const { assignment: updated } = await api.updateAssignment(assignment.id, patch);
+      onSaved(updated);
+    } catch (e) {
+      setError(e.message || "Kaydedilemedi");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Ödevi düzenle" onClose={onClose}>
+      <Input label="Konu" value={topic} onChange={(e) => setTopic(e.target.value)} />
+      <Input label="Kaynak kitap" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} placeholder="opsiyonel" />
+      <Input label="Sayfa / soru" value={pageRange} onChange={(e) => setPageRange(e.target.value)} placeholder="ör. 20 soru" />
+      <Input label="Son gün" type="date" value={endDate} min={minEnd} onChange={(e) => setEndDate(e.target.value)} />
+      <Textarea label="Not" value={note} onChange={(e) => setNote(e.target.value)} rows={3} placeholder="opsiyonel" />
+      {assignment.status === "SENT" && (
+        <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, marginBottom: 14, lineHeight: 1.45 }}>
+          Ders ve sınav türü gönderildikten sonra değiştirilemez. Son günü değiştirirsen henüz bitirmemiş öğrencilere bildirim gider.
+        </div>
+      )}
+      {error && <div role="alert" style={{ color: C.red, fontSize: 13, marginBottom: 12 }}>{error}</div>}
+      <div style={{ display: "flex", gap: 10 }}>
+        <Button variant="secondary" onClick={onClose} style={{ flex: 1 }}>Vazgeç</Button>
+        <Button onClick={save} disabled={saving} style={{ flex: 1 }}>{saving ? "Kaydediliyor…" : "Kaydet"}</Button>
+      </div>
+    </Modal>
   );
 }

@@ -289,6 +289,9 @@ model AssignmentRecipient {
   // Bitiş günü 18:00'de (Türkiye) "bugün son gün" hatırlatması gönderildiği an — scheduler.js >
   // notifyDueToday; gecikme hatırlatmasından ayrı, her ikisi de alıcı başına en fazla bir kez gider.
   dueReminderSentAt DateTime?
+  // Öğretmenin "Hatırlat" düğmesiyle bu öğrenciye elle gönderdiği son hatırlatma — günde en fazla bir kez
+  // (routes/assignments.js > remind). Zamanlayıcının otomatik gecikme hatırlatmasından (overdueReminderSentAt) ayrı.
+  manualReminderSentAt DateTime?
   // Öğrenci ödevi çözemediyse "pas geçer" — boş bırakmaktan farklı: sebebi sorulur (KONU: konuyu
   // bilmiyorum, ZAMAN: zaman yetmedi, KAYNAK: kaynağım yok, DIGER: başka sebep + skipNote). Pas geçilen
   // ödeve gecikme/son gün hatırlatması gitmez; öğrenci sonradan sonucunu girerse pas kaldırılır.
