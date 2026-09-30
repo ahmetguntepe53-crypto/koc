@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BookOpen, ChevronDown, ChevronRight, CalendarDays, Users } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
 import { Card, Avatar, EmptyState, LoadingState } from "../../components/common.jsx";
-import { HeroHeader, HeroBell, OverlapCard, SegmentFilter, StatusChip, ProgressRing, NUM } from "../../components/brand.jsx";
+import { HeroHeader, HeroBell, HeroStat, OverlapCard, SegmentFilter, StatusChip, ProgressRing, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
 import { daysUntil } from "../../dates.js";
 
@@ -149,15 +149,6 @@ export default function AssignmentListScreen({ onOpen, refreshKey, user, unreadC
           </section>
         ))}
       </div>
-    </div>
-  );
-}
-
-function HeroStat({ label, value, lime }) {
-  return (
-    <div style={{ minWidth: 0, borderRadius: 16, padding: "12px 12px 10px", background: lime ? C.lime : C.onBrandBox, color: lime ? C.ink : C.onBrand }}>
-      <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1.1 }}>{value}</div>
-      <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: lime ? 700 : 500, marginTop: 4 }}>{label}</div>
     </div>
   );
 }

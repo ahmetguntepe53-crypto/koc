@@ -120,7 +120,7 @@ export default function App() {
   const [screen, setScreen] = useState(null);
   // Mor üst alanlı ekran: genel başlık gizlenir (ekran kendi başlığını mor alanın içinde çizer), durum
   // çubuğu şeridi de aynı mora boyanır — yoksa saatin olduğu şerit ile mor alan arasında renk kırılırdı.
-  const heroScreen = screen === "assignmentDetail" || screen === "assignments";
+  const heroScreen = screen === "assignmentDetail" || screen === "assignments" || screen === "students";
   useEffect(() => {
     if (heroScreen) setStatusBarTheme(true, C.brand);
     else setStatusBarTheme(theme === "dark");
@@ -635,7 +635,7 @@ function renderScreen({
   selectedStudentName, reportReturnTo, openReport, backFromReport,
   coachNoteOpen, onCloseNote, openNotificationTarget, setHeader, openStudyLog, openPlan,
   reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill, openStudyLogPrefilled, openAssignPrefilled,
-  openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications,
+  openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly,
 }) {
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
@@ -660,7 +660,7 @@ function renderScreen({
   if (authUser.role === "ADMIN" && screen === "users") return <AdminUsersScreen />;
   if (authUser.role === "ADMIN" && screen === "photos") return <AdminPhotosScreen />;
   if (authUser.role === "TEACHER") {
-    if (screen === "students") return <TeacherStudentsScreen user={authUser} onOpen={openStudent} setHeader={setHeader} />;
+    if (screen === "students") return <TeacherStudentsScreen user={authUser} onOpen={openStudent} unreadCount={unreadCount} onOpenNotifications={openNotifications} onOpenMonthly={() => openMonthly(null)} />;
     if (screen === "monthlyReports") {
       return (
         <MonthlyReportsScreen

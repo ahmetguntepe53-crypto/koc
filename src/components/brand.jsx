@@ -100,3 +100,32 @@ export function ProgressRing({ size, stroke, value, color, track, label, showZer
     </div>
   );
 }
+
+// Üst alandaki özet kutusu (beyaz %12 zemin; lime: öne çıkan kutu, ink yazı).
+export function HeroStat({ label, value, lime }) {
+  return (
+    <div style={{ minWidth: 0, borderRadius: 16, padding: "12px 12px 10px", background: lime ? C.lime : C.onBrandBox, color: lime ? C.ink : C.onBrand }}>
+      <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: lime ? 700 : 500, marginTop: 4 }}>{label}</div>
+    </div>
+  );
+}
+
+// Üst alandaki metinli düğme (ör. "Aylık rapor") — ikon düğmeleriyle aynı zemin ve yükseklik.
+export function HeroTextButton({ icon: Icon, label, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="k-icon-btn"
+      style={{
+        height: 44, padding: "0 14px", borderRadius: 14, border: "none", flexShrink: 0, cursor: "pointer",
+        display: "inline-flex", alignItems: "center", gap: 7, background: C.onBrandSoft, color: C.onBrand,
+        fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700, whiteSpace: "nowrap",
+      }}
+    >
+      {Icon && <Icon size={16} strokeWidth={2.2} aria-hidden="true" />}
+      {label}
+    </button>
+  );
+}

@@ -3,10 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within, cleanup } from "@testing-library/react";
 import { makeFixture, FIXTURE_NOW } from "./fixtures/reportFixture.js";
 import { buildReport } from "../src/reportModel.js";
-import { C } from "../src/theme.js";
 
-// Öğrencilerim (koç) — isim yanındaki durum çipi. api sahte, rapor modeli GERÇEK: çip, aynı yanıttan raporun
-// koç panelinin gösterdiği durumla birebir aynı olmalı. Tüm isimler ve veriler kurgusal.
+// Öğrencilerim (koç). api sahte, rapor modeli GERÇEK: kartın gerekçe çipi, aynı yanıttan raporun koç panelinin
+// gösterdiği ilk gerekçeyle birebir aynı olmalı. Durum etiketi (Müdahale / Takip et / Yolunda) listede gösterilmez.
+// Tüm isimler ve veriler kurgusal.
 vi.mock("../src/api.js", async () => {
   const actual = await vi.importActual("../src/api.js");
   return { ...actual, api: { ...actual.api, teacherListStudents: vi.fn(), getFullReport: vi.fn() } };
@@ -23,7 +23,7 @@ const row = (id, name, extra = {}) => ({
   id, name, gradeLevel: 12, banned: false, lastSeenAt: seenToday, createdAt: "2026-09-01T09:00:00Z",
   overdueCount: 0, week: [], weekNet: null, prevWeekNet: null, mine: { done: 0, total: 0 }, ...extra,
 });
-// Varsayılan sıra (en geriden): gecikme sayısı çoktan aza → Ece, Ada, Bora, Cem, Dila.
+// Sıra: önce gecikmesi olanlar (çoktan aza) → Ece, Ada, Bora, Cem; sonra Dila.
 const STUDENTS = [
   row("s-ada", "Ada Kurgu", { overdueCount: 3 }),
   row("s-bora", "Bora Örnek", { overdueCount: 2 }),
@@ -53,6 +53,7 @@ beforeEach(() => {
     removeItem: (k) => store.delete(k),
     clear: () => store.clear(),
   });
+  api.getFullReport.mockClear();
   api.teacherListStudents.mockResolvedValue({ students: STUDENTS });
   api.getFullReport.mockImplementation(async (id) => {
     if (id === "s-dila") throw new Error("Sunucuyla iletişim kurulamadı");
@@ -65,8 +66,8 @@ beforeEach(() => {
 let releaseGate = null;
 afterEach(() => { releaseGate?.(); releaseGate = null; cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-describe("TeacherStudentsScreen — durum çipi", { timeout: 30000 }, () => {
-  it("liste durumları beklemeden çizilir; çipler geldikçe belirir", async () => {
+describe("TeacherStudentsScreen", { timeout: 30000 }, () => {
+  it("liste gerekçeleri beklemeden çizilir; istekler listedeki sırayla, en fazla 2'şer", async () => {
     let release;
     const gate = new Promise((r) => { release = r; });
     releaseGate = release;
@@ -74,90 +75,62 @@ describe("TeacherStudentsScreen — durum çipi", { timeout: 30000 }, () => {
     render(<TeacherStudentsScreen user={coach} onOpen={vi.fn()} />);
     await screen.findByText("Ada Kurgu", {}, { timeout: 8000 });
     for (const n of ["Bora Örnek", "Cem Deneme", "Dila Taslak", "Ece Model"]) expect(screen.getByText(n)).toBeInTheDocument();
-    expect(screen.queryByText("Müdahale")).toBeNull();
-    expect(screen.getByText(/Durumlar hesaplanıyor/)).toBeInTheDocument();
-    // Liste sırasıyla (en geriden) istenir: önce Ece, sonra Ada; aynı anda en fazla 2.
     await waitFor(() => expect(api.getFullReport).toHaveBeenCalledTimes(2), { timeout: 8000 });
     expect(api.getFullReport.mock.calls.map((c) => c[0])).toEqual(["s-ece", "s-ada"]);
     release();
-    await within(rowOf("Bora Örnek")).findByText("Müdahale", {}, { timeout: 8000 });
+    const reason = expected("s-bora").reasons[0];
+    await waitFor(() => expect(rowOf("Bora Örnek").textContent).toContain(reason), { timeout: 8000 });
   });
 
-  it("çip ve ilk neden, raporun koç panelindeki durumun aynısı; hata olan öğrencide çip yok", async () => {
+  it("gerekçe çipi raporun koç panelindeki ilk gerekçe; durum etiketi hiç yok", async () => {
     render(<TeacherStudentsScreen user={coach} onOpen={vi.fn()} />);
     await screen.findByText("Ada Kurgu", {}, { timeout: 8000 });
-    await waitFor(() => expect(screen.queryByText(/Durumlar hesaplanıyor/)).toBeNull(), { timeout: 8000 });
-
-    for (const [id, name] of [["s-ada", "Ada Kurgu"], ["s-bora", "Bora Örnek"], ["s-cem", "Cem Deneme"], ["s-ece", "Ece Model"]]) {
-      const c = expected(id);
-      const r = rowOf(name);
-      expect(within(r).getByText(c.statusLabel)).toBeInTheDocument();
-      if (c.reasons[0]) expect(r.textContent).toContain(c.reasons[0]);
-    }
-    expect(expected("s-bora").status).toBe("intervene");
-    expect(expected("s-ada").status).toBe("watch");
-    expect(expected("s-cem").status).toBe("ok");
-    // Çip tonları: Müdahale kırmızı, Takip et sarı, Yolunda yeşil (Pill yazı rengi durum tonundan).
-    const hex = (el) => el.style.color.replace(/\s/g, "").toLowerCase();
-    const rgb = (h) => `rgb(${parseInt(h.slice(1, 3), 16)},${parseInt(h.slice(3, 5), 16)},${parseInt(h.slice(5, 7), 16)})`;
-    expect(hex(within(rowOf("Bora Örnek")).getByText("Müdahale"))).toBe(rgb(C.red));
-    expect(hex(within(rowOf("Ada Kurgu")).getByText("Takip et"))).toBe(rgb(C.amber));
-    expect(hex(within(rowOf("Cem Deneme")).getByText("Yolunda"))).toBe(rgb(C.green));
-    const dila = rowOf("Dila Taslak");
-    for (const label of ["Müdahale", "Takip et", "Yolunda"]) expect(within(dila).queryByText(label)).toBeNull();
-    // Özet satırı (yalnızca gelen durumlar sayılır) ve dil kuralı.
-    const summary = screen.getByText(/müdahale ·/).closest("span");
-    expect(summary.textContent).toBe("1 müdahale · 1 takip et · 2 yolunda");
-    const chipTexts = [...document.querySelectorAll(".k-list-row")].map((b) => b.textContent).join(" ");
-    expect(chipTexts).not.toMatch(/zayıf|kötü|başarısız|tembel|hile/i);
+    await waitFor(() => expect(api.getFullReport).toHaveBeenCalledTimes(5), { timeout: 8000 });
+    await waitFor(() => {
+      for (const [id, name] of [["s-ada", "Ada Kurgu"], ["s-bora", "Bora Örnek"], ["s-cem", "Cem Deneme"], ["s-ece", "Ece Model"]]) {
+        const r = expected(id).reasons[0];
+        if (r) expect(rowOf(name).textContent).toContain(r);
+      }
+    }, { timeout: 8000 });
+    for (const label of ["Müdahale", "Takip et", "Yolunda", "Önce müdahale"]) expect(screen.queryByText(label)).toBeNull();
+    expect(screen.queryByText(/müdahale ·/)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/zayıf|kötü|başarısız|tembel|hile/i);
   });
 
-  it("'Önce müdahale': sıra durum önceliğine göre, eşitlikte en geriden; tercih hatırlanır", async () => {
+  it("sıra: önce gecikmesi olanlar, sonra 'benim ödevim' oranı düşük olanlar", async () => {
+    api.teacherListStudents.mockResolvedValue({ students: [
+      row("s-ada", "Ada Kurgu", { mine: { done: 2, total: 2 } }),
+      row("s-bora", "Bora Örnek", { mine: { done: 0, total: 2 } }),
+      row("s-cem", "Cem Deneme", { overdueCount: 1, mine: { done: 3, total: 3 } }),
+      row("s-dila", "Dila Taslak", { mine: { done: 1, total: 2 } }),
+      row("s-ece", "Ece Model"),
+    ] });
     render(<TeacherStudentsScreen user={coach} onOpen={vi.fn()} />);
     await screen.findByText("Ada Kurgu", {}, { timeout: 8000 });
-    await waitFor(() => expect(screen.queryByText(/Durumlar hesaplanıyor/)).toBeNull(), { timeout: 8000 });
-    expect(order()).toEqual(["Ece", "Ada", "Bora", "Cem", "Dila"]); // varsayılan sıra değişmedi
-
-    const toggle = screen.getByRole("button", { name: "Önce müdahale" });
-    expect(toggle).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-pressed", "true");
-    expect(order()).toEqual(["Bora", "Ada", "Ece", "Cem", "Dila"]);
-    expect(screen.getByText("ÖNCE MÜDAHALE GEREKENLER")).toBeInTheDocument();
-    expect(localStorage.getItem("kocluk-students-sort")).toBe("status");
-
-    fireEvent.click(toggle);
-    expect(order()).toEqual(["Ece", "Ada", "Bora", "Cem", "Dila"]);
-    expect(localStorage.getItem("kocluk-students-sort")).toBeNull();
+    expect(order()).toEqual(["Cem", "Bora", "Dila", "Ada", "Ece"]);
   });
 
-  it("kaydedilmiş 'Önce müdahale' tercihiyle açılır", async () => {
-    localStorage.setItem("kocluk-students-sort", "status");
-    render(<TeacherStudentsScreen user={coach} onOpen={vi.fn()} />);
-    await screen.findByText("Ada Kurgu", {}, { timeout: 8000 });
-    expect(screen.getByRole("button", { name: "Önce müdahale" })).toHaveAttribute("aria-pressed", "true");
-    await waitFor(() => expect(order()).toEqual(["Bora", "Ada", "Ece", "Cem", "Dila"]), { timeout: 8000 });
-  });
-
-  it("geri dönünce önbellekteki çipler ilk çizimde hazır, yeni istek yok", async () => {
+  it("geri dönünce önbellekteki gerekçeler ilk çizimde hazır, yeni istek yok", async () => {
     const first = render(<TeacherStudentsScreen user={coach} onOpen={vi.fn()} />);
     await screen.findByText("Ada Kurgu", {}, { timeout: 8000 });
-    await waitFor(() => expect(screen.queryByText(/Durumlar hesaplanıyor/)).toBeNull(), { timeout: 8000 });
+    await waitFor(() => expect(api.getFullReport).toHaveBeenCalledTimes(5), { timeout: 8000 });
+    const reason = expected("s-bora").reasons[0];
+    await waitFor(() => expect(rowOf("Bora Örnek").textContent).toContain(reason), { timeout: 8000 });
     const calls = api.getFullReport.mock.calls.length;
     first.unmount();
 
     render(<TeacherStudentsScreen user={coach} onOpen={vi.fn()} />);
     await screen.findByText("Bora Örnek", {}, { timeout: 8000 });
-    expect(within(rowOf("Bora Örnek")).getByText("Müdahale")).toBeInTheDocument();
+    expect(rowOf("Bora Örnek").textContent).toContain(reason);
     // Yalnızca önbelleğe girmeyen (hata veren) öğrenci yeniden denenir.
     await waitFor(() => expect(api.getFullReport.mock.calls.length).toBe(calls + 1), { timeout: 8000 });
     expect(api.getFullReport.mock.calls.at(-1)[0]).toBe("s-dila");
   });
 
-  it("satıra dokununca öğrenci açılır (çip satırın parçası)", async () => {
+  it("karta dokununca öğrenci açılır", async () => {
     const onOpen = vi.fn();
     render(<TeacherStudentsScreen user={coach} onOpen={onOpen} />);
-    await within(await screen.findByRole("button", { name: /Bora Örnek/ })).findByText("Müdahale", {}, { timeout: 8000 });
+    await screen.findByText("Bora Örnek", {}, { timeout: 8000 });
     fireEvent.click(rowOf("Bora Örnek"));
     expect(onOpen).toHaveBeenCalledWith("s-bora", "Bora Örnek");
   });
