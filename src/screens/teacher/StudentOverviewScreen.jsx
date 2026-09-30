@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, LineChart, FileText, Landmark, User, Users, BookOpen, Target, Clock, Plus, PenLine, TrendingDown } from "lucide-react";
 import { C, displayFont, bodyFont, formatNet, netOf, recipientStatus, SKIP_REASONS } from "../../theme.js";
 import { Button, Input, Textarea, EmptyState, Modal, ShowMoreButton, LoadingState, StatusSquare, MiniBars, AlertBox, Avatar, HeaderIconButton, confirmDialog } from "../../components/common.jsx";
-import { HeroHeader, HeroTextButton, OverlapCard, SegmentFilter, StatusChip, NUM } from "../../components/brand.jsx";
+import { HeroHeader, HeroTextButton, OverlapCard, SegmentFilter, StatusChip, SectionCard, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
 import { BOARD_BRANCHES, boardBranchOf, gradeLabel, GRADE_LEVELS } from "../../subjects.js";
 import { FIELD_SHORT, FIELD_LABELS } from "../../studentField.js";
@@ -86,26 +86,6 @@ function AssignmentItem({ r, onOpen }) {
       <StatusChip tone={chip[0]}>{chip[1]}</StatusChip>
       <ChevronRight size={18} color={C.brandText} aria-hidden="true" style={{ flexShrink: 0 }} />
     </button>
-  );
-}
-
-// Bölüm kartı: 32px renkli ikon karesi, başlık, sağda açıklama ve sayı rozeti.
-function SectionCard({ icon: Icon, iconBg, iconFg, title, note, count, countTone = "track", children, style }) {
-  const badge = countTone === "brand" ? { background: C.brand, color: C.onBrand } : { background: C.track, color: C.inkText };
-  return (
-    <section style={{ background: C.surface, borderRadius: 20, padding: 14, ...style }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span aria-hidden="true" style={{ width: 32, height: 32, borderRadius: 10, background: iconBg, color: iconFg, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-          <Icon size={16} strokeWidth={2.3} />
-        </span>
-        <h2 style={{ flex: 1, minWidth: 0, margin: 0, fontFamily: displayFont, fontSize: 15, fontWeight: 800, color: C.inkText }}>{title}</h2>
-        {note && <span style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, whiteSpace: "nowrap" }}>{note}</span>}
-        {count != null && (
-          <span style={{ ...NUM, ...badge, minWidth: 24, height: 24, padding: "0 7px", boxSizing: "border-box", borderRadius: 999, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700 }}>{count}</span>
-        )}
-      </div>
-      {children}
-    </section>
   );
 }
 

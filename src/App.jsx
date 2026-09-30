@@ -82,6 +82,8 @@ export default function App() {
     root.setProperty("--focus-glow", "rgba(94,103,117,0.16)");
     root.setProperty("--surface-hover", C.surfaceHover);
     root.setProperty("--border-strong", C.borderStrong);
+    root.setProperty("--on-brand-soft", C.onBrandSoft);
+    root.setProperty("--on-brand", C.onBrand);
     document.body.style.background = C.bg;
     try { localStorage.removeItem("kocluk-theme"); } catch (_) { /* yalnızca temizlik */ }
   }, []);
@@ -91,11 +93,14 @@ export default function App() {
   const [screen, setScreen] = useState(null);
   // Mor üst alanlı ekran: genel başlık gizlenir (ekran kendi başlığını mor alanın içinde çizer), durum
   // çubuğu şeridi de aynı mora boyanır — yoksa saatin olduğu şerit ile mor alan arasında renk kırılırdı.
-  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview"].includes(screen) || (screen === "assignmentCreate" && authUser?.isSubjectTeacher);
+  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview", "myAssignments", "studyLog", "profile", "assignmentSubmit"].includes(screen)
+    || (screen === "assignmentCreate" && authUser?.isSubjectTeacher);
+  // Oturum açıkken her ekranın üstü mor (kendi üst alanı ya da mor PageHeader) — şerit de mor.
+  const signedIn = !!authUser;
   useEffect(() => {
-    if (heroScreen) setStatusBarTheme(true, C.brand);
+    if (signedIn) setStatusBarTheme(true, C.brand);
     else setStatusBarTheme(false);
-  }, [heroScreen]);
+  }, [signedIn]);
   // Ekranın kendi başlığı/bağlam satırı (ör. branş ekranında ders adı, koç panosunda öğrenci sayısı) —
   // ekran değişince sıfırlanır; ekran veriyi yükleyince setHeader ile doldurur.
   const [headerOverride, setHeaderOverride] = useState(null);
@@ -463,7 +468,7 @@ export default function App() {
     : screen;
 
   return (
-    <div className="k-app-root" style={{ minHeight: "100vh", background: heroScreen ? C.pageTint : C.bg, display: "flex" }}>
+    <div className="k-app-root" style={{ minHeight: "100vh", background: C.pageTint, display: "flex" }}>
       <Sidebar user={authUser} tabs={tabs} activeId={activeTabId} onSelect={selectTab} onLogout={logout} />
       <div className="k-content-col" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
         {!heroScreen && <PageHeader
@@ -490,9 +495,9 @@ export default function App() {
                 <HeaderIconButton icon={Bell} label="Bildirimler" onClick={() => setScreen("notifications")}>
                   {unreadCount > 0 && (
                     <span style={{
-                      position: "absolute", top: -5, right: -5, background: C.red, color: C.onRed, fontSize: 10, fontWeight: 800, fontFamily: monoFont,
+                      position: "absolute", top: -5, right: -5, background: C.lime, color: C.ink, fontSize: 10, fontWeight: 800, fontFamily: bodyFont,
                       borderRadius: 999, minWidth: 18, height: 18, display: "flex", alignItems: "center", justifyContent: "center", padding: "0 5px",
-                      boxShadow: `0 0 0 2px ${C.bg}`,
+                      boxShadow: `0 0 0 2px ${C.brand}`,
                     }}>{unreadCount}</span>
                   )}
                 </HeaderIconButton>
@@ -512,6 +517,7 @@ export default function App() {
             openNotificationTarget: goToNotificationTarget,
             unreadCount, openNotifications: () => setScreen("notifications"), openProfile: () => setScreen("profile"), setAuthUser,
             createBack: screen === "assignmentCreate" ? headerBack : undefined,
+            headerBack,
             setHeader: setHeaderOverride,
             openStudyLog: () => { setStudyPrefill(null); setReturnToReport(false); setScreen("studyLog"); },
             openRecipientFromReport,
@@ -607,9 +613,9 @@ function renderScreen({
   selectedStudentName, reportReturnTo, openReport, backFromReport,
   coachNoteOpen, onCloseNote, openNotificationTarget, setHeader, openStudyLog, openPlan,
   reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill, openStudyLogPrefilled, openAssignPrefilled,
-  openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly, openProfile, setAuthUser, createBack,
+  openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly, openProfile, setAuthUser, createBack, headerBack,
 }) {
-  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} onUserUpdated={setAuthUser} />;
+  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} onUserUpdated={setAuthUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
   if (screen === "reports" && (authUser.role !== "TEACHER" || selectedStudentId)) {
     return (
@@ -656,11 +662,11 @@ function renderScreen({
     if (screen === "plan") return <PlanScreen user={authUser} />;
   }
   if (authUser.role === "STUDENT") {
-    if (screen === "myAssignments") return <StudentHomeScreen user={authUser} onOpen={openRecipient} onOpenStudyLog={openStudyLog} onOpenProfile={openProfile} refreshKey={myAssignmentsRefreshKey} />;
+    if (screen === "myAssignments") return <StudentHomeScreen user={authUser} onOpen={openRecipient} onOpenStudyLog={openStudyLog} onOpenProfile={openProfile} refreshKey={myAssignmentsRefreshKey} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
     // key: bildirimle başka bir ödeve geçilince bileşen yeniden kullanılıp önceki ödevin D/Y/B
     // değerleri ve notu formda kalıyor, yanlış ödeve gönderilebiliyordu — ödev değişince sıfırdan mount.
-    if (screen === "assignmentSubmit" && selectedRecipientId) return <AssignmentSubmitScreen key={selectedRecipientId} user={authUser} recipientId={selectedRecipientId} onBack={backToMyAssignments} setHeader={setHeader} />;
-    if (screen === "studyLog") return <StudyLogScreen key={studyPrefill?.key || "log"} user={authUser} prefill={studyPrefill} />;
+    if (screen === "assignmentSubmit" && selectedRecipientId) return <AssignmentSubmitScreen key={selectedRecipientId} user={authUser} recipientId={selectedRecipientId} onBack={headerBack || backToMyAssignments} />;
+    if (screen === "studyLog") return <StudyLogScreen key={studyPrefill?.key || "log"} user={authUser} prefill={studyPrefill} onBack={headerBack} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
   }
   return (
     <div style={{ padding: 40, textAlign: "center", color: C.muted }}>

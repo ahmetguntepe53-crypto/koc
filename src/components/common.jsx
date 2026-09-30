@@ -459,17 +459,23 @@ export const HEADER_SLOT_ID = "k-header-slot";
 // İçerik sütununun üst şeridi — sayfa zemininde. Üstte bağlam satırı (ör. "Zeynep Kaya · 12-A · Koçun:
 // Ali Hoca", 13/--t3), altında sayfa başlığı 25/700/−0.9px. onBack verilirse solda geri düğmesi. Sol
 // taraf flex:1+minWidth:0 ile küçülür — sağdaki düğmeler (zil, Rapor/Notlar, PDF) sağ üstte sabit.
+// Mor üst alan (yeniden tasarlanan ekranlardaki HeroHeader'ın kompakt hali) — kendi başlığını çizmeyen
+// her ekranda. Sağdaki düğmeler (zil, Rapor, PDF...) index.html > .k-brand-header kuralıyla mor zemine uyar.
 export function PageHeader({ title, subtitle, right, onBack }) {
   return (
-    <div className="k-page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "22px 28px 8px", background: C.bg }}>
-      <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12 }}>
-        {onBack && <HeaderIconButton icon={ChevronLeft} label="Geri" onClick={onBack} />}
+    <div className="k-page-header k-brand-header" style={{
+      position: "relative", overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+      padding: "20px 28px 24px", background: C.brand, borderRadius: "0 0 32px 32px", marginBottom: 8,
+    }}>
+      <span aria-hidden="true" style={{ position: "absolute", width: 220, height: 220, borderRadius: 999, background: C.decorWhite, top: -110, right: -70 }} />
+      <div style={{ position: "relative", flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12 }}>
+        {onBack && <HeaderIconButton onBrand icon={ChevronLeft} label="Geri" onClick={onBack} />}
         <div style={{ minWidth: 0 }}>
-          {subtitle && <div className="k-page-subtitle" style={{ fontFamily: bodyFont, fontSize: 13, fontWeight: 500, color: C.mutedLight, marginBottom: 3, lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{subtitle}</div>}
-          <h1 className="k-page-title" style={{ margin: 0, fontFamily: displayFont, fontSize: right ? 23 : 25, fontWeight: 700, letterSpacing: -0.9, lineHeight: 1.15, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{title}</h1>
+          {subtitle && <div className="k-page-subtitle" style={{ fontFamily: bodyFont, fontSize: 13, fontWeight: 500, color: C.onBrandMuted, marginBottom: 3, lineHeight: 1.35 }}>{subtitle}</div>}
+          <h1 className="k-page-title" style={{ margin: 0, fontFamily: displayFont, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15, color: C.onBrand, overflowWrap: "anywhere" }}>{title}</h1>
         </div>
       </div>
-      {right && <div style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>{right}</div>}
+      {right && <div style={{ position: "relative", flexShrink: 0, display: "flex", alignItems: "center", gap: 8 }}>{right}</div>}
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import { useState } from "react";
+import { Target, KeyRound, LogOut, Check } from "lucide-react";
 import { C, displayFont, bodyFont } from "../theme.js";
-import { Card, Button, Input, Pill, Avatar, Chip, roleLabel } from "../components/common.jsx";
+import { Avatar, roleLabel } from "../components/common.jsx";
+import { HeroHeader, HeroBell, SectionCard, StatusChip, FieldLabel, fieldBox, PrimaryButton } from "../components/brand.jsx";
 import { api, setToken } from "../api.js";
 import { gradeLabel } from "../subjects.js";
 import { STUDENT_FIELDS, FIELD_SHORT, FIELD_LABELS } from "../studentField.js";
 
-// Öğrenci kendi YKS alanını seçer (koçu ve rapor buradan okur). Seçili çipe yeniden dokunmak alanı siler.
+// Öğrenci kendi YKS alanını seçer (koçu ve rapor buradan okur). Seçili seçeneğe yeniden dokunmak alanı siler.
 function FieldCard({ user, onUserUpdated }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -24,21 +26,39 @@ function FieldCard({ user, onUserUpdated }) {
     }
   };
   return (
-    <Card style={{ marginBottom: 18 }}>
-      <div id="yks-alani" style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, marginBottom: 3, color: C.text }}>YKS alanım</div>
-      <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, marginBottom: 14, lineHeight: 1.5 }}>
-        {value ? `${FIELD_LABELS[value]} seçili. Raporun bu alanın AYT derslerini izler.` : "Hangi alandan hazırlandığını seç — raporun AYT derslerini buna göre izler, koçun da görür."}
+    <SectionCard
+      icon={Target} iconBg={C.warningTint} iconFg={C.warningText} title="YKS alanım"
+      right={value ? <StatusChip tone="success">{FIELD_SHORT[value]}</StatusChip> : <StatusChip tone="track">Seçilmedi</StatusChip>}
+    >
+      <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted, margin: "8px 0 12px", lineHeight: 1.5 }}>
+        {saving ? "Kaydediliyor..." : value ? `${FIELD_LABELS[value]} seçili. Raporun bu alanın AYT derslerini izler.` : "Hangi alandan hazırlandığını seç — raporun AYT derslerini buna göre izler, koçun da görür."}
       </div>
-      <div role="group" aria-labelledby="yks-alani" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-        {STUDENT_FIELDS.map((f) => <Chip key={f} active={value === f} onClick={() => pick(f)}>{FIELD_SHORT[f]} · {FIELD_LABELS[f]}</Chip>)}
+      <div role="group" aria-label="YKS alanı" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+        {STUDENT_FIELDS.map((f) => {
+          const on = value === f;
+          return (
+            <button
+              key={f}
+              type="button"
+              aria-pressed={on}
+              onClick={() => pick(f)}
+              style={{
+                minHeight: 48, borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                background: on ? C.brand : C.pageTint, border: `1px solid ${on ? C.brand : C.brandOutline}`, color: on ? C.onBrand : C.inkText,
+                fontFamily: bodyFont, fontSize: 14, fontWeight: 700,
+              }}
+            >
+              {on && <Check size={15} strokeWidth={2.6} aria-hidden="true" />}{FIELD_SHORT[f]} · {FIELD_LABELS[f]}
+            </button>
+          );
+        })}
       </div>
-      {saving && <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight, marginTop: 8 }}>Kaydediliyor...</div>}
-      {error && <div role="alert" style={{ color: C.red, fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginTop: 8 }}>{error}</div>}
-    </Card>
+      {error && <div role="alert" style={{ color: C.danger, fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginTop: 8 }}>{error}</div>}
+    </SectionCard>
   );
 }
 
-export default function ProfileScreen({ user, onLogout, onOpenReport, onUserUpdated }) {
+export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCount, onOpenNotifications }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [msg, setMsg] = useState(null);
@@ -63,34 +83,53 @@ export default function ProfileScreen({ user, onLogout, onOpenReport, onUserUpda
     }
   };
 
+  const chips = [roleLabel(user.role), user.className, user.gradeLevel && gradeLabel(user.gradeLevel)].filter(Boolean);
+
   return (
-    <div className="k-page" style={{ padding: 28, maxWidth: 500, margin: "0 auto" }}>
-      <Card style={{ marginBottom: 18 }}>
+    <div>
+      <HeroHeader compact>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Avatar name={user.name} size={52} />
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontFamily: displayFont, fontSize: 16.5, fontWeight: 800, color: C.text }}>{user.name}</div>
-            <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted, marginTop: 1 }}>{user.username ? `Kullanıcı adı: ${user.username}` : user.email}</div>
-            <div style={{ marginTop: 7, display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <Pill tone="accent">{roleLabel(user.role)}</Pill>
-              {user.className && <Pill>{user.className}</Pill>}
-              {user.gradeLevel && <Pill tone="amber">{gradeLabel(user.gradeLevel)}</Pill>}
+          <Avatar name={user.name} size={60} lime />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h1 style={{ margin: 0, fontFamily: displayFont, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15, color: C.onBrand, overflowWrap: "anywhere" }}>{user.name}</h1>
+            <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.onBrandMuted, marginTop: 2, overflowWrap: "anywhere" }}>{user.username ? `Kullanıcı adı: ${user.username}` : user.email}</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+              {chips.map((c) => <StatusChip key={c} tone="onBrand">{c}</StatusChip>)}
             </div>
           </div>
+          <HeroBell unreadCount={unreadCount} onClick={onOpenNotifications} />
         </div>
-      </Card>
-      {/* Öğrencinin raporu artık alt menüdeki "Gelişim" sekmesinde. */}
-      {user.role === "STUDENT" && <FieldCard user={user} onUserUpdated={onUserUpdated} />}
-      <Card style={{ marginBottom: 18 }}>
-        <div style={{ fontFamily: displayFont, fontSize: 15, fontWeight: 800, marginBottom: 14, color: C.text }}>Şifremi Değiştir</div>
-        <form onSubmit={submit}>
-          <Input label="Mevcut şifre" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" />
-          <Input label="Yeni şifre (en az 8 karakter)" type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required />
-          {msg && <div style={{ color: msg.type === "ok" ? C.green : C.red, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{msg.text}</div>}
-          <Button type="submit" disabled={saving}>{saving ? "..." : "Şifreyi Güncelle"}</Button>
-        </form>
-      </Card>
-      <Button variant="secondary" full onClick={onLogout}>Çıkış Yap</Button>
+      </HeroHeader>
+
+      <div style={{ maxWidth: 580, margin: "0 auto", padding: "16px 16px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {user.role === "STUDENT" && <FieldCard user={user} onUserUpdated={onUserUpdated} />}
+
+        <SectionCard icon={KeyRound} iconBg={C.brandTint} iconFg={C.brandText} title="Şifremi değiştir">
+          <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+            <div>
+              <FieldLabel htmlFor="p-cur">Mevcut şifre</FieldLabel>
+              <input id="p-cur" type="password" value={current} onChange={(e) => setCurrent(e.target.value)} autoComplete="current-password" style={{ ...fieldBox(false), cursor: "text" }} />
+            </div>
+            <div>
+              <FieldLabel htmlFor="p-new" required>Yeni şifre (en az 8 karakter)</FieldLabel>
+              <input id="p-new" type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required style={{ ...fieldBox(false), cursor: "text" }} />
+            </div>
+            {msg && <div role={msg.type === "ok" ? "status" : "alert"} style={{ color: msg.type === "ok" ? C.success : C.danger, fontFamily: bodyFont, fontSize: 13, fontWeight: 600 }}>{msg.text}</div>}
+            <PrimaryButton type="submit" inactive={saving || !next}>{saving ? "Kaydediliyor..." : "Şifreyi güncelle"}</PrimaryButton>
+          </form>
+        </SectionCard>
+
+        <button
+          type="button"
+          onClick={onLogout}
+          style={{
+            minHeight: 52, borderRadius: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+            background: C.surface, border: `1px solid ${C.brandOutline}`, color: C.danger, fontFamily: bodyFont, fontSize: 15, fontWeight: 800,
+          }}
+        >
+          <LogOut size={17} aria-hidden="true" />Çıkış yap
+        </button>
+      </div>
     </div>
   );
 }

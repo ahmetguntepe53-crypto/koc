@@ -2,10 +2,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ChevronLeft, Lock, Send, CalendarClock } from "lucide-react";
 import { C, bodyFont, displayFont } from "../../theme.js";
 import { Avatar, EmptyState, LoadingState, HeaderIconButton } from "../../components/common.jsx";
-import { HeroHeader, HeroBell, SegmentFilter, NUM } from "../../components/brand.jsx";
+import { HeroHeader, HeroBell, SegmentFilter, FieldLabel, fieldBox, TopicSelect, PrimaryButton, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
 import { subjectsForBranches } from "../../subjects.js";
-import { topicsFor } from "../../topics.js";
 import { todayISO } from "../../dates.js";
 
 // Ödev atama ekranı — YALNIZCA branş öğretmenlerinde (bkz. App.jsx > tabsFor). Branş öğretmeni bir sınıf
@@ -32,20 +31,6 @@ const addDays = (iso, n) => {
 };
 const longDate = (iso) => new Date(`${iso}T00:00:00`).toLocaleDateString("tr-TR", { day: "numeric", month: "long" });
 const capFirst = (t) => t.charAt(0).toLocaleUpperCase("tr-TR") + t.slice(1);
-
-// Alan kutuları: 52px, radius 14, bg zemin, 1px çerçeve, 15/600 yazı; üstünde 12/700 etiket.
-const boxStyle = (disabled) => ({
-  width: "100%", minWidth: 0, boxSizing: "border-box", minHeight: 52, borderRadius: 14, padding: "0 14px",
-  background: disabled ? C.track : C.pageTint, border: `1px solid ${C.brandOutline}`, color: C.inkText,
-  fontFamily: bodyFont, fontSize: 15, fontWeight: 600, outline: "none", cursor: disabled ? "default" : "pointer",
-});
-function FieldLabel({ htmlFor, children, required }) {
-  return (
-    <label htmlFor={htmlFor} style={{ display: "block", fontFamily: bodyFont, fontSize: 12, fontWeight: 700, color: C.inkMuted, marginBottom: 6 }}>
-      {children}{required && <span aria-hidden="true" style={{ color: C.danger }}> *</span>}
-    </label>
-  );
-}
 
 function StepCard({ n, title, right, children }) {
   return (
@@ -89,7 +74,6 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
   const [subject, setSubject] = useState("");
   const [lastSubject, setLastSubject] = useState(null);
   const [topic, setTopic] = useState(() => prefill?.topic || "");
-  const [topicCustom, setTopicCustom] = useState(false);
   const [sourceBook, setSourceBook] = useState("");
   const [sourceCustom, setSourceCustom] = useState(false);
   const [sourceBooks, setSourceBooks] = useState([]);
@@ -129,18 +113,12 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
     setSubject(pick);
   }, [subjectOptions, lastSubject]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const topics = topicsFor(examType, subject);
   // Ders ya da sınav türü değişince konu ve kaynak kitap sıfırlanır; kaynak önerileri o derse göre gelir.
   const firstSubjectRef = useRef(true);
   useEffect(() => {
     if (!subject) return;
-    if (firstSubjectRef.current) {
-      firstSubjectRef.current = false;
-      if (prefill?.topic && !topicsFor(examType, subject).includes(prefill.topic)) setTopicCustom(true);
-    } else {
-      setTopic("");
-      setTopicCustom(false);
-    }
+    if (firstSubjectRef.current) firstSubjectRef.current = false;
+    else setTopic("");
     setSourceBook("");
     setSourceCustom(false);
     setSourceBooks([]);
@@ -297,30 +275,18 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
             <FieldLabel htmlFor="f-subject">Ders</FieldLabel>
             {singleSubject ? (
               <div style={{ position: "relative" }}>
-                <input id="f-subject" readOnly value={subject} aria-label={`Ders: ${subject}, tek branş`} style={{ ...boxStyle(true), paddingRight: 38 }} />
+                <input id="f-subject" readOnly value={subject} aria-label={`Ders: ${subject}, tek branş`} style={{ ...fieldBox(true), paddingRight: 38 }} />
                 <Lock size={15} color={C.inkMuted} aria-hidden="true" style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", pointerEvents: "none" }} />
               </div>
             ) : (
-              <select id="f-subject" value={subject} onChange={(e) => setSubject(e.target.value)} style={boxStyle(false)}>
+              <select id="f-subject" value={subject} onChange={(e) => setSubject(e.target.value)} style={fieldBox(false)}>
                 {subjectOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
             )}
           </div>
           <div style={{ minWidth: 0 }}>
             <FieldLabel htmlFor="f-topic" required>Konu</FieldLabel>
-            {topics.length > 0 && !topicCustom ? (
-              <select
-                id="f-topic" value={topic}
-                onChange={(e) => { if (e.target.value === CUSTOM) { setTopicCustom(true); setTopic(""); } else setTopic(e.target.value); }}
-                style={boxStyle(false)}
-              >
-                <option value="" disabled>Konu seç ({topics.length})</option>
-                {topics.map((t, i) => <option key={t} value={t}>{i + 1}. {t}</option>)}
-                <option value={CUSTOM}>Listede yok — kendim yazacağım</option>
-              </select>
-            ) : (
-              <input id="f-topic" value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="Konuyu yaz" style={{ ...boxStyle(false), cursor: "text" }} autoFocus={topicCustom} />
-            )}
+            <TopicSelect id="f-topic" examType={examType} subject={subject} value={topic} onChange={setTopic} />
           </div>
         </div>
 
@@ -330,7 +296,7 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
             <select
               id="f-book" value={sourceBook} disabled={noBooks}
               onChange={(e) => { if (e.target.value === CUSTOM) { setSourceCustom(true); setSourceBook(""); } else setSourceBook(e.target.value); }}
-              style={boxStyle(noBooks)}
+              style={fieldBox(noBooks)}
             >
               <option value="" disabled>Kaynak kitap seç</option>
               {sourceBooks.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -345,7 +311,7 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
           )}
           {sourceCustom && (
             <>
-              <input id="f-book" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} placeholder="Kaynak kitabın adı" autoFocus style={{ ...boxStyle(false), cursor: "text" }} />
+              <input id="f-book" value={sourceBook} onChange={(e) => setSourceBook(e.target.value)} placeholder="Kaynak kitabın adı" autoFocus style={{ ...fieldBox(false), cursor: "text" }} />
               {!noBooks && (
                 <button type="button" onClick={() => { setSourceCustom(false); setSourceBook(""); }} style={{ minHeight: 44, padding: "0 4px", background: "none", border: "none", cursor: "pointer", fontFamily: bodyFont, fontSize: 13, fontWeight: 700, color: C.brandText }}>Listeden seç</button>
               )}
@@ -403,11 +369,11 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
           <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10, marginTop: 10 }}>
             <div style={{ minWidth: 0 }}>
               <FieldLabel htmlFor="f-start">Başlangıç</FieldLabel>
-              <input id="f-start" type="date" value={scheduledDate} min={today} onChange={(e) => onStartChange(e.target.value)} style={{ ...boxStyle(false), cursor: "text" }} />
+              <input id="f-start" type="date" value={scheduledDate} min={today} onChange={(e) => onStartChange(e.target.value)} style={{ ...fieldBox(false), cursor: "text" }} />
             </div>
             <div style={{ minWidth: 0 }}>
               <FieldLabel htmlFor="f-send">Gönderim</FieldLabel>
-              <select id="f-send" value={planMode} onChange={(e) => setPlanMode(e.target.value)} style={boxStyle(false)}>
+              <select id="f-send" value={planMode} onChange={(e) => setPlanMode(e.target.value)} style={fieldBox(false)}>
                 {PLAN_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
             </div>
@@ -417,18 +383,9 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
 
       <div style={{ marginTop: 6 }}>
         {error && <div role="alert" style={{ color: C.danger, fontFamily: bodyFont, fontSize: 13, fontWeight: 600, textAlign: "center", marginBottom: 8 }}>{error}</div>}
-        <button
-          type="submit"
-          aria-disabled={!ready || saving}
-          style={{
-            width: "100%", minHeight: 56, borderRadius: 18, border: "none", cursor: ready && !saving ? "pointer" : "default",
-            background: C.brand, color: C.onBrand, opacity: ready ? 1 : 0.4,
-            display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: bodyFont, fontSize: 16, fontWeight: 800,
-          }}
-        >
+        <PrimaryButton type="submit" inactive={!ready || saving} icon={saving ? null : ArrowRight}>
           {saving ? "Kaydediliyor..." : recipients.length ? `${recipients.length} öğrenciye ata` : "Ödevi ata"}
-          {!saving && <ArrowRight size={18} strokeWidth={2.4} aria-hidden="true" />}
-        </button>
+        </PrimaryButton>
         <div role="status" style={{ ...NUM, fontSize: 12.5, color: C.inkMuted, textAlign: "center", marginTop: 8 }}>
           {ready ? `${subject} · ${examType} · son teslim ${longDate(endDate)}` : missingText}
         </div>

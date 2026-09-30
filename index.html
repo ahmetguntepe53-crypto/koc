@@ -53,6 +53,8 @@
 
       .k-icon-btn { transition: background-color .12s ease, border-color .12s ease, color .12s ease; }
       .k-icon-btn:hover { background: var(--surface-hover, #E9EBF4) !important; }
+      /* Mor başlıktaki düğmeler (PageHeader'a dışarıdan verilenler dahil): yarı saydam beyaz zemin, beyaz ikon/yazı. */
+      .k-brand-header .k-icon-btn, .k-brand-header .k-icon-btn:hover { background: var(--on-brand-soft) !important; border-color: transparent !important; color: var(--on-brand) !important; }
 
       .k-link-btn:hover { text-decoration: underline; }
 
@@ -142,7 +144,7 @@
         /* Tam genişlik liste satırları sayfa kenar boşluğunu aşıp ekranın iki ucuna uzanır. */
         .k-bleed { margin-left: -18px !important; margin-right: -18px !important; }
         .k-bleed > .k-list-row { padding-left: 18px !important; padding-right: 18px !important; }
-        .k-page-header { padding: 16px 18px 4px !important; }
+        .k-page-header { padding: 20px 16px 24px !important; }
 
         /* Pencere telefonda alttan açılan sayfaya dönüşür. */
         .k-modal-backdrop { align-items: flex-end !important; padding: 0 !important; padding-top: env(safe-area-inset-top) !important; }

@@ -67,7 +67,7 @@ test("Öğrenci gelişim raporu (koç görünümü), ders dökümü, PDF", async
   await golden.snap("koc-rapor");
   await page.locator("#rapor-karne").getByRole("button", { name: /Matematik/ }).first().click();
   await golden.settle();
-  await golden.snap("koc-rapor-ders");
+  await golden.snap("koc-rapor-ders", { fullPage: false }); // açık pencere + uzun sayfa: tam sayfa çekim kararsız (bkz. support.js > snap)
   await page.getByRole("button", { name: "Kapat" }).click();
   await page.getByRole("button", { name: "PDF", exact: true }).click();
   await golden.snap("koc-rapor-pdf");

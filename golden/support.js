@@ -155,7 +155,11 @@ async function snap(page, name, ctx, testInfo, { fullPage = true } = {}) {
   // görüntüsünde tam görünür durumda; arkadaki kaydırılmış içerik bu adımın konusu değil, o zaten penceresiz
   // sahnelerde (z1-bu-hafta-tam, gelisim-tam) kapsanıyor.
   if (fullPage) {
-    await expect(page).toHaveScreenshot(`${name}-tam.png`, { fullPage: true, style: ".k-bottom-nav{visibility:hidden!important}.k-sticky-action{position:static!important}" });
+    // Sabit öğeler (yüzen alt menü, alt eylem çubuğu) tam sayfa çekimde kaydırma konumuna göre farklı yerde çıkıyordu —
+    // toHaveScreenshot'ın style seçeneği bu çekimde uygulanmadığı için stil sayfaya doğrudan eklenip sonra kaldırılır.
+    const hide = await page.addStyleTag({ content: ".k-bottom-nav{visibility:hidden!important}.k-sticky-action{position:static!important}" });
+    await expect(page).toHaveScreenshot(`${name}-tam.png`, { fullPage: true });
+    await hide.evaluate((el) => el.remove());
   }
 }
 
