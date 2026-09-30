@@ -120,7 +120,7 @@ export default function App() {
   const [screen, setScreen] = useState(null);
   // Mor üst alanlı ekran: genel başlık gizlenir (ekran kendi başlığını mor alanın içinde çizer), durum
   // çubuğu şeridi de aynı mora boyanır — yoksa saatin olduğu şerit ile mor alan arasında renk kırılırdı.
-  const heroScreen = screen === "assignmentDetail" || screen === "assignments" || screen === "students";
+  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview"].includes(screen);
   useEffect(() => {
     if (heroScreen) setStatusBarTheme(true, C.brand);
     else setStatusBarTheme(theme === "dark");
@@ -675,7 +675,7 @@ function renderScreen({
     // "Branş" sekmesi 2026-09-28'de gizlendi (bkz. tabsFor) — ekran hiçbir yerden açılmıyor ama duruyor:
     // okul yıllık plandan yayınlamaya dönmek isterse sekmeyi geri eklemek yetiyor.
     if (screen === "branch" && authUser.isSubjectTeacher) return <BranchScreen user={authUser} setHeader={setHeader} onOpenPlan={openPlan} />;
-    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenAssignment={openAssignment} onCreateAssignment={authUser.isSubjectTeacher ? createAssignmentForStudent : undefined} noteOpen={coachNoteOpen} onCloseNote={onCloseNote} setHeader={setHeader} />;
+    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenReport={() => openReport("studentOverview", selectedStudentId, selectedStudentName)} onOpenAssignment={openAssignment} onCreateAssignment={authUser.isSubjectTeacher ? createAssignmentForStudent : undefined} />;
     // Ödev atama yalnızca branş öğretmenlerinde (bkz. tabsFor); koç hesabı bu ekrana hiç giremez —
     // sunucu da aynı kuralı uygular (routes/assignments.js > assertCanAssign).
     if (screen === "assignmentCreate" && authUser.isSubjectTeacher) return <AssignmentCreateScreen user={authUser} key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} />;

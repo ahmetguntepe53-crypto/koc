@@ -568,9 +568,10 @@ export function SubjectIcon({ src, size = 40, radius = 12 }) {
 // Durum karesi: ders sembolü durum rengine boyanır — çözüldü yeşil, pas sarı, yapılmadı kırmızı,
 // süresi dolmadı nötr. Renkli ders ikonları "her renk bir veri anlamı taşır" kuralını bozuyordu; sembol
 // (assets/subject-glyphs) SVG maskesi olarak kullanılır, katmanları ve ince çizgileri korunur.
-export function StatusSquare({ subject, status = "open", size = 34, title }) {
+// plain: durumdan bağımsız beyaz kare, ders simgesi ana metin renginde.
+export function StatusSquare({ subject, status = "open", size = 34, title, plain }) {
   const maskId = `sq${useId().replace(/[^a-zA-Z0-9]/g, "")}`;
-  const tone = statusTone(status);
+  const tone = plain ? { bg: C.surface, fg: C.inkText } : statusTone(status);
   const glyph = Math.round(size * 0.66);
   return (
     <span
@@ -589,7 +590,7 @@ export function StatusSquare({ subject, status = "open", size = 34, title }) {
             <image href={subjectGlyphUrl(subject)} width="100" height="100" />
           </mask>
         </defs>
-        <rect width="100" height="100" fill={status === "open" ? C.mutedLight : tone.fg} mask={`url(#${maskId})`} />
+        <rect width="100" height="100" fill={!plain && status === "open" ? C.mutedLight : tone.fg} mask={`url(#${maskId})`} />
       </svg>
     </span>
   );

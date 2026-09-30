@@ -8,9 +8,9 @@ import { HeaderIconButton, Pill } from "./common.jsx";
 export const NUM = { fontFamily: bodyFont, fontVariantNumeric: "tabular-nums" };
 
 // Mor üst alan. Altındaki OverlapCard üstüne binsin diye alt dolgusu geniş (compact: yalnızca başlık).
-export function HeroHeader({ children, compact }) {
+export function HeroHeader({ children, compact, padBottom }) {
   return (
-    <div style={{ position: "relative", overflow: "hidden", background: C.brand, borderRadius: "0 0 32px 32px", padding: `20px 16px ${compact ? 24 : 68}px` }}>
+    <div style={{ position: "relative", overflow: "hidden", background: C.brand, borderRadius: "0 0 32px 32px", padding: `20px 16px ${padBottom ?? (compact ? 24 : 68)}px` }}>
       <span aria-hidden="true" style={{ position: "absolute", width: 220, height: 220, borderRadius: 999, background: C.decorWhite, top: -80, right: -70 }} />
       <span aria-hidden="true" style={{ position: "absolute", width: 120, height: 120, borderRadius: 999, background: C.decorLime, bottom: -40, left: -36 }} />
       <div style={{ position: "relative", maxWidth: 728, margin: "0 auto" }}>{children}</div>
@@ -42,8 +42,8 @@ export function OverlapCard({ children, overlap = 48, style }) {
   );
 }
 
-// Eşit genişlikte parçalı filtre. Parçalar 44px (dokunma alanı alt sınırı).
-export function SegmentFilter({ label, options, value, onChange, style }) {
+// Eşit genişlikte parçalı filtre. Parçalar 44px (dokunma alanı alt sınırı). small: 12/700 yazı, dar parçalar (5 seçenek).
+export function SegmentFilter({ label, options, value, onChange, style, small }) {
   return (
     <div role="group" aria-label={label} style={{ display: "flex", gap: 4, background: C.surface, borderRadius: 16, padding: 4, ...style }}>
       {options.map((o) => {
@@ -55,10 +55,10 @@ export function SegmentFilter({ label, options, value, onChange, style }) {
             aria-pressed={on}
             onClick={() => onChange(o.id)}
             style={{
-              flex: 1, minWidth: 0, minHeight: 44, borderRadius: 12, border: "none", cursor: "pointer",
-              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6,
+              flex: 1, minWidth: 0, minHeight: 44, borderRadius: 12, border: "none", cursor: "pointer", padding: small ? "0 2px" : "0 6px",
+              display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, whiteSpace: "nowrap",
               background: on ? C.brand : "transparent", color: on ? C.onBrand : C.inkText,
-              fontFamily: bodyFont, fontSize: 14, fontWeight: on ? 700 : 600,
+              fontFamily: bodyFont, fontSize: small ? 12 : 14, fontWeight: small || on ? 700 : 600,
             }}
           >
             {o.label}
