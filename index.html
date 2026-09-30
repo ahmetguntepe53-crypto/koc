@@ -18,7 +18,7 @@
     <link rel="icon" href="/logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet" />
     <style>
       *, *::before, *::after { box-sizing: border-box; }
       html, body, #root { height: 100%; margin: 0; }
@@ -130,13 +130,14 @@
          hem yer kaplıyor hem de dokunması dikey menülerden daha zahmetli. */
       @media (max-width: 640px) {
         .k-sidebar { display: none !important; }
-        .k-bottom-nav { display: flex !important; position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; }
-        /* Alt menü 66px + 24px nefes — son kart menünün altında kalmasın. */
-        .k-content-col { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 90px) !important; }
+        /* Yüzen alt menü: kenarlardan 16px, alttan 20px (+ güvenli alan); yüksekliği 52 + 2×8 = 68px. */
+        .k-bottom-nav { display: flex !important; position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 20px); z-index: 50; }
+        /* Menünün üst kenarı 88px'te + 24px nefes — son kart menünün altında kalmasın. */
+        .k-content-col { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 112px) !important; }
         /* Alt sabit eylem çubuğu olan ekran (sonuç girişi, öğrenci detayı...) — çubuk + menü kadar boşluk. */
-        .k-content-col.k-has-action-bar { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 200px) !important; }
-        /* Formun alta sabit aksiyon çubuğu telefonda alt menünün hemen üstünde durur. */
-        .k-sticky-action { bottom: calc(env(safe-area-inset-bottom, 0px) + 66px) !important; margin-left: -18px !important; margin-right: -18px !important; }
+        .k-content-col.k-has-action-bar { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 222px) !important; }
+        /* Formun alta sabit aksiyon çubuğu telefonda yüzen menünün 8px üstünde durur. */
+        .k-sticky-action { bottom: calc(env(safe-area-inset-bottom, 0px) + 96px) !important; margin-left: -18px !important; margin-right: -18px !important; }
         /* Klavye açıkken alt menü gizli — çubuk klavyenin hemen üstüne iner. */
         html.kb-open .k-sticky-action { bottom: 0 !important; }
         /* Sabit aksiyon çubuklu form sayfası: sayfa sonu ile çubuk arasında boş zemin kalmasın. */

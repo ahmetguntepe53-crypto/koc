@@ -181,7 +181,8 @@ export function Num({ children, size = 11 }) {
 
 // Rozet: 22px yükseklik, köşe 7, zemin durumun açık tonu, yazı koyu tonu. mono: sayı içeren rozetler
 // (ör. "Net 16,25", "D 92") rakamları eşit genişlikte yazsın diye.
-export function Pill({ children, tone = "muted", mono = false }) {
+// round: 24px, tam yuvarlak, 12/700 (bkz. brand.jsx > StatusChip).
+export function Pill({ children, tone = "muted", mono = false, round = false }) {
   const tones = {
     muted: { bg: C.surface2, color: C.mutedLight },
     accent: { bg: C.surface2, color: C.text },
@@ -190,13 +191,20 @@ export function Pill({ children, tone = "muted", mono = false }) {
     amber: { bg: C.amberSoft, color: C.amber },
     red: { bg: C.redSoft, color: C.red },
     blue: { bg: C.blueSoft, color: C.blue },
+    success: { bg: C.successTint, color: C.successText },
+    warning: { bg: C.warningTint, color: C.warningText },
+    danger: { bg: C.danger, color: C.onBrand },
+    lime: { bg: C.lime, color: C.ink },
+    onBrand: { bg: C.onBrandSoft, color: C.onBrand },
+    brand: { bg: C.brandTint, color: C.brandText },
+    track: { bg: C.track, color: C.inkText },
   };
   const t = tones[tone] || tones.muted;
   return (
     <span style={{
-      display: "inline-flex", alignItems: "center", gap: 4, height: 22, boxSizing: "border-box",
-      background: t.bg, color: t.color, fontFamily: mono ? monoFont : bodyFont, fontSize: mono ? 11 : 11.5, fontWeight: 700,
-      padding: "0 8px", borderRadius: 7, whiteSpace: "nowrap",
+      display: "inline-flex", alignItems: "center", gap: 4, height: round ? 24 : 22, boxSizing: "border-box",
+      background: t.bg, color: t.color, fontFamily: mono ? monoFont : bodyFont, fontSize: round ? 12 : mono ? 11 : 11.5, fontWeight: 700,
+      padding: round ? "0 10px" : "0 8px", borderRadius: round ? 999 : 7, whiteSpace: "nowrap",
     }}>
       {children}
     </span>
@@ -208,16 +216,32 @@ export function Pill({ children, tone = "muted", mono = false }) {
 function initialsOf(name) {
   return (name || "?").trim().split(/\s+/).slice(0, 2).map((p) => p[0]?.toLocaleUpperCase("tr-TR") || "").join("") || "?";
 }
+// tint: kare-yuvarlak, isme göre sabit DOLU renk (aynı öğrenci hep aynı renk) + beyaz ad/soyad baş
+// harfleri — aynı listedeki öğrencileri ayırt etmek için. Paletin dördü de beyazla en az 4.5:1.
+function tintOf(name) {
+  const palette = [C.avatar1, C.avatar2, C.avatar3, C.avatar4];
+  let h = 0;
+  for (const ch of name || "") h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return palette[h % palette.length];
+}
+function firstLastInitials(name) {
+  const parts = (name || "?").trim().split(/\s+/);
+  const pick = parts.length > 1 ? [parts[0], parts[parts.length - 1]] : [parts[0]];
+  return pick.map((p) => p[0]?.toLocaleUpperCase("tr-TR") || "").join("") || "?";
+}
 // eslint-disable-next-line no-unused-vars
-export function Avatar({ name, size = 36, dark }) {
+// lime: lime zemin + ink baş harfler (öğretmenin kendi avatarı, mor üst alanda).
+export function Avatar({ name, size = 36, dark, tint, lime }) {
+  const [bg, fg] = lime ? [C.lime, C.ink] : tint ? [tintOf(name), C.onBrand] : [C.surfaceHover, C.text2];
+  tint = tint || lime;
   return (
     <div aria-hidden="true" style={{
-      width: size, height: size, borderRadius: 999, flexShrink: 0,
-      background: C.surfaceHover, color: C.text2, border: `1px solid ${C.borderStrong}`,
+      width: size, height: size, borderRadius: tint ? Math.round(size * 0.32) : 999, flexShrink: 0,
+      background: bg, color: fg, border: tint ? "none" : `1px solid ${C.borderStrong}`,
       display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: bodyFont, fontWeight: 600, fontSize: Math.round(size * 0.36), letterSpacing: 0.3,
+      fontFamily: bodyFont, fontWeight: tint ? 800 : 600, fontSize: Math.round(size * 0.36), letterSpacing: 0.3,
     }}>
-      {initialsOf(name)}
+      {tint ? firstLastInitials(name) : initialsOf(name)}
     </div>
   );
 }
@@ -349,8 +373,8 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
 export function BottomNav({ tabs, activeId, onSelect }) {
   return (
     <nav className="k-bottom-nav" aria-label="Ana menü" style={{
-      display: "none", background: C.surface, borderTop: `1px solid ${C.divider}`,
-      boxSizing: "border-box", padding: "0 6px env(safe-area-inset-bottom, 0px)",
+      display: "none", background: C.ink, borderRadius: 26, padding: 8, gap: 4,
+      boxSizing: "border-box", boxShadow: C.shadowNav,
     }}>
       {tabs.map((t) => {
         const active = t.id === activeId;
@@ -361,19 +385,19 @@ export function BottomNav({ tabs, activeId, onSelect }) {
             onClick={() => onSelect(t.id)}
             aria-current={active ? "page" : undefined}
             style={{
-              flex: 1, height: 66, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
-              background: "none", border: "none", cursor: "pointer", padding: "0 2px", minWidth: 0,
-              color: active ? C.text : C.mutedLight,
+              flex: 1, height: 52, borderRadius: 18, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 3,
+              border: "none", cursor: "pointer", padding: "0 2px", minWidth: 0,
+              background: active ? C.lime : "transparent", color: active ? C.ink : C.navInactive,
             }}
           >
             <span style={{ position: "relative", display: "flex" }}>
-              {Icon && <Icon size={21} strokeWidth={active ? 2.4 : 2} aria-hidden="true" />}
+              {Icon && <Icon size={20} strokeWidth={active ? 2.4 : 2} aria-hidden="true" />}
               {t.badge > 0 && (
                 <span aria-hidden="true" style={{
-                  position: "absolute", top: -3, right: -6, background: C.red, color: C.onRed,
+                  position: "absolute", top: -4, right: -8, background: C.danger, color: C.onBrand,
                   fontSize: 9.5, fontWeight: 800, lineHeight: 1, borderRadius: 999, minWidth: 15, height: 15,
                   display: "flex", alignItems: "center", justifyContent: "center", padding: "0 3px",
-                  border: `1.5px solid ${C.surface}`, fontFamily: monoFont,
+                  border: `1.5px solid ${C.ink}`, fontFamily: bodyFont,
                 }}>{t.badge > 9 ? "9+" : t.badge}</span>
               )}
             </span>
@@ -389,7 +413,8 @@ export function BottomNav({ tabs, activeId, onSelect }) {
 }
 
 // Başlıktaki kare ikon düğmesi (geri, bildirim zili) — 44×44, köşe 14, beyaz zemin, ince kenarlık.
-export function HeaderIconButton({ icon: Icon, label, onClick, children }) {
+// onBrand: mor (brand) zemin üstünde — yarı saydam beyaz zemin, kenarlıksız, beyaz ikon.
+export function HeaderIconButton({ icon: Icon, label, onClick, children, onBrand }) {
   return (
     <button
       type="button"
@@ -397,9 +422,9 @@ export function HeaderIconButton({ icon: Icon, label, onClick, children }) {
       aria-label={label}
       className="k-icon-btn"
       style={{
-        position: "relative", width: 44, height: 44, borderRadius: 13, flexShrink: 0,
-        background: C.surface, border: `1px solid ${C.border}`,
-        display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: C.text2,
+        position: "relative", width: 44, height: 44, borderRadius: onBrand ? 14 : 13, flexShrink: 0,
+        background: onBrand ? C.onBrandSoft : C.surface, border: onBrand ? "none" : `1px solid ${C.border}`,
+        display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: onBrand ? C.onBrand : C.text2,
       }}
     >
       <Icon size={19} strokeWidth={2} />
@@ -621,27 +646,27 @@ export function AssignmentRow({ subject, iconSrc, title, status, badge, meta, on
 
 // Çok parçalı ilerleme şeridi — 9px, parçalar arası 2px. parts: [{ value, color, label }], sıra
 // çağıranın (şartname: çözüldü → gecikti → pas → kalan).
-export function SegmentBar({ parts, height = 9 }) {
+export function SegmentBar({ parts, height = 9, gap = 2, radius = 4 }) {
   const total = parts.reduce((sum, p) => sum + (p.value || 0), 0);
   const label = parts.map((p) => `${p.label} ${p.value}`).join(", ");
-  if (!total) return <div role="img" aria-label={label} style={{ height, borderRadius: 4, background: C.surface2 }} />;
+  if (!total) return <div role="img" aria-label={label} style={{ height, borderRadius: radius, background: C.surface2 }} />;
   return (
-    <div role="img" aria-label={label} style={{ display: "flex", gap: 2, height }}>
+    <div role="img" aria-label={label} style={{ display: "flex", gap, height }}>
       {parts.filter((p) => p.value > 0).map((p) => (
-        <span key={p.label} style={{ flex: p.value, background: p.color, borderRadius: 4, minWidth: 4 }} />
+        <span key={p.label} style={{ flex: p.value, background: p.color, borderRadius: radius, minWidth: 4 }} />
       ))}
     </div>
   );
 }
 
 // Lejant: 7px nokta (square: kare) + sayı (mono, isteğe bağlı) + 12px etiket, yatay, sarılabilir.
-export function Legend({ items, square, style }) {
+export function Legend({ items, square, style, numFont = monoFont, labelColor, valueColor, fontSize = 12.5 }) {
   return (
     <div style={{ display: "flex", flexWrap: "wrap", columnGap: 16, rowGap: 6, ...style }}>
       {items.map((it) => (
-        <span key={it.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: bodyFont, fontSize: 12.5, color: C.mutedLight }}>
+        <span key={it.label} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontFamily: bodyFont, fontSize, color: labelColor || C.mutedLight }}>
           <span aria-hidden="true" style={{ width: square ? 9 : 7, height: square ? 9 : 7, borderRadius: square ? 2 : 999, background: it.color, flexShrink: 0 }} />
-          {it.value != null && <span style={{ fontFamily: monoFont, fontSize: 13, fontWeight: 700, color: C.text }}>{it.value}</span>}
+          {it.value != null && <span style={{ fontFamily: numFont, fontSize: fontSize + 0.5, fontWeight: 700, color: valueColor || C.text }}>{it.value}</span>}
           {it.label}
         </span>
       ))}

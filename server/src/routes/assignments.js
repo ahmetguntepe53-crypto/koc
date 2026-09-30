@@ -44,7 +44,7 @@ function successStats(recipients, pageRange) {
   const q = questionCountOf(pageRange);
   const perStudentQ = q || (nets.length ? answered / nets.length : null);
   const successPct = avgNet != null && perStudentQ ? Math.round((avgNet / perStudentQ) * 100) : null;
-  return { avgNet: avgNet != null ? Math.round(avgNet * 100) / 100 : null, successPct, completedCount: nets.length };
+  return { avgNet: avgNet != null ? Math.round(avgNet * 100) / 100 : null, successPct, completedCount: nets.length, questionCount: perStudentQ ? Math.round(perStudentQ) : null };
 }
 function withSuccessStats(assignment) {
   return { ...assignment, ...successStats(assignment.recipients, assignment.pageRange) };

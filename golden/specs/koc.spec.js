@@ -45,7 +45,7 @@ test("Düz koç: yalnızca Öğrenciler sekmesi", async ({ golden }) => {
 // taşındı: liste her ödevde başarı yüzdesini gösterir, detayda öğrenci öğrenci net ve genel yüzde var.
 test("Gönderdiğim Ödevler: liste ve detay", async ({ golden, page }) => {
   await golden.open("koc");
-  await golden.tab("Gönderdiğim Ödevler");
+  await golden.tab("Ödevlerim");
   await golden.snap("gonderdigim-odevler");
   await page.getByText("Sayı basamakları tekrarı").click();
   await golden.settle();
@@ -54,7 +54,7 @@ test("Gönderdiğim Ödevler: liste ve detay", async ({ golden, page }) => {
 
 test("Ödev ata", async ({ golden, page }) => {
   await golden.open("koc");
-  await golden.tab("Ata");
+  await golden.tab("Ödev ata");
   await golden.snap("ata");
   // Kime: branş öğretmeni kendi öğrencileriyle sınırlı değil — sınıf düzeyi ve şube bazlı gönderim.
   await page.getByRole("button", { name: "Sınıf düzeyi" }).click();

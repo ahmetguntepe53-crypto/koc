@@ -79,14 +79,17 @@ export async function initNative() {
 // Başlık artık beyaz bir çubuk değil, sayfa zemininde duruyor — şerit de zeminle aynı renk olmalı.
 const STATUS_STRIP_LIGHT = "#F4F5F7"; // theme.js > THEMES.light.bg ile senkron tutulmalı
 const STATUS_STRIP_DARK = "#0D1014"; // theme.js > THEMES.dark.bg ile senkron tutulmalı
-export async function setStatusBarTheme(isDark) {
-  document.documentElement.style.setProperty("--status-strip-bg", isDark ? STATUS_STRIP_DARK : STATUS_STRIP_LIGHT);
+// stripColor: şeridi temanın zemini yerine başka bir renge boyar (ör. mor üst alanlı ekran) — isDark
+// o zaman şeridin kendisinin koyu olup olmadığını söyler (simgeler açık mı koyu mu).
+export async function setStatusBarTheme(isDark, stripColor) {
+  const strip = stripColor || (isDark ? STATUS_STRIP_DARK : STATUS_STRIP_LIGHT);
+  document.documentElement.style.setProperty("--status-strip-bg", strip);
   if (!isNative) return;
   try {
     await StatusBar.setStyle({ style: isDark ? Style.Dark : Style.Light });
     if (platform === "android") {
       await StatusBar.setOverlaysWebView({ overlay: false });
-      await StatusBar.setBackgroundColor({ color: isDark ? STATUS_STRIP_DARK : STATUS_STRIP_LIGHT });
+      await StatusBar.setBackgroundColor({ color: strip });
     }
   } catch (_) { /* durum çubuğu ayarlanamazsa uygulama yine de çalışır */ }
 }

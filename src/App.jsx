@@ -99,7 +99,6 @@ export default function App() {
   // not) C.* içinde DEĞİL, imperatif bir DOM/native yan etki olduğu için render gövdesi yerine
   // effect'te, yalnızca theme değişince güncellenir.
   useEffect(() => {
-    setStatusBarTheme(theme === "dark");
     const root = document.documentElement.style;
     // index.html'deki <meta name="color-scheme"> yalnızca "ikisini de destekliyorum" der — hangisinin
     // kullanılacağına tarayıcı işletim sistemi tercihine bakarak karar verir, uygulamanın kendi Ben >
@@ -119,6 +118,13 @@ export default function App() {
   // logout()'un bıraktığı "login" değerinden sonra) — aşağıdaki effect authUser hazır olur olmaz
   // buna role uygun bir başlangıç ekranı atar.
   const [screen, setScreen] = useState(null);
+  // Mor üst alanlı ekran: genel başlık gizlenir (ekran kendi başlığını mor alanın içinde çizer), durum
+  // çubuğu şeridi de aynı mora boyanır — yoksa saatin olduğu şerit ile mor alan arasında renk kırılırdı.
+  const heroScreen = screen === "assignmentDetail" || screen === "assignments";
+  useEffect(() => {
+    if (heroScreen) setStatusBarTheme(true, C.brand);
+    else setStatusBarTheme(theme === "dark");
+  }, [heroScreen, theme]);
   // Ekranın kendi başlığı/bağlam satırı (ör. branş ekranında ders adı, koç panosunda öğrenci sayısı) —
   // ekran değişince sıfırlanır; ekran veriyi yükleyince setHeader ile doldurur.
   const [headerOverride, setHeaderOverride] = useState(null);
@@ -458,7 +464,7 @@ export default function App() {
     setScreen(id);
   };
 
-  const tabs = [...tabsFor(authUser), { id: "profile", label: "Ben", icon: UserCircle2 }];
+  const tabs = [...tabsFor(authUser), { id: "profile", label: authUser.role === "TEACHER" ? "Profil" : "Ben", icon: UserCircle2 }];
   // Başlıktaki geri düğmesi — detay ekranlarında (sayfa içindeki "← … dön" bağlantılarının yerine).
   const backToOverviewFromCreate = () => {
     const to = assignmentCreateReturnTo === "reports" ? "reports" : "studentOverview";
@@ -486,10 +492,10 @@ export default function App() {
     : screen;
 
   return (
-    <div className="k-app-root" style={{ minHeight: "100vh", background: C.bg, display: "flex" }}>
+    <div className="k-app-root" style={{ minHeight: "100vh", background: heroScreen ? C.pageTint : C.bg, display: "flex" }}>
       <Sidebar user={authUser} tabs={tabs} activeId={activeTabId} onSelect={selectTab} onLogout={logout} />
       <div className="k-content-col" style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
-        <PageHeader
+        {!heroScreen && <PageHeader
           title={headerOverride?.title || screenTitle(screen, authUser.role, { selectedStudentName, reportReturnTo, isSubjectTeacher: authUser.isSubjectTeacher })}
           subtitle={headerOverride?.subtitle ?? screenSubtitle(screen, authUser)}
           onBack={headerBack}
@@ -522,7 +528,7 @@ export default function App() {
               )}
             </>
           }
-        />
+        />}
         {/* key={screen}: ekran değişince hafif belirme animasyonu (index.html > .k-screen). */}
         <div key={screen} className="k-screen" style={{ flex: 1 }}>
           {renderScreen({
@@ -533,6 +539,7 @@ export default function App() {
             selectedStudentName, reportReturnTo, openReport, backFromReport,
             coachNoteOpen, onCloseNote: () => setCoachNoteOpen(false),
             openNotificationTarget: goToNotificationTarget,
+            unreadCount, openNotifications: () => setScreen("notifications"),
             setHeader: setHeaderOverride,
             openStudyLog: () => { setStudyPrefill(null); setReturnToReport(false); setScreen("studyLog"); },
             openRecipientFromReport,
@@ -595,8 +602,8 @@ function tabsFor(user) {
     // gerekmedi, aynı ekranlar burada da doğru veriyi getiriyor.
     return [
       { id: "students", label: "Öğrenciler", icon: Users },
-      { id: "assignmentCreate", label: "Ata", icon: PlusCircle },
-      { id: "assignments", label: "Gönderdiğim Ödevler", icon: ClipboardList },
+      { id: "assignmentCreate", label: "Ödev ata", icon: PlusCircle },
+      { id: "assignments", label: "Ödevlerim", icon: ClipboardList },
     ];
   }
   return TABS_BY_ROLE[user.role] || [];
@@ -628,7 +635,7 @@ function renderScreen({
   selectedStudentName, reportReturnTo, openReport, backFromReport,
   coachNoteOpen, onCloseNote, openNotificationTarget, setHeader, openStudyLog, openPlan,
   reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill, openStudyLogPrefilled, openAssignPrefilled,
-  openHome, exportMonthlyPdf, openRecipientFromReport,
+  openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications,
 }) {
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
@@ -672,8 +679,8 @@ function renderScreen({
     // Ödev atama yalnızca branş öğretmenlerinde (bkz. tabsFor); koç hesabı bu ekrana hiç giremez —
     // sunucu da aynı kuralı uygular (routes/assignments.js > assertCanAssign).
     if (screen === "assignmentCreate" && authUser.isSubjectTeacher) return <AssignmentCreateScreen user={authUser} key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} />;
-    if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} />;
-    if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} backLabel={assignmentDetailReturnTo === "studentOverview" ? "Öğrenci özetine dön" : "Ödevlerime dön"} />;
+    if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} user={authUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
+    if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
     if (screen === "plan") return <PlanScreen user={authUser} />;
   }
   if (authUser.role === "STUDENT") {
