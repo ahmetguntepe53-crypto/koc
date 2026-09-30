@@ -4,7 +4,6 @@ import { C, bodyFont, displayFont, formatNet, recipientStatus, netOf } from "../
 import { EmptyState, LoadingState, StatusSquare, SegmentBar, Legend, AlertBox, ShowMoreButton } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, SectionCard, StatusChip, PrimaryButton, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
-import { BOARD_BRANCHES, boardBranchOf } from "../../subjects.js";
 import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, questionCountOf, isSchoolWide } from "../../work.js";
 import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
@@ -84,14 +83,13 @@ function OverdueAlert({ missed }) {
   return <AlertBox>{missed.length} ödevinin süresi doldu · her biri için yalnızca 1 hatırlatma gönderilir — hâlâ sonucunu girebilirsin.</AlertBox>;
 }
 
-// Listenin sırası: gecikenler en üstte, sonra branş ödevleri (koç panosundaki branş sırasıyla), en
-// sonda koç ödevleri — koç ile öğrenci aynı düzeni görsün.
-const BRANCH_ORDER = Object.fromEntries(BOARD_BRANCHES.map((b, i) => [b.key, i]));
-function listRank(r, user) {
+// Listenin sırası: yapılacaklar üstte, bitenler altta — önce geciken, sonra bekleyen (son günü yakın olan önce),
+// sonra pas geçilen, en altta çözülen (en son biten önce).
+const STATUS_ORDER = { missed: 0, open: 1, skipped: 2, done: 3 };
+function listRank(r) {
   const status = recipientStatus(r);
-  if (status === "missed") return [0, dayKey(r.assignment.endDate)];
-  if (!fromCoach(r.assignment, user)) return [1, String(BRANCH_ORDER[boardBranchOf(r.assignment.subject)] ?? 9).padStart(2, "0") + r.assignment.subject];
-  return [2, dayKey(r.assignment.endDate)];
+  const t = Date.parse(dayKey(r.assignment.endDate));
+  return [STATUS_ORDER[status], status === "done" || status === "skipped" ? -t : t];
 }
 
 export default function StudentHomeScreen({ user, onOpen, onOpenStudyLog, onOpenProfile, refreshKey, unreadCount, onOpenNotifications }) {
@@ -121,9 +119,9 @@ export default function StudentHomeScreen({ user, onOpen, onOpenStudyLog, onOpen
       return inWeek(r.assignment.endDate, week) || status === "missed" || (status === "open" && dayKey(r.assignment.endDate) > week.sun);
     });
     const byRank = (a, b) => {
-      const [ra, ka] = listRank(a, user);
-      const [rb, kb] = listRank(b, user);
-      return ra - rb || ka.localeCompare(kb);
+      const [ra, ka] = listRank(a);
+      const [rb, kb] = listRank(b);
+      return ra - rb || ka - kb;
     };
     const currentIds = new Set(current.map((r) => r.id));
     const past = recipients.filter((r) => !currentIds.has(r.id)).sort((a, b) => dayKey(b.assignment.endDate).localeCompare(dayKey(a.assignment.endDate)));
