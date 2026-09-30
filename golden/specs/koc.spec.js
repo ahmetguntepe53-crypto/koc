@@ -32,22 +32,15 @@ test("Z4 başlıktaki Notlar bölüme kaydırır; alt çubuktan yeni not", async
   await golden.snap("z4-yeni-not");
 });
 
-// Branşı olmayan koç: ödev ATAYAMAZ (Ata sekmesi yok), ödev TAKİBİ onda (Ödevler sekmesi) — bkz.
-// App.jsx > tabsFor. "Türev tekrarı" bu değişiklikten ÖNCE Burak'ın kendi verdiği bir ödev (seed.mjs);
-// yeni kuralda koçlar artık ödev veremez ama eski kayıtlar durmaya devam eder.
-test("Düz koç: sekmeler, takvim, ödev takibi", async ({ golden, page }) => {
+// Branşı olmayan koç: ödev ATAYAMAZ (Ata sekmesi yok); "Ödevler" ve "Takvim" de 2026-09-30'da
+// kaldırıldı (kullanıcının kararı) — yalnızca Öğrenciler sekmesi var. Takip Öğrencilerim listesindeki
+// durum çipinden ve haftalık özet bildiriminden yapılıyor, ayrı bir ödev/takvim ekranına gerek yok.
+test("Düz koç: yalnızca Öğrenciler sekmesi", async ({ golden }) => {
   await golden.open("duzKoc");
   await golden.snap("duz-koc-ogrencilerim");
-  await golden.tab("Takvim");
-  await golden.snap("takvim");
-  await golden.tab("Ödevler");
-  await golden.snap("duz-koc-odevler");
-  await page.getByText("Türev tekrarı").first().click();
-  await golden.settle();
-  await golden.snap("duz-koc-odev-detay");
 });
 
-// Branş öğretmeni: ödev VERİR ama takip ETMEZ (Ödevler sekmesi yok) — takip koçun işi (yukarıdaki test).
+// Branş öğretmeni: ödev VERİR ama takip ETMEZ — takip koçun işi (yukarıdaki test).
 test("Ödev ata", async ({ golden, page }) => {
   await golden.open("koc");
   await golden.tab("Ata");

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, CalendarRange, BarChart3, GraduationCap } from "lucide-react";
+import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3 } from "lucide-react";
 import { C, THEMES, DEFAULT_THEME, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID, LoadingState } from "./components/common.jsx";
@@ -602,10 +602,11 @@ const TABS_BY_ROLE = {
     { id: "users", label: "Kurulum", icon: Users },
     { id: "photos", label: "Fotoğraflar", icon: Images },
   ],
+  // Branşı olmayan koç: "Ödevler" ve "Takvim" 2026-09-30'da kaldırıldı (kullanıcının kararı) — takip
+  // zaten Öğrenciler listesindeki durum çipinden ve haftalık özetten yapılıyor. Ekranların kodu ve
+  // rotası duruyor (bkz. renderScreen), yalnızca sekme kaldırıldı — "Branş" sekmesiyle aynı emsal.
   TEACHER: [
     { id: "students", label: "Öğrenciler", icon: Users },
-    { id: "assignments", label: "Ödevler", icon: ClipboardList },
-    { id: "plan", label: "Takvim", icon: CalendarRange },
   ],
   STUDENT: [
     { id: "myAssignments", label: "Bu hafta", icon: ClipboardList },
