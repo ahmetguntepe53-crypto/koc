@@ -35,6 +35,25 @@
 	<string>Geliştirme sırasında yerel ağdaki test sunucusuna bağlanmak için kullanılır.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Ödevine kanıt fotoğrafı eklemek için galerinden fotoğraf seçmek amacıyla kullanılır.</string>
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<false/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>UIWindowSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneConfigurationName</key>
+					<string>Default Configuration</string>
+					<key>UISceneDelegateClassName</key>
+					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<key>UISceneStoryboardFile</key>
+					<string>Main</string>
+				</dict>
+			</array>
+		</dict>
+	</dict>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
