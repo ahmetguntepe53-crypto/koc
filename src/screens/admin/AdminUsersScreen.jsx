@@ -54,6 +54,7 @@ export default function AdminUsersScreen() {
   const [addModalRole, setAddModalRole] = useState(null); // "TEACHER" | "STUDENT" | null
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [setPasswordFor, setSetPasswordFor] = useState(null); // user
+  const [editFor, setEditFor] = useState(null); // user — ad, kullanıcı adı, şube, telefon
   const [branchesFor, setBranchesFor] = useState(null); // öğretmen
 
   const load = async () => {
@@ -238,6 +239,7 @@ export default function AdminUsersScreen() {
                   onToggleBan={() => toggleBan(u)}
                   onEditBranches={() => setBranchesFor(u)}
                   onSetPassword={() => setSetPasswordFor(u)}
+                  onEdit={() => setEditFor(u)}
                   onDelete={() => remove(u)}
                 />
               ))}
@@ -321,6 +323,13 @@ export default function AdminUsersScreen() {
           user={branchesFor}
           onClose={() => setBranchesFor(null)}
           onDone={() => { setBranchesFor(null); setToast({ type: "ok", text: "Branş kaydedildi." }); load(); }}
+        />
+      )}
+      {editFor && (
+        <EditUserModal
+          user={editFor}
+          onClose={() => setEditFor(null)}
+          onDone={() => { setEditFor(null); setToast({ type: "ok", text: "Bilgiler kaydedildi." }); load(); }}
         />
       )}
       {setPasswordFor && (
@@ -511,7 +520,7 @@ function ForcedUpdateCard() {
 
 // Kart düzeni: üstte kimlik (avatar, ad, rozetler, kullanıcı adı), öğrencide altında etiketli üç seçim
 // (sınıf düzeyi, YKS alanı, koç), en altta etiketli işlem düğmeleri — yıkıcı işlem (askıya al) ayrı renkte.
-function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onChangeField, onResendActivation, onToggleBan, onEditBranches, onSetPassword, onDelete }) {
+function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onChangeField, onResendActivation, onToggleBan, onEditBranches, onSetPassword, onEdit, onDelete }) {
   const isStudent = user.role === "STUDENT";
   const teacherName = isStudent && user.teacher?.name;
   return (
@@ -558,6 +567,7 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onChan
       )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginTop: isStudent ? -2 : 14, paddingTop: 12, borderTop: `1px solid ${C.divider}` }}>
         {!user.hasPassword && user.email && <Button small variant="secondary" onClick={onResendActivation}>Aktivasyonu yeniden gönder</Button>}
+        <Button small variant="secondary" onClick={onEdit}>Düzenle</Button>
         <Button small variant="secondary" onClick={onSetPassword}>Şifre sıfırla</Button>
         {user.role === "TEACHER" && <Button small variant="secondary" onClick={onEditBranches}>Branş</Button>}
         <Button small variant={user.banned ? "secondary" : "danger"} onClick={onToggleBan}>{user.banned ? "Askıyı kaldır" : "Askıya al"}</Button>
@@ -652,6 +662,49 @@ function AddUserModal({ role, teachers, onClose, onCreated }) {
             ? "Kullanıcıya şifresini belirlemesi için bir e-posta gönderilecek."
             : `E-posta girilmezse ilk şifre ${role === "STUDENT" ? "okul numarasıyla" : "kullanıcı adıyla"} aynı olur; kullanıcı girdikten sonra Profilim'den değiştirebilir.`}
         </div>
+        <Button full type="submit" disabled={saving}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
+      </form>
+    </Modal>
+  );
+}
+
+// Ad, kullanıcı adı (öğrencide okul no), şube (öğrenci) ve telefon — PATCH /admin/users/:id.
+function EditUserModal({ user, onClose, onDone }) {
+  const isStudent = user.role === "STUDENT";
+  const [name, setName] = useState(user.name || "");
+  const [username, setUsername] = useState(user.username || "");
+  const [className, setClassName] = useState(user.className || "");
+  const [phone, setPhone] = useState(user.phone || "");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim()) { setError("Ad soyad boş olamaz"); return; }
+    const patch = {};
+    if (name.trim() !== user.name) patch.name = name.trim();
+    if (username.trim() !== (user.username || "")) patch.username = username.trim();
+    if (isStudent && className.trim() !== (user.className || "")) patch.className = className.trim();
+    if (phone.trim() !== (user.phone || "")) patch.phone = phone.trim();
+    if (!Object.keys(patch).length) { onClose(); return; }
+    setSaving(true);
+    setError("");
+    try {
+      await api.adminUpdateUser(user.id, patch);
+      onDone();
+    } catch (err) {
+      setError(err.message || "Kaydedilemedi");
+      setSaving(false);
+    }
+  };
+  return (
+    <Modal title={`${user.name} — Düzenle`} onClose={onClose}>
+      <form onSubmit={submit}>
+        <Input label="Ad Soyad" value={name} onChange={(e) => setName(e.target.value)} required />
+        <Input label={isStudent ? "Okul numarası (kullanıcı adı)" : "Kullanıcı adı"} value={username} onChange={(e) => setUsername(e.target.value)} autoCapitalize="none" />
+        {isStudent && <Input label="Şube (ör. 12-A)" value={className} onChange={(e) => setClassName(e.target.value)} />}
+        <Input label="Telefon (opsiyonel)" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        {isStudent && <div style={{ fontSize: 12, color: C.muted, marginBottom: 12 }}>Sınıf düzeyi, alan ve koç hesap satırındaki seçimlerden değiştirilir.</div>}
+        {error && <div role="alert" style={{ color: C.red, fontSize: 12.5, marginBottom: 12 }}>{error}</div>}
         <Button full type="submit" disabled={saving}>{saving ? "Kaydediliyor..." : "Kaydet"}</Button>
       </form>
     </Modal>
