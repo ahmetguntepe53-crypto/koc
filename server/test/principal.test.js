@@ -81,4 +81,29 @@ describe("GET /api/principal/*", () => {
     expect(Array.isArray(lb.body.students)).toBe(true);
     expect((await api(t.coach).get("/api/principal/leaderboard")).status).toBe(403);
   });
+
+  it("sıralama döneme göre: günlük yalnızca bugünün sonuçları, tümü hepsi; eşik döneme göre küçülür", async () => {
+    const tr = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    const today = new Date(Date.UTC(tr.getUTCFullYear(), tr.getUTCMonth(), tr.getUTCDate()));
+    const Sx = w.grade12[1], Sy = w.grade11[1];
+    // Sx: bugün biten 10 soruluk ödev (net 8); Sy: 40 gün önce biten 40 soruluk ödev (net 32).
+    const a = await createAssignment({ teacher: w.branch, students: [Sx], subject: "Matematik", questionCount: 10, scheduledDate: today, endDate: today });
+    await submitResult(recipientOf(a, Sx), { correct: 8, wrong: 0, blank: 2 });
+    const b = await createAssignment({ teacher: w.branch, students: [Sy], subject: "Matematik", questionCount: 40, scheduledDate: daysAgo(45), endDate: daysAgo(40) });
+    await submitResult(recipientOf(b, Sy), { correct: 32, wrong: 0, blank: 8 });
+
+    const day = (await api(t.principal).get("/api/principal/leaderboard?period=day")).body;
+    expect(day.period).toBe("day");
+    expect(day.minQuestions).toBe(5);
+    const dx = day.students.find((x) => x.id === Sx.id);
+    expect(dx).toMatchObject({ ranked: true, totalQuestions: 10, netRate: 80 });
+    expect(day.students.find((x) => x.id === Sy.id)).toMatchObject({ ranked: false, totalQuestions: 0 });
+
+    const all = (await api(t.principal).get("/api/principal/leaderboard?period=all")).body;
+    expect(all.minQuestions).toBe(30);
+    expect(all.students.find((x) => x.id === Sy.id)).toMatchObject({ ranked: true, totalQuestions: 40, netRate: 80 });
+    expect(all.students.find((x) => x.id === Sx.id)).toMatchObject({ ranked: false, totalQuestions: 10 });
+
+    expect((await api(t.principal).get("/api/principal/leaderboard?period=year")).status).toBe(400);
+  });
 });

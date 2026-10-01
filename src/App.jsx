@@ -31,7 +31,7 @@ const ReportScreen = lazy(() => import("./screens/ReportScreen.jsx"));
 import BranchScreen from "./screens/teacher/BranchScreen.jsx";
 import MonthlyReportsScreen from "./screens/teacher/MonthlyReportsScreen.jsx";
 
-const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments", PRINCIPAL: "principalOverview" };
+const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments", PRINCIPAL: "principalLeaderboard" };
 
 // Kompozisyon kökü: router yok, `screen` string state'i hangi ekranın render edileceğini belirler
 // (PP'deki HalisahaApp.jsx ile aynı desen). Düzen: sol kenar çubuğu (rol'e göre sekmeler) + sağda
@@ -604,9 +604,9 @@ const TABS_BY_ROLE = {
   ],
   // Okul müdürü: yalnızca takip (bkz. screens/principal/PrincipalScreens.jsx).
   PRINCIPAL: [
-    { id: "principalOverview", label: "Özet", icon: LayoutDashboard },
-    { id: "principalStudents", label: "Öğrenciler", icon: Users },
     { id: "principalLeaderboard", label: "Sıralama", icon: Trophy },
+    { id: "principalStudents", label: "Öğrenciler", icon: Users },
+    { id: "principalOverview", label: "Özet", icon: LayoutDashboard },
     { id: "principalTeachers", label: "Öğretmen", icon: GraduationCap },
   ],
   STUDENT: [

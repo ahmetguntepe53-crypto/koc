@@ -292,8 +292,21 @@ export function PrincipalTeachersScreen({ unreadCount, onOpenNotifications }) {
 // ---------------------------------------------------------------- Sıralama
 // Öğrenci adıyla genel başarı sıralaması (yöneticinin "Sıralama" sekmesiyle aynı veri): tüm zamanların toplam neti /
 // toplam soru. En az minQuestions soru çözmeyen öğrenci sıralamaya girmez, altta ayrı listelenir.
+const RANK_PERIODS = [
+  { id: "day", label: "Günlük" },
+  { id: "week", label: "Haftalık" },
+  { id: "month", label: "Aylık" },
+  { id: "all", label: "Tümü" },
+];
+const RANK_KEY = "kocluk-principal-rank-period";
+const RANK_HINT = { day: "bugün biten ödevler ve bugünkü serbest çalışma", week: "bu hafta (Pzt–Paz)", month: "bu ay", all: "tüm zamanların toplamı" };
+
 export function PrincipalLeaderboardScreen({ unreadCount, onOpenNotifications, onOpenStudent }) {
-  const [data, error] = useLoad(() => api.principalLeaderboard(), []);
+  const [period, setPeriodState] = useState(() => {
+    try { const v = localStorage.getItem(RANK_KEY); return RANK_PERIODS.some((p) => p.id === v) ? v : "week"; } catch { return "week"; }
+  });
+  const setPeriod = (v) => { setPeriodState(v); try { localStorage.setItem(RANK_KEY, v); } catch { /* yalnızca kolaylık */ } };
+  const [data, error] = useLoad(() => api.principalLeaderboard(period), [period]);
   const ranked = (data?.students || []).filter((s) => s.ranked);
   const unranked = (data?.students || []).filter((s) => !s.ranked);
   const row = (s, rank) => (
@@ -314,7 +327,7 @@ export function PrincipalLeaderboardScreen({ unreadCount, onOpenNotifications, o
   return (
     <div>
       <Hero
-        subtitle="Tüm zamanların toplam net oranı" title="Sıralama"
+        subtitle={`Net oranı · ${RANK_HINT[period]}`} title="Sıralama"
         unreadCount={unreadCount} onOpenNotifications={onOpenNotifications}
         stats={data && <>
           <HeroStat lime label="sıralanan öğrenci" value={ranked.length} />
@@ -323,12 +336,13 @@ export function PrincipalLeaderboardScreen({ unreadCount, onOpenNotifications, o
         </>}
       />
       <Body>
+        <SegmentFilter small label="Sıralama dönemi" value={period} onChange={setPeriod} options={RANK_PERIODS} />
         <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted, lineHeight: 1.5 }}>
-          Ödev ve serbest çalışma sonuçlarının toplamı. En az {data?.minQuestions ?? 30} soru çözmeyen öğrenci sıralamaya girmez; sayı azken yüzde anlamsız çıkar.
+          Ödev ve serbest çalışma sonuçlarının toplamı. Dönemde en az {data?.minQuestions ?? "…"} soru çözmeyen öğrenci sıralamaya girmez; sayı azken yüzde anlamsız çıkar.
         </div>
         {error ? <EmptyState text={error} /> : !data ? <LoadingState /> : (
           <>
-            {ranked.length === 0 ? <EmptyState compact text="Henüz sıralamaya girecek kadar soru çözen öğrenci yok." /> : (
+            {ranked.length === 0 ? <EmptyState compact text="Bu dönemde sıralamaya girecek kadar soru çözen öğrenci yok." /> : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{ranked.map((s, i) => row(s, i + 1))}</div>
             )}
             {unranked.length > 0 && (

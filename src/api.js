@@ -146,7 +146,7 @@ export const api = {
   principalOverview: (period) => request(`/principal/overview?period=${encodeURIComponent(period)}`),
   principalStudents: (period) => request(`/principal/students?period=${encodeURIComponent(period)}`),
   principalStudentOverview: (id) => request(`/principal/students/${id}/overview`),
-  principalLeaderboard: () => request("/principal/leaderboard"),
+  principalLeaderboard: (period) => request(`/principal/leaderboard?period=${encodeURIComponent(period)}`),
   setMyField: (field) => request("/auth/me/field", { method: "PATCH", body: { field } }),
   // Koçun tarihli özel notları — yalnızca yazan koç görür.
   teacherAddNote: (studentId, text) => request(`/teacher/students/${studentId}/notes`, { method: "POST", body: { text } }),

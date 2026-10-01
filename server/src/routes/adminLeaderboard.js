@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
+import { assert } from "../validators.js";
+import { trWeekRange } from "../weekStats.js";
+import { trTodayAsDateOnly } from "../quietHours.js";
 
 // Kurulum > "Sıralama" — öğrenci ADIYLA genel başarı sıralaması (tüm derslerin toplamı, ders bazlı
 // değil). 2026-09-29: okulun BİLİNÇLİ kararıyla eklendi — "Okul analizi" (adminAnalytics.js) sekmesinin
@@ -19,13 +22,33 @@ export const adminLeaderboardRouter = Router();
 // daha yüksek: bu TÜM zamanların toplamı, bir ödevden çok daha fazla veri birikmesi beklenir.
 export const LEADERBOARD_MIN_QUESTIONS = 30;
 
+// Dönem (?period=day|week|month|all, varsayılan all): ödevde bitiş gününe, serbest çalışmada çalışma gününe göre.
+// Kısa dönemde çözülen soru az olur — sıralamaya girme eşiği döneme göre küçülür (günlük 5, haftalık 10, aylık 20).
+const DAY = 24 * 60 * 60 * 1000;
+const PERIOD_MIN_QUESTIONS = { day: 5, week: 10, month: 20, all: LEADERBOARD_MIN_QUESTIONS };
+function periodRange(period, now = new Date()) {
+  const today = trTodayAsDateOnly(now);
+  if (period === "day") return [today, new Date(today.getTime() + DAY)];
+  if (period === "week") { const { mon } = trWeekRange(now); return [mon, new Date(mon.getTime() + 7 * DAY)]; }
+  if (period === "month") return [new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)), new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1))];
+  return null;
+}
+
 adminLeaderboardRouter.get("/", async (req, res) => {
   try {
+    const period = req.query.period || "all";
+    assert(period in PERIOD_MIN_QUESTIONS, "Geçersiz dönem (day, week, month ya da all)");
+    const minQuestions = PERIOD_MIN_QUESTIONS[period];
+    const range = periodRange(period);
     const [submissions, sessions, students] = await Promise.all([
       prisma.submission.findMany({
+        where: range ? { recipient: { assignment: { endDate: { gte: range[0], lt: range[1] } } } } : undefined,
         select: { correctCount: true, wrongCount: true, blankCount: true, recipient: { select: { studentId: true } } },
       }),
-      prisma.studySession.findMany({ select: { studentId: true, correctCount: true, wrongCount: true, blankCount: true } }),
+      prisma.studySession.findMany({
+        where: range ? { studyDate: { gte: range[0], lt: range[1] } } : undefined,
+        select: { studentId: true, correctCount: true, wrongCount: true, blankCount: true },
+      }),
       prisma.user.findMany({
         where: { role: "STUDENT", banned: false },
         select: { id: true, name: true, gradeLevel: true, className: true },
@@ -48,7 +71,7 @@ adminLeaderboardRouter.get("/", async (req, res) => {
       return {
         id: s.id, name: s.name, gradeLevel: s.gradeLevel, className: s.className,
         totalQuestions, correct: t.correct, wrong: t.wrong, blank: t.blank, netRate,
-        ranked: totalQuestions >= LEADERBOARD_MIN_QUESTIONS,
+        ranked: totalQuestions >= minQuestions,
       };
     });
 
@@ -61,7 +84,7 @@ adminLeaderboardRouter.get("/", async (req, res) => {
       return b.totalQuestions - a.totalQuestions;
     });
 
-    res.json({ minQuestions: LEADERBOARD_MIN_QUESTIONS, students: rows });
+    res.json({ period, minQuestions, students: rows });
   } catch (e) {
     handleErr(res, e);
   }
