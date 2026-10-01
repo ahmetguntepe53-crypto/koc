@@ -174,6 +174,52 @@ principalRouter.get("/students", async (req, res) => {
   }
 });
 
+// ESKİ UÇ — yayındaki Android/iOS 2.0, müdür öğrenci detayını buradan okur; 2.1+ /overview'u kullanır.
+// 2.0 kullanıcıları kalmayana kadar silme.
+// GET /api/principal/students/:id?period= — tek öğrencinin ders ders durumu ve son ödevleri.
+principalRouter.get("/students/:id", async (req, res) => {
+  try {
+    const period = parsePeriod(req);
+    const now = new Date();
+    const student = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { id: true, name: true, role: true, className: true, gradeLevel: true, field: true, lastSeenAt: true, teacher: { select: { name: true } } },
+    });
+    assert(student && student.role === "STUDENT", "Öğrenci bulunamadı", 404);
+    const recipients = await loadRecipients(period, now, { studentId: student.id });
+    const total = emptyAgg();
+    const bySubject = new Map();
+    for (const r of recipients) {
+      add(total, r, now);
+      const sk = `${r.assignment.examType}|${r.assignment.subject}`;
+      add(bump(bySubject, sk, { subject: r.assignment.subject, examType: r.assignment.examType }).agg, r, now);
+    }
+    const recent = [...recipients]
+      .sort((a, b) => b.assignment.endDate - a.assignment.endDate)
+      .slice(0, 15)
+      .map((r) => {
+        const q = r.submission ? (questionCountOf(r.assignment.pageRange) || r.submission.correctCount + r.submission.wrongCount + r.submission.blankCount) : null;
+        const net = netOf(r.submission);
+        return {
+          id: r.id, subject: r.assignment.subject, examType: r.assignment.examType, topic: r.assignment.topic, endDate: r.assignment.endDate,
+          status: recipientStatus(r, now), net, successPct: net != null && q ? Math.round((net / q) * 100) : null,
+        };
+      });
+    const { role, teacher, ...info } = student;
+    res.json({
+      period,
+      student: { ...info, coachName: teacher?.name || null },
+      total: finish(total),
+      subjects: [...bySubject.values()]
+        .map((x) => ({ subject: x.subject, examType: x.examType, ...finish(x.agg) }))
+        .sort((a, b) => (a.examType === b.examType ? 0 : a.examType === "TYT" ? -1 : 1) || a.subject.localeCompare(b.subject, "tr")),
+      recent,
+    });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
 // GET /api/principal/students/:id/overview — koçun öğrenci ekranıyla aynı veri (ödev geçmişi, serbest çalışma, sonuçlar),
 // koçun ÖZEL NOTLARI hariç (onları yalnızca yazan koç görür) ve başka öğretmenlerin taslakları hariç.
 principalRouter.get("/students/:id/overview", async (req, res) => {

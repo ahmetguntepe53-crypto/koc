@@ -106,4 +106,13 @@ describe("GET /api/principal/*", () => {
 
     expect((await api(t.principal).get("/api/principal/leaderboard?period=year")).status).toBe(400);
   });
+
+  it("2.0 uyumluluğu: eski /students/:id özet ucu hâlâ çalışır", async () => {
+    const d = await api(t.principal).get(`/api/principal/students/${S1.id}?period=all`);
+    expect(d.status).toBe(200);
+    expect(d.body.student.name).toBe(S1.name);
+    expect(d.body.subjects.map((s) => s.subject).sort()).toEqual(["Fizik", "Matematik"]);
+    expect(d.body.recent[0]).toMatchObject({ subject: "Fizik", status: "open" });
+    expect((await api(t.principal).get(`/api/principal/students/${w.coachA.id}`)).status).toBe(404);
+  });
 });
