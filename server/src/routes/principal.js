@@ -4,6 +4,7 @@ import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
 import { trWeekRange, recipientStatus, netOf, questionCountOf } from "../weekStats.js";
 import { trTodayAsDateOnly } from "../quietHours.js";
+import { adminLeaderboardRouter } from "./adminLeaderboard.js";
 
 // Okul müdürü paneli — YALNIZCA okur (app.js'de requireRole("PRINCIPAL", "ADMIN")). Sınıf, öğrenci, ders ve öğretmen
 // bazında ödev takibi. Tanımlar Öğrencilerim ekranıyla aynı:
@@ -173,46 +174,29 @@ principalRouter.get("/students", async (req, res) => {
   }
 });
 
-// GET /api/principal/students/:id?period= — tek öğrencinin ders ders durumu ve son ödevleri.
-principalRouter.get("/students/:id", async (req, res) => {
+// GET /api/principal/students/:id/overview — koçun öğrenci ekranıyla aynı veri (ödev geçmişi, serbest çalışma, sonuçlar),
+// koçun ÖZEL NOTLARI hariç (onları yalnızca yazan koç görür) ve başka öğretmenlerin taslakları hariç.
+principalRouter.get("/students/:id/overview", async (req, res) => {
   try {
-    const period = parsePeriod(req);
-    const now = new Date();
     const student = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, name: true, role: true, className: true, gradeLevel: true, field: true, lastSeenAt: true, teacher: { select: { name: true } } },
+      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, field: true, banned: true, teacherId: true, role: true, lastSeenAt: true, createdAt: true, teacher: { select: { name: true } } },
     });
     assert(student && student.role === "STUDENT", "Öğrenci bulunamadı", 404);
-    const recipients = await loadRecipients(period, now, { studentId: student.id });
-    const total = emptyAgg();
-    const bySubject = new Map();
-    for (const r of recipients) {
-      add(total, r, now);
-      const sk = `${r.assignment.examType}|${r.assignment.subject}`;
-      add(bump(bySubject, sk, { subject: r.assignment.subject, examType: r.assignment.examType }).agg, r, now);
-    }
-    const recent = [...recipients]
-      .sort((a, b) => b.assignment.endDate - a.assignment.endDate)
-      .slice(0, 15)
-      .map((r) => {
-        const q = r.submission ? (questionCountOf(r.assignment.pageRange) || r.submission.correctCount + r.submission.wrongCount + r.submission.blankCount) : null;
-        const net = netOf(r.submission);
-        return {
-          id: r.id, subject: r.assignment.subject, examType: r.assignment.examType, topic: r.assignment.topic, endDate: r.assignment.endDate,
-          status: recipientStatus(r, now), net, successPct: net != null && q ? Math.round((net / q) * 100) : null,
-        };
-      });
-    const { role, teacher, ...info } = student;
-    res.json({
-      period,
-      student: { ...info, coachName: teacher?.name || null },
-      total: finish(total),
-      subjects: [...bySubject.values()]
-        .map((x) => ({ subject: x.subject, examType: x.examType, ...finish(x.agg) }))
-        .sort((a, b) => (a.examType === b.examType ? 0 : a.examType === "TYT" ? -1 : 1) || a.subject.localeCompare(b.subject, "tr")),
-      recent,
-    });
+    const [recipients, studySessions] = await Promise.all([
+      prisma.assignmentRecipient.findMany({
+        where: { studentId: student.id, assignment: { status: "SENT" } },
+        include: { assignment: { include: { teacher: { select: { id: true, name: true } } } }, submission: true },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.studySession.findMany({ where: { studentId: student.id }, orderBy: { studyDate: "desc" } }),
+    ]);
+    const { teacher, ...info } = student;
+    res.json({ student: { ...info, coachName: teacher?.name || null, coachNote: null }, recipients, studySessions, notes: [] });
   } catch (e) {
     handleErr(res, e);
   }
 });
+
+// Öğrenci adıyla genel başarı sıralaması (yöneticinin "Sıralama" sekmesiyle aynı veri ve uç).
+principalRouter.use("/leaderboard", adminLeaderboardRouter);

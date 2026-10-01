@@ -240,7 +240,7 @@ assignmentsRouter.get("/:id", async (req, res) => {
     });
     assert(assignment, "Ödev bulunamadı", 404);
     const isOwner = req.userRole === "TEACHER" && assignment.teacherId === req.userId;
-    if (isOwner || req.userRole === "ADMIN") {
+    if (isOwner || req.userRole === "ADMIN" || req.userRole === "PRINCIPAL") {
       // readOnly: "Şimdi Gönder"/"Sil" yalnızca ödevin sahibi öğretmene açık (bkz. loadOwnedDraftAssignment).
       return res.json({ assignment: { ...withSuccessStats(assignment), readOnly: !isOwner } });
     }

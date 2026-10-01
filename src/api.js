@@ -145,7 +145,8 @@ export const api = {
   // Öğrencinin YKS alanı (SAY / EA / SOZ / DIL; null = bilinmiyor) — yalnızca kendi öğrencisi.
   principalOverview: (period) => request(`/principal/overview?period=${encodeURIComponent(period)}`),
   principalStudents: (period) => request(`/principal/students?period=${encodeURIComponent(period)}`),
-  principalStudent: (id, period) => request(`/principal/students/${id}?period=${encodeURIComponent(period)}`),
+  principalStudentOverview: (id) => request(`/principal/students/${id}/overview`),
+  principalLeaderboard: () => request("/principal/leaderboard"),
   setMyField: (field) => request("/auth/me/field", { method: "PATCH", body: { field } }),
   // Koçun tarihli özel notları — yalnızca yazan koç görür.
   teacherAddNote: (studentId, text) => request(`/teacher/students/${studentId}/notes`, { method: "POST", body: { text } }),

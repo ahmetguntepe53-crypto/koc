@@ -44,21 +44,41 @@ describe("GET /api/principal/*", () => {
     expect(branch.assignmentsSent).toBe(2);
   });
 
-  it("öğrenci listesi ve öğrenci detayı", async () => {
+  it("öğrenci listesi", async () => {
     const list = await api(t.principal).get("/api/principal/students?period=all");
     const s1 = list.body.students.find((s) => s.id === S1.id);
     expect(s1).toMatchObject({ completionRate: 100, successPct: 75, overdue: 0 });
     const s3 = list.body.students.find((s) => s.id === S3.id);
     expect(s3).toMatchObject({ completionRate: 0, overdue: 1, successPct: null });
-    const d = await api(t.principal).get(`/api/principal/students/${S1.id}?period=all`);
-    expect(d.status).toBe(200);
-    expect(d.body.student.name).toBe(S1.name);
-    expect(d.body.subjects.map((s) => s.subject).sort()).toEqual(["Fizik", "Matematik"]);
-    expect(d.body.recent[0]).toMatchObject({ subject: "Fizik", status: "open" });
   });
 
   it("geçersiz dönem reddedilir; öğrenci olmayan id 404", async () => {
     expect((await api(t.principal).get("/api/principal/overview?period=year")).status).toBe(400);
-    expect((await api(t.principal).get(`/api/principal/students/${w.coachA.id}`)).status).toBe(404);
+    expect((await api(t.principal).get(`/api/principal/students/${w.coachA.id}/overview`)).status).toBe(404);
+  });
+
+  it("öğrenci genel bakışı koçunki gibi ödev geçmişini verir, koçun özel notlarını vermez", async () => {
+    const { prisma } = await import("./helpers.js");
+    await prisma.coachNote.create({ data: { studentId: S1.id, teacherId: w.coachA.id, text: "ÖZEL KOÇ NOTU" } });
+    const r = await api(t.principal).get(`/api/principal/students/${S1.id}/overview`);
+    expect(r.status).toBe(200);
+    expect(r.body.student.name).toBe(S1.name);
+    expect(r.body.recipients.map((x) => x.assignment.subject).sort()).toEqual(["Fizik", "Matematik"]);
+    expect(r.body.notes).toEqual([]);
+    expect(JSON.stringify(r.body)).not.toContain("ÖZEL KOÇ NOTU");
+  });
+
+  it("müdür öğrencinin raporunu, ödev ayrıntısını ve sıralamayı okur", async () => {
+    expect((await api(t.principal).get(`/api/stats/full-report?studentId=${S1.id}`)).status).toBe(200);
+    expect((await api(t.principal).get("/api/stats/full-report")).status).toBe(400);
+    const list = await api(t.principal).get("/api/principal/students/" + S1.id + "/overview");
+    const assignmentId = list.body.recipients[0].assignmentId;
+    const a = await api(t.principal).get(`/api/assignments/${assignmentId}`);
+    expect(a.status).toBe(200);
+    expect(a.body.assignment.readOnly).toBe(true);
+    const lb = await api(t.principal).get("/api/principal/leaderboard");
+    expect(lb.status).toBe(200);
+    expect(Array.isArray(lb.body.students)).toBe(true);
+    expect((await api(t.coach).get("/api/principal/leaderboard")).status).toBe(403);
   });
 });

@@ -107,7 +107,8 @@ async function resolveReportStudent(req, queryStudentId) {
     assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
     return queryStudentId;
   }
-  assert(req.userRole === "ADMIN", "Bu işlem için yetkin yok", 403);
+  // Okul müdürü ve yönetici: okuldaki herhangi bir öğrencinin raporu (müdür yalnızca okur).
+  assert(req.userRole === "ADMIN" || req.userRole === "PRINCIPAL", "Bu işlem için yetkin yok", 403);
   assert(queryStudentId, "studentId gerekli", 400);
   return queryStudentId;
 }

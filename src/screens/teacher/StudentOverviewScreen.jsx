@@ -197,7 +197,9 @@ function seenChip(s) {
   return { today: false, text: `Son giriş ${seen.days} gün önce` };
 }
 
-export default function StudentOverviewScreen({ studentId, onBack, onOpenReport, onOpenAssignment, onCreateAssignment }) {
+// readOnly (okul müdürü): koçun görünümünün aynısı, ama özel notlar, "Notlar", "Not ekle" ve "Kişisel ödev ver" yok;
+// veri müdür ucundan gelir (koçun özel notları orada hiç dönmez).
+export default function StudentOverviewScreen({ studentId, onBack, onOpenReport, onOpenAssignment, onCreateAssignment, readOnly }) {
   const [data, setData] = useState(null);
   const [yksDays, setYksDays] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -214,7 +216,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([api.teacherStudentOverview(studentId), api.getExamDates().catch(() => null)])
+    Promise.all([readOnly ? api.principalStudentOverview(studentId) : api.teacherStudentOverview(studentId), api.getExamDates().catch(() => null)])
       .then(([overview, exam]) => {
         setData(overview);
         setYksDays(exam?.yksExamDate ? Math.ceil((new Date(exam.yksExamDate).getTime() + TYT_START_UTC_OFFSET_MS - Date.now()) / 86400000) : null);
@@ -255,7 +257,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
         <HeaderIconButton onBrand icon={ChevronLeft} label="Geri" onClick={onBack} />
         <span style={{ flex: 1 }} />
         {onOpenReport && <HeroTextButton icon={LineChart} label="Rapor" onClick={onOpenReport} />}
-        {content && <HeroTextButton icon={FileText} label="Notlar" onClick={() => notesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} />}
+        {content && !readOnly && <HeroTextButton icon={FileText} label="Notlar" onClick={() => notesRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })} />}
       </div>
       {content}
     </HeroHeader>
@@ -317,7 +319,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
               {student.className && <StatusChip tone="onBrand">{student.className}</StatusChip>}
               <StatusChip tone="onBrand">{seen.today && <span aria-hidden="true" style={{ width: 6, height: 6, borderRadius: 999, background: C.lime }} />}{seen.text}</StatusChip>
-              {coachId && <StatusChip tone="onBrand">Koçu sensin</StatusChip>}
+              {coachId && <StatusChip tone="onBrand">{readOnly ? (student.coachName ? `Koç: ${student.coachName}` : "Koçu var") : "Koçu sensin"}</StatusChip>}
               {yksDays > 0 && <StatusChip tone="lime">YKS'ye {yksDays} gün</StatusChip>}
               {student.banned && <StatusChip tone="danger">Hesap askıda</StatusChip>}
             </div>
@@ -406,8 +408,8 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
             items={branchItems} onOpen={onOpenAssignment} emptyText="Bu dönemde branş ödevi yok."
           />
           <AssignmentSection
-            icon={User} iconBg={C.brand} iconFg={C.onBrand} title="Benim verdiğim" note="Kişisel" countTone="brand"
-            items={mineItems} onOpen={onOpenAssignment} emptyText="Bu dönemde senin verdiğin ödev yok."
+            icon={User} iconBg={C.brand} iconFg={C.onBrand} title={readOnly ? "Koçun verdiği" : "Benim verdiğim"} note="Kişisel" countTone="brand"
+            items={mineItems} onOpen={onOpenAssignment} emptyText={readOnly ? "Bu dönemde koçun verdiği ödev yok." : "Bu dönemde senin verdiğin ödev yok."}
           />
           {otherItems.length > 0 && (
             <AssignmentSection
@@ -458,7 +460,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
             </SectionCard>
           )}
 
-          <div ref={notesRef} style={{ scrollMarginTop: 16 }}>
+          {!readOnly && <div ref={notesRef} style={{ scrollMarginTop: 16 }}>
             <SectionCard icon={FileText} iconBg={C.track} iconFg={C.inkText} title="Özel notlarım" note="Yalnızca sen" count={notes.length || null}>
               {notes.length === 0 ? (
                 <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted, marginTop: 10, lineHeight: 1.5 }}>Bu öğrenci hakkında henüz not almadın. Notlar tarihli tutulur ve yalnızca sen görürsün.</div>
@@ -479,15 +481,15 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
                 </div>
               )}
             </SectionCard>
-          </div>
+          </div>}
         </div>
 
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+        {!readOnly && <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           {onCreateAssignment && (
             <Button icon={Plus} onClick={() => onCreateAssignment(studentId)} style={{ flex: 3, minHeight: 52, borderRadius: 16, background: C.brand, color: C.onBrand }}>Kişisel ödev ver</Button>
           )}
           <Button icon={PenLine} variant="secondary" onClick={() => setNoteModal({ note: null })} style={{ flex: 2, minHeight: 52, borderRadius: 16, background: C.surface, color: C.inkText, borderColor: C.brandOutline }}>Not ekle</Button>
-        </div>
+        </div>}
       </div>
     </div>
   );

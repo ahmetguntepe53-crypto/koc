@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3, LayoutDashboard, GraduationCap } from "lucide-react";
-import { PrincipalOverviewScreen, PrincipalStudentsScreen, PrincipalTeachersScreen } from "./screens/principal/PrincipalScreens.jsx";
+import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3, LayoutDashboard, GraduationCap, Trophy } from "lucide-react";
+import { PrincipalOverviewScreen, PrincipalStudentsScreen, PrincipalLeaderboardScreen, PrincipalTeachersScreen } from "./screens/principal/PrincipalScreens.jsx";
 import { C, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID, LoadingState } from "./components/common.jsx";
@@ -94,7 +94,7 @@ export default function App() {
   const [screen, setScreen] = useState(null);
   // Mor üst alanlı ekran: genel başlık gizlenir (ekran kendi başlığını mor alanın içinde çizer), durum
   // çubuğu şeridi de aynı mora boyanır — yoksa saatin olduğu şerit ile mor alan arasında renk kırılırdı.
-  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview", "myAssignments", "studyLog", "profile", "assignmentSubmit", "principalOverview", "principalStudents", "principalTeachers"].includes(screen)
+  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview", "myAssignments", "studyLog", "profile", "assignmentSubmit", "principalOverview", "principalStudents", "principalLeaderboard", "principalTeachers"].includes(screen)
     || (screen === "assignmentCreate" && authUser?.isSubjectTeacher);
   // Oturum açıkken her ekranın üstü mor (kendi üst alanı ya da mor PageHeader) — şerit de mor.
   const signedIn = !!authUser;
@@ -114,6 +114,8 @@ export default function App() {
   const [assignmentDetailReturnTo, setAssignmentDetailReturnTo] = useState("assignments");
   const [selectedRecipientId, setSelectedRecipientId] = useState(null);
   const [selectedStudentId, setSelectedStudentId] = useState(null);
+  // Öğrenci ekranının "geri"si nereye döner: öğretmende "students"; müdürde açıldığı liste (öğrenciler/sıralama).
+  const [studentBackScreen, setStudentBackScreen] = useState("students");
   const [selectedStudentName, setSelectedStudentName] = useState(null);
   const [coachNoteOpen, setCoachNoteOpen] = useState(false);
   // Öğrenci Özeti'ndeki "Yeni Ödev Ata" kısayolu Ödev Oluştur'u bu öğrenci önceden tikli açar,
@@ -323,7 +325,7 @@ export default function App() {
       }
       if (screen === "studentOverview") {
         setSelectedStudentId(null);
-        setScreen("students");
+        setScreen(studentBackScreen);
         return;
       }
       if (screen === "reports" && reportReturnTo !== "tab") {
@@ -407,8 +409,8 @@ export default function App() {
   };
   const backFromStudyLog = () => { setReturnToReport(false); setStudyPrefill(null); setScreen("reports"); };
 
-  const openStudent = (id, name) => { setSelectedStudentId(id); setSelectedStudentName(name); setCoachNoteOpen(false); setScreen("studentOverview"); };
-  const backToStudents = () => { setSelectedStudentId(null); setSelectedStudentName(null); setScreen("students"); };
+  const openStudent = (id, name, backTo = "students") => { setSelectedStudentId(id); setSelectedStudentName(name); setStudentBackScreen(backTo); setCoachNoteOpen(false); setScreen("studentOverview"); };
+  const backToStudents = () => { setSelectedStudentId(null); setSelectedStudentName(null); setScreen(studentBackScreen); };
   const createAssignmentForStudent = (studentId) => {
     setAssignPrefill(null);
     setAssignmentCreateInitialStudentId(studentId);
@@ -459,13 +461,14 @@ export default function App() {
     : screen === "studyLog" && returnToReport ? backFromStudyLog
     : undefined;
   // Detay ekranlarındayken de ait olduğu liste sekmesi kenar çubuğunda aktif görünsün diye.
-  const activeTabId = screen === "assignmentDetail" ? (assignmentDetailReturnTo === "studentOverview" || assignmentDetailReturnTo === "reports" ? "students" : "assignments")
+  const studentsTab = authUser?.role === "PRINCIPAL" ? studentBackScreen : "students";
+  const activeTabId = screen === "assignmentDetail" ? (assignmentDetailReturnTo === "studentOverview" || assignmentDetailReturnTo === "reports" ? studentsTab : "assignments")
     : screen === "monthlyReports" ? "students"
     : screen === "assignmentCreate" && assignmentCreateReturnTo === "reports" ? "students"
     : (screen === "assignmentSubmit" || screen === "studyLog") && returnToReport ? "reports"
     : screen === "assignmentSubmit" ? "myAssignments"
-    : screen === "studentOverview" ? "students"
-    : screen === "reports" ? (reportReturnTo === "studentOverview" || reportReturnTo === "monthlyReports" ? "students" : reportReturnTo === "tab" ? "reports" : "profile")
+    : screen === "studentOverview" ? studentsTab
+    : screen === "reports" ? (reportReturnTo === "studentOverview" || reportReturnTo === "monthlyReports" ? studentsTab : reportReturnTo === "tab" ? "reports" : "profile")
     : screen;
 
   return (
@@ -601,9 +604,10 @@ const TABS_BY_ROLE = {
   ],
   // Okul müdürü: yalnızca takip (bkz. screens/principal/PrincipalScreens.jsx).
   PRINCIPAL: [
-    { id: "principalOverview", label: "Genel bakış", icon: LayoutDashboard },
+    { id: "principalOverview", label: "Özet", icon: LayoutDashboard },
     { id: "principalStudents", label: "Öğrenciler", icon: Users },
-    { id: "principalTeachers", label: "Öğretmenler", icon: GraduationCap },
+    { id: "principalLeaderboard", label: "Sıralama", icon: Trophy },
+    { id: "principalTeachers", label: "Öğretmen", icon: GraduationCap },
   ],
   STUDENT: [
     { id: "myAssignments", label: "Bu hafta", icon: ClipboardList },
@@ -627,7 +631,8 @@ function renderScreen({
   if (authUser.role === "PRINCIPAL" || authUser.role === "ADMIN") {
     const common = { user: authUser, unreadCount, onOpenNotifications: openNotifications };
     if (screen === "principalOverview") return <PrincipalOverviewScreen {...common} />;
-    if (screen === "principalStudents") return <PrincipalStudentsScreen {...common} />;
+    if (screen === "principalStudents") return <PrincipalStudentsScreen {...common} onOpenStudent={(id, name) => openStudent(id, name, "principalStudents")} />;
+    if (screen === "principalLeaderboard") return <PrincipalLeaderboardScreen {...common} onOpenStudent={(id, name) => openStudent(id, name, "principalLeaderboard")} />;
     if (screen === "principalTeachers") return <PrincipalTeachersScreen {...common} />;
   }
   if (screen === "reports" && (authUser.role !== "TEACHER" || selectedStudentId)) {
@@ -650,6 +655,11 @@ function renderScreen({
   }
   if (authUser.role === "ADMIN" && screen === "users") return <AdminUsersScreen />;
   if (authUser.role === "ADMIN" && screen === "photos") return <AdminPhotosScreen />;
+  // Okul müdürü koçun öğrenci ve ödev ekranlarını SALT OKUNUR açar (veri müdür ucundan, koçun özel notları yok).
+  if (authUser.role === "PRINCIPAL") {
+    if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenReport={() => openReport("studentOverview", selectedStudentId, selectedStudentName)} onOpenAssignment={openAssignment} readOnly />;
+    if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
+  }
   if (authUser.role === "TEACHER") {
     if (screen === "students") return <TeacherStudentsScreen user={authUser} onOpen={openStudent} unreadCount={unreadCount} onOpenNotifications={openNotifications} onOpenMonthly={() => openMonthly(null)} />;
     if (screen === "monthlyReports") {

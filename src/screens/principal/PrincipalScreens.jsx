@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { Users, BookOpen, School, ChevronLeft, ChevronRight, Search, ClipboardList, UserRound } from "lucide-react";
+import { Users, BookOpen, School, ChevronLeft, ChevronRight, Search, UserRound } from "lucide-react";
 import { C, bodyFont, displayFont } from "../../theme.js";
 import { Avatar, EmptyState, LoadingState, HeaderIconButton } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, SectionCard, SegmentFilter, StatusChip, fieldBox, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
-import { FIELD_SHORT } from "../../studentField.js";
-import { lastSeenInfo, shortDate } from "../../work.js";
+import { lastSeenInfo } from "../../work.js";
+import { gradeLabel } from "../../subjects.js";
 
 // Okul müdürü paneli (rol PRINCIPAL) — yalnızca okur. Tanımlar (bkz. server/src/routes/principal.js):
 // tamamlama = sorumlu olunan (tamamlanmış ya da süresi dolmuş) ödevlerin tamamlanan yüzdesi; başarı = toplam net /
@@ -25,7 +25,6 @@ function usePeriod() {
   return [period, change];
 }
 const pct = (v) => (v == null ? "—" : `%${v}`);
-const STATUS_CHIP = { done: ["success", "Tamamladı"], missed: ["danger", "Gecikti"], skipped: ["track", "Pas geçti"], open: ["warning", "Bekliyor"] };
 
 function PeriodFilter({ value, onChange }) {
   return <SegmentFilter small label="Dönem" value={value} onChange={onChange} options={PERIODS} />;
@@ -170,13 +169,12 @@ const SORTS = [
   { id: "name", label: "Ad" },
 ];
 
-export function PrincipalStudentsScreen({ unreadCount, onOpenNotifications }) {
+export function PrincipalStudentsScreen({ unreadCount, onOpenNotifications, onOpenStudent }) {
   const [period, setPeriod] = usePeriod();
   const [data, error] = useLoad(() => api.principalStudents(period), [period]);
   const [q, setQ] = useState("");
   const [cls, setCls] = useState("");
   const [sort, setSort] = useState("success");
-  const [openId, setOpenId] = useState(null);
 
   const classes = useMemo(() => [...new Set((data?.students || []).map((s) => s.className).filter(Boolean))].sort((a, b) => a.localeCompare(b, "tr")), [data]);
   const list = useMemo(() => {
@@ -185,8 +183,6 @@ export function PrincipalStudentsScreen({ unreadCount, onOpenNotifications }) {
     const val = (s) => (sort === "success" ? s.successPct : s.completionRate) ?? -1;
     return rows.sort((a, b) => (sort === "name" ? a.name.localeCompare(b.name, "tr") : val(a) - val(b) || a.name.localeCompare(b.name, "tr")));
   }, [data, q, cls, sort]);
-
-  if (openId) return <PrincipalStudentDetail id={openId} period={period} onBack={() => setOpenId(null)} unreadCount={unreadCount} onOpenNotifications={onOpenNotifications} />;
 
   const withOverdue = (data?.students || []).filter((s) => s.overdue > 0).length;
   return (
@@ -216,7 +212,7 @@ export function PrincipalStudentsScreen({ unreadCount, onOpenNotifications }) {
         {error ? <EmptyState text={error} /> : !data ? <LoadingState /> : list.length === 0 ? <EmptyState compact text="Bu süzgeçte öğrenci yok." /> : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {list.map((s) => (
-              <button key={s.id} type="button" onClick={() => setOpenId(s.id)} className="k-list-row" style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 18, border: "none", background: C.surface, textAlign: "left", cursor: "pointer" }}>
+              <button key={s.id} type="button" onClick={() => onOpenStudent(s.id, s.name)} className="k-list-row" style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 18, border: "none", background: C.surface, textAlign: "left", cursor: "pointer" }}>
                 <Avatar name={s.name} size={40} tint />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{s.name}</span>
@@ -232,63 +228,6 @@ export function PrincipalStudentsScreen({ unreadCount, onOpenNotifications }) {
               </button>
             ))}
           </div>
-        )}
-      </Body>
-    </div>
-  );
-}
-
-function PrincipalStudentDetail({ id, period: initialPeriod, onBack, unreadCount, onOpenNotifications }) {
-  const [period, setPeriod] = useState(initialPeriod);
-  const [data, error] = useLoad(() => api.principalStudent(id, period), [id, period]);
-  const st = data?.student;
-  const seen = st ? lastSeenInfo(st.lastSeenAt, null) : null;
-  return (
-    <div>
-      <Hero
-        onBack={onBack}
-        subtitle={st ? [st.className, st.coachName && `Koç: ${st.coachName}`, st.field && FIELD_SHORT[st.field], seen && (seen.never ? "hiç giriş yapmadı" : `son giriş ${seen.label}`)].filter(Boolean).join(" · ") : "Öğrenci"}
-        title={st?.name || "…"}
-        unreadCount={unreadCount} onOpenNotifications={onOpenNotifications}
-        stats={data && <>
-          <HeroStat lime label="tamamlama" value={pct(data.total.completionRate)} />
-          <HeroStat label="başarı" value={pct(data.total.successPct)} />
-          <HeroStat label="gecikti" value={data.total.overdue} />
-        </>}
-      />
-      <Body>
-        <PeriodFilter value={period} onChange={setPeriod} />
-        {error ? <EmptyState text={error} /> : !data ? <LoadingState /> : (
-          <>
-            <SectionCard icon={BookOpen} iconBg={C.successTint} iconFg={C.successText} title="Dersler" count={data.subjects.length}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-                {data.subjects.length === 0 && <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted }}>Bu dönemde ödev yok.</div>}
-                {data.subjects.map((x) => (
-                  <MetricRow key={`${x.examType}|${x.subject}`} title={x.subject} chip={<StatusChip tone="brand">{x.examType}</StatusChip>} sub={`${x.assigned} ödev · ${x.submissions} sonuç`} completion={x.completionRate} success={x.successPct} overdue={x.overdue} />
-                ))}
-              </div>
-            </SectionCard>
-            <SectionCard icon={ClipboardList} iconBg={C.brandTint} iconFg={C.brandText} title="Son ödevler" count={data.recent.length}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-                {data.recent.length === 0 && <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted }}>Bu dönemde ödev yok.</div>}
-                {data.recent.map((r) => {
-                  const [tone, label] = STATUS_CHIP[r.status] || STATUS_CHIP.open;
-                  return (
-                    <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: 12, borderRadius: 16, background: C.pageTint }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 600, color: C.brandText }}>{r.subject} · {r.examType}</div>
-                        <div style={{ fontFamily: bodyFont, fontSize: 14.5, fontWeight: 700, color: C.inkText, overflowWrap: "anywhere" }}>{r.topic}</div>
-                        <div style={{ ...NUM, fontSize: 12, color: C.inkMuted, marginTop: 2 }}>
-                          son gün {shortDate(r.endDate)}{r.net != null ? ` · ${String(Math.round(r.net * 100) / 100).replace(".", ",")} net` : ""}{r.successPct != null ? ` · %${r.successPct}` : ""}
-                        </div>
-                      </div>
-                      <StatusChip tone={tone}>{label}</StatusChip>
-                    </div>
-                  );
-                })}
-              </div>
-            </SectionCard>
-          </>
         )}
       </Body>
     </div>
@@ -344,6 +283,60 @@ export function PrincipalTeachersScreen({ unreadCount, onOpenNotifications }) {
               );
             })}
           </div>
+        )}
+      </Body>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- Sıralama
+// Öğrenci adıyla genel başarı sıralaması (yöneticinin "Sıralama" sekmesiyle aynı veri): tüm zamanların toplam neti /
+// toplam soru. En az minQuestions soru çözmeyen öğrenci sıralamaya girmez, altta ayrı listelenir.
+export function PrincipalLeaderboardScreen({ unreadCount, onOpenNotifications, onOpenStudent }) {
+  const [data, error] = useLoad(() => api.principalLeaderboard(), []);
+  const ranked = (data?.students || []).filter((s) => s.ranked);
+  const unranked = (data?.students || []).filter((s) => !s.ranked);
+  const row = (s, rank) => (
+    <button key={s.id} type="button" onClick={() => onOpenStudent(s.id, s.name)} className="k-list-row" style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 18, border: "none", background: C.surface, textAlign: "left", cursor: "pointer" }}>
+      {rank != null && <span style={{ ...NUM, width: 24, flexShrink: 0, textAlign: "center", fontSize: 14, fontWeight: 800, color: rank <= 3 ? C.warningText : C.inkMuted }}>{rank}</span>}
+      <Avatar name={s.name} size={40} tint />
+      <span style={{ flex: 1, minWidth: 0 }}>
+        <span style={{ display: "block", fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{s.name}</span>
+        <span style={{ display: "block", fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, marginTop: 2 }}>{[s.className, gradeLabel(s.gradeLevel)].filter(Boolean).join(" · ")}</span>
+      </span>
+      <span style={{ textAlign: "right", flexShrink: 0 }}>
+        <span style={{ ...NUM, display: "block", fontSize: 18, fontWeight: 800, color: s.netRate == null ? C.inkMuted : C.inkText }}>{s.netRate == null ? "—" : `%${String(s.netRate).replace(".", ",")}`}</span>
+        <span style={{ ...NUM, display: "block", fontSize: 11, color: C.inkMuted }}>{s.totalQuestions} soru</span>
+      </span>
+      <ChevronRight size={18} color={C.brandText} aria-hidden="true" style={{ flexShrink: 0 }} />
+    </button>
+  );
+  return (
+    <div>
+      <Hero
+        subtitle="Tüm zamanların toplam net oranı" title="Sıralama"
+        unreadCount={unreadCount} onOpenNotifications={onOpenNotifications}
+        stats={data && <>
+          <HeroStat lime label="sıralanan öğrenci" value={ranked.length} />
+          <HeroStat label="yeterli veri yok" value={unranked.length} />
+          <HeroStat label="en yüksek oran" value={ranked[0] ? `%${String(ranked[0].netRate).replace(".", ",")}` : "—"} />
+        </>}
+      />
+      <Body>
+        <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted, lineHeight: 1.5 }}>
+          Ödev ve serbest çalışma sonuçlarının toplamı. En az {data?.minQuestions ?? 30} soru çözmeyen öğrenci sıralamaya girmez; sayı azken yüzde anlamsız çıkar.
+        </div>
+        {error ? <EmptyState text={error} /> : !data ? <LoadingState /> : (
+          <>
+            {ranked.length === 0 ? <EmptyState compact text="Henüz sıralamaya girecek kadar soru çözen öğrenci yok." /> : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>{ranked.map((s, i) => row(s, i + 1))}</div>
+            )}
+            {unranked.length > 0 && (
+              <SectionCard icon={Users} iconBg={C.track} iconFg={C.inkText} title="Yeterli veri yok" count={unranked.length}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>{unranked.map((s) => row(s))}</div>
+              </SectionCard>
+            )}
+          </>
         )}
       </Body>
     </div>
