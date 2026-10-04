@@ -107,6 +107,16 @@ describe("GET /api/principal/*", () => {
     expect((await api(t.principal).get("/api/principal/leaderboard?period=year")).status).toBe(400);
   });
 
+  it("müdür tüm öğretmenlerin gönderilmiş ödevlerini listeler (öğretmen ve ders süzgeciyle)", async () => {
+    const all = await api(t.principal).get("/api/assignments");
+    expect(all.status).toBe(200);
+    expect(all.body.assignments.length).toBeGreaterThanOrEqual(2);
+    expect(all.body.assignments.every((a) => a.status === "SENT" && a.teacher?.name)).toBe(true);
+    const fizik = await api(t.principal).get(`/api/assignments?subject=Fizik&teacherId=${w.branch.id}`);
+    expect(fizik.body.assignments.map((a) => a.subject)).toEqual(["Fizik"]);
+    expect((await api(t.principal).get(`/api/assignments?teacherId=${w.coachA.id}`)).body.assignments).toEqual([]);
+  });
+
   it("2.0 uyumluluğu: eski /students/:id özet ucu hâlâ çalışır", async () => {
     const d = await api(t.principal).get(`/api/principal/students/${S1.id}?period=all`);
     expect(d.status).toBe(200);

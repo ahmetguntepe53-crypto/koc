@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, ChevronDown, ChevronRight, CalendarDays, Users } from "lucide-react";
+import { BookOpen, GraduationCap, ChevronDown, ChevronRight, CalendarDays, Users } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
 import { Card, Avatar, EmptyState, LoadingState } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, OverlapCard, SegmentFilter, StatusChip, ProgressRing, NUM } from "../../components/brand.jsx";
@@ -50,9 +50,10 @@ function groupOf(a, [ws, we]) {
 }
 const GROUPS = [["later", "İleride"], ["week", "Bu hafta"], ["earlier", "Önceki haftalar"]];
 
-export default function AssignmentListScreen({ onOpen, refreshKey, user, unreadCount, onOpenNotifications }) {
+export default function AssignmentListScreen({ principal, onOpen, refreshKey, user, unreadCount, onOpenNotifications }) {
   const [assignments, setAssignments] = useState([]);
   const [subject, setSubject] = useState("");
+  const [teacher, setTeacher] = useState("");
   const [filter, setFilter] = useState("all");
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -68,13 +69,18 @@ export default function AssignmentListScreen({ onOpen, refreshKey, user, unreadC
 
   const all = useMemo(() => assignments.map(summarize), [assignments]);
   const subjects = useMemo(() => [...new Set(assignments.map((a) => a.subject))].sort((x, y) => x.localeCompare(y, "tr")), [assignments]);
-  const bySubject = subject ? all.filter((x) => x.a.subject === subject) : all;
+  const teachers = useMemo(() => {
+    const m = new Map(assignments.filter((a) => a.teacher).map((a) => [a.teacher.id, a.teacher.name]));
+    return [...m].sort((x, y) => x[1].localeCompare(y[1], "tr"));
+  }, [assignments]);
+  const byTeacher = teacher ? all.filter((x) => x.a.teacher?.id === teacher) : all;
+  const bySubject = subject ? byTeacher.filter((x) => x.a.subject === subject) : byTeacher;
   const counts = { all: bySubject.length, active: bySubject.filter((x) => x.active).length, late: bySubject.filter((x) => x.late > 0).length };
   const visible = filter === "active" ? bySubject.filter((x) => x.active) : filter === "late" ? bySubject.filter((x) => x.late > 0) : bySubject;
 
-  const doneSum = all.reduce((n, x) => n + x.done, 0);
-  const totalSum = all.reduce((n, x) => n + x.total, 0);
-  const lateAssignments = all.filter((x) => x.late > 0).length;
+  const doneSum = byTeacher.reduce((n, x) => n + x.done, 0);
+  const totalSum = byTeacher.reduce((n, x) => n + x.total, 0);
+  const lateAssignments = byTeacher.filter((x) => x.late > 0).length;
 
   const bounds = weekBounds();
   const sorted = [...visible].sort((x, y) => new Date(y.a.scheduledDate) - new Date(x.a.scheduledDate));
@@ -87,12 +93,12 @@ export default function AssignmentListScreen({ onOpen, refreshKey, user, unreadC
           <Avatar name={user?.name} size={44} lime />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.onBrandMuted, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>Merhaba, {user?.name}</div>
-            <h1 style={{ margin: 0, fontFamily: displayFont, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", color: C.onBrand }}>Gönderdiğim ödevler</h1>
+            <h1 style={{ margin: 0, fontFamily: displayFont, fontSize: 22, fontWeight: 800, letterSpacing: "-0.02em", color: C.onBrand }}>{principal ? "Ödevler" : "Gönderdiğim ödevler"}</h1>
           </div>
           <HeroBell unreadCount={unreadCount} onClick={onOpenNotifications} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 18 }}>
-          <HeroStat label="Ödev" value={all.length} />
+          <HeroStat label="Ödev" value={byTeacher.length} />
           <HeroStat label="Teslim" value={<>{doneSum}<span style={{ color: C.onBrandMuted }}>/{totalSum}</span></>} />
           <HeroStat label="Gecikti" value={lateAssignments} lime />
         </div>
@@ -100,6 +106,19 @@ export default function AssignmentListScreen({ onOpen, refreshKey, user, unreadC
 
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "0 16px 24px" }}>
         <OverlapCard overlap={44} style={{ padding: 8 }}>
+          {principal && (
+            <label style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, minHeight: 44, padding: "0 12px 0 8px", borderRadius: 14, background: C.pageTint, cursor: "pointer", marginBottom: 8 }}>
+              <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: C.brand, color: C.onBrand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <GraduationCap size={15} strokeWidth={2.4} />
+              </span>
+              <span style={{ flex: 1, minWidth: 0, fontFamily: bodyFont, fontSize: 14.5, fontWeight: 600, color: C.inkText }}>{teachers.find(([id]) => id === teacher)?.[1] || "Tüm öğretmenler"}</span>
+              <ChevronDown size={18} color={C.inkMuted} aria-hidden="true" />
+              <select aria-label="Öğretmene göre filtrele" value={teacher} onChange={(e) => setTeacher(e.target.value)} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", fontSize: 16 }}>
+                <option value="">Tüm öğretmenler</option>
+                {teachers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+              </select>
+            </label>
+          )}
           <label style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, minHeight: 44, padding: "0 12px 0 8px", borderRadius: 14, background: C.pageTint, cursor: "pointer" }}>
             <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: C.brand, color: C.onBrand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <BookOpen size={15} strokeWidth={2.4} />
@@ -134,7 +153,7 @@ export default function AssignmentListScreen({ onOpen, refreshKey, user, unreadC
         ) : loadError ? (
           <div style={{ marginTop: 20 }}><EmptyState text={loadError} /></div>
         ) : assignments.length === 0 ? (
-          <div style={{ marginTop: 20 }}><EmptyState text="Henüz ödev göndermedin — alttaki 'Ödev ata' sekmesinden başlayabilirsin." /></div>
+          <div style={{ marginTop: 20 }}><EmptyState text={principal ? "Henüz gönderilmiş ödev yok." : "Henüz ödev göndermedin — alttaki 'Ödev ata' sekmesinden başlayabilirsin."} /></div>
         ) : groups.length === 0 ? (
           <div style={{ marginTop: 20 }}><EmptyState compact text="Bu filtrede ödev yok." /></div>
         ) : groups.map((g, i) => (
@@ -167,7 +186,7 @@ function AssignmentCard({ item, onOpen }) {
           <span style={{ ...NUM, fontSize: 13, fontWeight: 800, color: C.inkText }}>{done}/{total}</span>
         </ProgressRing>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 600, color: C.brandText }}>{[a.subject, a.sourceBook].filter(Boolean).join(" · ")}</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 600, color: C.brandText }}>{[a.subject, a.sourceBook, a.teacher?.name].filter(Boolean).join(" · ")}</div>
           <div style={{ fontFamily: displayFont, fontSize: 17, fontWeight: 800, color: C.inkText, lineHeight: 1.2, marginTop: 2, overflowWrap: "anywhere" }}>{a.topic}</div>
           <div style={{ ...NUM, display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 12px", fontSize: 12, color: C.inkMuted, marginTop: 6 }}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}><CalendarDays size={13} aria-hidden="true" />{dateLabel(a.scheduledDate, a.endDate)}</span>

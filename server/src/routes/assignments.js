@@ -220,6 +220,21 @@ assignmentsRouter.get("/", async (req, res) => {
     const where = {};
     if (req.userRole === "TEACHER") where.teacherId = req.userId;
     else if (req.userRole === "ADMIN") { if (teacherId) where.teacherId = teacherId; }
+    else if (req.userRole === "PRINCIPAL") {
+      // Müdür tüm öğretmenlerin GÖNDERİLMİŞ ödevlerini salt okunur görür (fotoğrafsız, ödev sahibinin adıyla).
+      where.status = "SENT";
+      if (teacherId) where.teacherId = String(teacherId);
+      if (examType) { assert(EXAM_TYPES.includes(examType), "Geçersiz sınav türü"); where.examType = examType; }
+      if (subject) where.subject = String(subject);
+      const rows = await prisma.assignment.findMany({
+        where, orderBy: { scheduledDate: "desc" },
+        include: {
+          teacher: { select: { id: true, name: true } },
+          recipients: { include: { student: { select: { id: true, name: true, className: true } }, submission: true } },
+        },
+      });
+      return res.json({ assignments: rows.map(withSuccessStats) });
+    }
     else return res.status(403).json({ error: "Bu işlem için yetkin yok" });
     // Geçersiz enum değeri Prisma'ya ulaşırsa 500 dönüyordu — burada 400'e çevrilir.
     if (status) { assert(["DRAFT", "SENT"].includes(status), "Geçersiz durum"); where.status = status; }

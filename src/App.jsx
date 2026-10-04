@@ -606,6 +606,7 @@ const TABS_BY_ROLE = {
   PRINCIPAL: [
     { id: "principalLeaderboard", label: "Sıralama", icon: Trophy },
     { id: "principalStudents", label: "Öğrenciler", icon: Users },
+    { id: "assignments", label: "Ödevler", icon: ClipboardList },
     { id: "principalOverview", label: "Özet", icon: LayoutDashboard },
     { id: "principalTeachers", label: "Öğretmen", icon: GraduationCap },
   ],
@@ -634,6 +635,7 @@ function renderScreen({
     if (screen === "principalStudents") return <PrincipalStudentsScreen {...common} onOpenStudent={(id, name) => openStudent(id, name, "principalStudents")} />;
     if (screen === "principalLeaderboard") return <PrincipalLeaderboardScreen {...common} onOpenStudent={(id, name) => openStudent(id, name, "principalLeaderboard")} />;
     if (screen === "principalTeachers") return <PrincipalTeachersScreen {...common} />;
+    if (screen === "assignments" && authUser.role === "PRINCIPAL") return <AssignmentListScreen principal onOpen={openAssignment} refreshKey={assignmentsRefreshKey} user={authUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
   }
   if (screen === "reports" && (authUser.role !== "TEACHER" || selectedStudentId)) {
     return (
