@@ -178,7 +178,7 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
               <span style={{ ...NUM, fontSize: 12.5, color: C.inkMuted }}>{shortDate(assignment.scheduledDate)} → {shortDate(assignment.endDate)}</span>
             </div>
             <div role="img" aria-label={`Süre: ${timeTitle}`} style={{ height: 8, borderRadius: 4, background: C.track, overflow: "hidden", marginTop: 8 }}>
-              <div style={{ width: `${progress * 100}%`, height: "100%", background: C.brand, borderRadius: 4 }} />
+              <div style={{ width: `${progress * 100}%`, height: "100%", background: C.cta, borderRadius: 4 }} />
             </div>
             <div style={{ ...NUM, fontSize: 12, color: C.inkMuted, marginTop: 8 }}>{footer}</div>
           </div>
@@ -271,7 +271,7 @@ function StatBox({ icon: Icon, tint, color, label, value }) {
       <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 9, background: color, color: C.onBrand, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <Icon size={15} strokeWidth={2.6} />
       </span>
-      <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1.1, color: C.inkText, marginTop: 10, whiteSpace: "nowrap" }}>{value}</div>
+      <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1.1, color: C.numText, marginTop: 10, whiteSpace: "nowrap" }}>{value}</div>
       <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, marginTop: 2 }}>{label}</div>
     </div>
   );
@@ -322,7 +322,7 @@ function StudentCard({ r, net, pct, state, Q, isSent, best, endDate, onPhoto, as
         </div>
         {state === "done" ? (
           <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <div style={{ ...NUM, fontSize: 22, fontWeight: 800, color: C.inkText, lineHeight: 1 }}>{fmtNet(net)}</div>
+            <div style={{ ...NUM, fontSize: 22, fontWeight: 800, color: C.numText, lineHeight: 1 }}>{fmtNet(net)}</div>
             <div style={{ fontFamily: bodyFont, fontSize: 11, color: C.inkMuted, marginTop: 3 }}>net</div>
           </div>
         ) : overdue ? <StatusChip tone="danger">Gecikti</StatusChip>

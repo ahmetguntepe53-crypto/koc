@@ -35,7 +35,7 @@ function Meter({ label, value, color }) {
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontFamily: bodyFont, fontSize: 12, color: C.inkMuted }}>
-        <span>{label}</span><span style={{ ...NUM, fontWeight: 800, color: C.inkText }}>{pct(value)}</span>
+        <span>{label}</span><span style={{ ...NUM, fontWeight: 800, color: C.numText }}>{pct(value)}</span>
       </div>
       <div style={{ height: 6, borderRadius: 3, background: C.track, marginTop: 4, overflow: "hidden" }}>
         <div style={{ width: `${Math.max(0, Math.min(100, value ?? 0))}%`, height: "100%", borderRadius: 3, background: color }} />
@@ -131,7 +131,7 @@ export function PrincipalOverviewScreen({ user, unreadCount, onOpenNotifications
                   [s.submissions, "sonuç girişi"],
                 ].map(([v, l]) => (
                   <div key={l} style={{ padding: "10px 12px", borderRadius: 14, background: C.pageTint }}>
-                    <div style={{ ...NUM, fontSize: 20, fontWeight: 800, color: C.inkText }}>{v}</div>
+                    <div style={{ ...NUM, fontSize: 20, fontWeight: 800, color: C.numText }}>{v}</div>
                     <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted }}>{l}</div>
                   </div>
                 ))}
@@ -221,7 +221,7 @@ export function PrincipalStudentsScreen({ unreadCount, onOpenNotifications, onOp
                   </span>
                 </span>
                 <span style={{ textAlign: "right", flexShrink: 0 }}>
-                  <span style={{ ...NUM, display: "block", fontSize: 18, fontWeight: 800, color: C.inkText }}>{pct(sort === "completion" ? s.completionRate : s.successPct)}</span>
+                  <span style={{ ...NUM, display: "block", fontSize: 18, fontWeight: 800, color: C.numText }}>{pct(sort === "completion" ? s.completionRate : s.successPct)}</span>
                   <span style={{ display: "block", fontFamily: bodyFont, fontSize: 11, color: C.inkMuted }}>{sort === "completion" ? "tamamlama" : "başarı"}</span>
                 </span>
                 <ChevronRight size={18} color={C.brandText} aria-hidden="true" style={{ flexShrink: 0 }} />
@@ -268,7 +268,7 @@ export function PrincipalTeachersScreen({ unreadCount, onOpenNotifications }) {
                       </div>
                     </div>
                     <div style={{ textAlign: "right", flexShrink: 0 }}>
-                      <div style={{ ...NUM, fontSize: 18, fontWeight: 800, color: C.inkText }}>{t.assignmentsSent}</div>
+                      <div style={{ ...NUM, fontSize: 18, fontWeight: 800, color: C.numText }}>{t.assignmentsSent}</div>
                       <div style={{ fontFamily: bodyFont, fontSize: 11, color: C.inkMuted }}>ödev</div>
                     </div>
                   </div>
@@ -318,7 +318,7 @@ export function PrincipalLeaderboardScreen({ unreadCount, onOpenNotifications, o
         <span style={{ display: "block", fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, marginTop: 2 }}>{[s.className, gradeLabel(s.gradeLevel)].filter(Boolean).join(" · ")}</span>
       </span>
       <span style={{ textAlign: "right", flexShrink: 0 }}>
-        <span style={{ ...NUM, display: "block", fontSize: 18, fontWeight: 800, color: s.netRate == null ? C.inkMuted : C.inkText }}>{s.netRate == null ? "—" : `%${String(s.netRate).replace(".", ",")}`}</span>
+        <span style={{ ...NUM, display: "block", fontSize: 18, fontWeight: 800, color: s.netRate == null ? C.inkMuted : C.numText }}>{s.netRate == null ? "—" : `%${String(s.netRate).replace(".", ",")}`}</span>
         <span style={{ ...NUM, display: "block", fontSize: 11, color: C.inkMuted }}>{s.totalQuestions} soru</span>
       </span>
       <ChevronRight size={18} color={C.brandText} aria-hidden="true" style={{ flexShrink: 0 }} />

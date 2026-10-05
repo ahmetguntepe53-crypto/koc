@@ -86,6 +86,12 @@ export const THEMES = {
     avatar2: "#A8590A",
     avatar3: "#C93A2C",
     avatar4: "#127A5A",
+    // Rakam rengi: açık temada normal yazı; koyu temada yeşil (KULLANICI İSTEĞİ 2026-10-05: "tüm rakamlarda o rengi kullan").
+    numText: "#17163A",
+    numOnBrand: "#FFFFFF",
+    // Düğme / seçili öğe zemini: açıkta marka moru, koyuda kullanıcının vurgu rengi (bkz. ACCENTS).
+    cta: "#3A2FD0",
+    onCta: "#FFFFFF",
     shadowCard: "0 12px 32px rgba(40,30,120,0.12)",
     shadowNav: "0 12px 28px rgba(23,22,58,0.28)",
   },
@@ -172,12 +178,33 @@ export const THEMES = {
     avatar2: "#4A4A50",
     avatar3: "#5A5A60",
     avatar4: "#2E2E33",
+    numText: "#4ADE80",
+    numOnBrand: "#4ADE80",
+    cta: "#4ADE80",
+    onCta: "#0B0B0C",
     shadowCard: "0 12px 32px rgba(0,0,0,0.5)",
     shadowNav: "0 12px 28px rgba(0,0,0,0.6)",
   },
 };
 
 export const DEFAULT_THEME = "light";
+
+// Koyu temanın vurgu rengi (KULLANICI İSTEĞİ 2026-10-05): rakamlar, seçili sekme, düğmeler bu renkte; varsayılan yeşil,
+// Profil > Görünüm'den değişir. Hepsi koyu zeminde açık ve üstlerine siyah yazı okunur.
+export const ACCENTS = [
+  { id: "yesil", label: "Yeşil", color: "#4ADE80" },
+  { id: "mavi", label: "Mavi", color: "#60A5FA" },
+  { id: "mor", label: "Mor", color: "#A78BFA" },
+  { id: "pembe", label: "Pembe", color: "#F472B6" },
+  { id: "turuncu", label: "Turuncu", color: "#FB923C" },
+  { id: "sari", label: "Sarı", color: "#FACC15" },
+  { id: "beyaz", label: "Beyaz", color: "#EDEDEF" },
+];
+export const DEFAULT_ACCENT = "yesil";
+export function accentTokens(id) {
+  const c = (ACCENTS.find((a) => a.id === id) || ACCENTS[0]).color;
+  return { lime: c, numText: c, numOnBrand: c, cta: c };
+}
 
 // Paleti taşıyan TEK, paylaşılan nesne — bileşenler her zaman C.* okur.
 export const C = {

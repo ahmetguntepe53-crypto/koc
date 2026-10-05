@@ -41,9 +41,9 @@ function ProgressBody({ history, live }) {
           return (
             <div key={it.key} style={{ minWidth: 0 }}>
               <div style={{ height: 52, display: "flex", alignItems: "flex-end" }}>
-                <div style={{ width: "100%", height: Math.max(8, Math.round(((it.pct || 0) / maxPct) * 52)), borderRadius: 8, background: isLast ? C.brand : C.track }} />
+                <div style={{ width: "100%", height: Math.max(8, Math.round(((it.pct || 0) / maxPct) * 52)), borderRadius: 8, background: isLast ? C.cta : C.track }} />
               </div>
-              <div style={{ ...NUM, fontSize: 16, fontWeight: 800, color: C.inkText, marginTop: 8 }}>{formatNet(it.net, 2)}</div>
+              <div style={{ ...NUM, fontSize: 16, fontWeight: 800, color: C.numText, marginTop: 8 }}>{formatNet(it.net, 2)}</div>
               <div style={{ ...NUM, fontSize: 12, color: C.inkMuted, marginTop: 2 }}>{it.label}{it.pct != null && ` · %${it.pct}`}</div>
             </div>
           );
@@ -293,7 +293,7 @@ export default function AssignmentSubmitScreen({ user, recipientId, onBack }) {
           <div style={{ marginTop: 12, padding: "14px 16px", borderRadius: 16, background: C.pageTint, display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 700, color: C.inkMuted }}>Net</div>
-              <div aria-live="polite" style={{ ...NUM, fontSize: 32, fontWeight: 800, color: anyEntered ? C.inkText : C.inkMuted, lineHeight: 1.1, marginTop: 2 }}>{anyEntered ? formatNet(liveNet, 2) : "—"}</div>
+              <div aria-live="polite" style={{ ...NUM, fontSize: 32, fontWeight: 800, color: anyEntered ? C.numText : C.inkMuted, lineHeight: 1.1, marginTop: 2 }}>{anyEntered ? formatNet(liveNet, 2) : "—"}</div>
               <div style={{ ...NUM, fontSize: 12.5, color: C.inkMuted, marginTop: 4 }}>{cN} − {wN} / 4</div>
             </div>
             {expected != null && (

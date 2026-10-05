@@ -89,7 +89,7 @@ function StudentCard({ s, st, onOpen, period, onPickPeriod }) {
           aria-label={`Tamamlama ${word} ${rate != null ? `yüzde ${rate}` : "yok"} — dönemi değiştir`}
           style={{ flexShrink: 0, minHeight: 44, minWidth: 64, padding: "2px 0 2px 8px", background: "none", border: "none", textAlign: "right", cursor: "pointer" }}
         >
-          <span style={{ ...NUM, display: "block", fontSize: 22, fontWeight: 800, lineHeight: 1, color: rate != null ? C.inkText : C.inkMuted }}>{rate != null ? `%${rate}` : "—"}</span>
+          <span style={{ ...NUM, display: "block", fontSize: 22, fontWeight: 800, lineHeight: 1, color: rate != null ? C.numText : C.inkMuted }}>{rate != null ? `%${rate}` : "—"}</span>
           <span style={{ display: "inline-flex", alignItems: "center", gap: 2, fontFamily: bodyFont, fontSize: 11, color: C.inkMuted, marginTop: 3 }}>
             {word}<ChevronDown size={12} aria-hidden="true" />
           </span>

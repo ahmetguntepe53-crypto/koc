@@ -59,7 +59,7 @@ export function SegmentFilter({ label, options, value, onChange, style, small })
             style={{
               flex: 1, minWidth: 0, minHeight: 44, borderRadius: 12, border: "none", cursor: "pointer", padding: small ? "0 2px" : "0 6px",
               display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 6, whiteSpace: "nowrap",
-              background: on ? C.brand : "transparent", color: on ? C.onBrand : C.inkText,
+              background: on ? C.cta : "transparent", color: on ? C.onCta : C.inkText,
               fontFamily: bodyFont, fontSize: small ? 12 : 14, fontWeight: small || on ? 700 : 600,
             }}
           >
@@ -107,7 +107,7 @@ export function ProgressRing({ size, stroke, value, color, track, label, showZer
 export function HeroStat({ label, value, lime }) {
   return (
     <div style={{ minWidth: 0, borderRadius: 16, padding: "12px 12px 10px", background: lime ? C.lime : C.onBrandBox, color: lime ? C.ink : C.onBrand }}>
-      <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ ...NUM, fontSize: 22, fontWeight: 800, lineHeight: 1.1, color: lime ? C.ink : C.numOnBrand }}>{value}</div>
       <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: lime ? 700 : 500, marginTop: 4 }}>{label}</div>
     </div>
   );
@@ -134,7 +134,7 @@ export function HeroTextButton({ icon: Icon, label, onClick }) {
 
 // Bölüm kartı: 32px renkli ikon karesi, başlık, sağda açıklama ve sayı rozeti (ya da serbest "right").
 export function SectionCard({ icon: Icon, iconBg, iconFg, title, note, count, countTone = "track", right, children, style }) {
-  const badge = countTone === "brand" ? { background: C.brand, color: C.onBrand } : { background: C.track, color: C.inkText };
+  const badge = countTone === "brand" ? { background: C.cta, color: C.onCta } : { background: C.track, color: C.inkText };
   return (
     <section style={{ background: C.surface, borderRadius: 20, padding: 14, ...style }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -203,7 +203,7 @@ export function PrimaryButton({ children, icon: Icon, inactive, type = "button",
       aria-disabled={inactive || undefined}
       style={{
         width: "100%", minHeight: 56, borderRadius: 18, border: "none", cursor: inactive ? "default" : "pointer",
-        background: C.brand, color: C.onBrand, opacity: inactive ? 0.4 : 1,
+        background: C.cta, color: C.onCta, opacity: inactive ? 0.4 : 1,
         display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontFamily: bodyFont, fontSize: 16, fontWeight: 800, ...style,
       }}
     >

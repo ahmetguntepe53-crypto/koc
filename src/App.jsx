@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3, LayoutDashboard, GraduationCap, Trophy } from "lucide-react";
 import { PrincipalOverviewScreen, PrincipalStudentsScreen, PrincipalLeaderboardScreen, PrincipalTeachersScreen } from "./screens/principal/PrincipalScreens.jsx";
-import { C, THEMES, DEFAULT_THEME, bodyFont, monoFont } from "./theme.js";
+import { C, THEMES, DEFAULT_THEME, DEFAULT_ACCENT, ACCENTS, accentTokens, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID, LoadingState } from "./components/common.jsx";
 import { api } from "./api.js";
@@ -56,6 +56,10 @@ async function checkForcedUpdate() {
 // Tema tercihi (Profil > Görünüm). Anahtar eski "kocluk-theme"den farklı: o, kaldırılan eski koyu temanın kaydıydı
 // ve aşağıda temizleniyor — yeni koyu tema (gri) o kayıtla kendiliğinden açılmasın.
 const THEME_KEY = "kocluk-tema";
+const ACCENT_KEY = "kocluk-vurgu";
+function readStoredAccent() {
+  try { const a = localStorage.getItem(ACCENT_KEY); return ACCENTS.some((x) => x.id === a) ? a : DEFAULT_ACCENT; } catch (_) { return DEFAULT_ACCENT; }
+}
 function readStoredTheme() {
   try { const t = localStorage.getItem(THEME_KEY); return THEMES[t] ? t : DEFAULT_THEME; } catch (_) { return DEFAULT_THEME; }
 }
@@ -64,7 +68,12 @@ export default function App() {
   // Object.assign(C, …) render gövdesinde: tema değişince App yeniden render olur ve tüm alt bileşenler C'nin yeni
   // değerlerini okur (ayrı Context gerekmez). Modül düzeyinde C'den sabit türetmeyin — ilk temada kalır.
   const [theme, setThemeState] = useState(readStoredTheme);
-  Object.assign(C, THEMES[theme] || THEMES[DEFAULT_THEME]);
+  const [accent, setAccentState] = useState(readStoredAccent);
+  Object.assign(C, THEMES[theme] || THEMES[DEFAULT_THEME], theme === "dark" ? accentTokens(accent) : {});
+  const setAccent = (a) => {
+    setAccentState(a);
+    try { localStorage.setItem(ACCENT_KEY, a); } catch (_) { /* yalnızca kolaylık */ }
+  };
   const setTheme = (t) => {
     setThemeState(t);
     try { localStorage.setItem(THEME_KEY, t); } catch (_) { /* tercih kalıcı olmasa da uygulama çalışır */ }
@@ -528,7 +537,7 @@ export default function App() {
         {/* key={screen}: ekran değişince hafif belirme animasyonu (index.html > .k-screen). */}
         <div key={screen} className="k-screen" style={{ flex: 1 }}>
           {renderScreen({
-            screen, authUser, logout, theme, setTheme,
+            screen, authUser, logout, theme, setTheme, accent, setAccent,
             selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated, assignmentDetailReturnTo,
             selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
             selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
@@ -634,7 +643,7 @@ const TABS_BY_ROLE = {
 };
 
 function renderScreen({
-  screen, authUser, logout, theme, setTheme,
+  screen, authUser, logout, theme, setTheme, accent, setAccent,
   selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated, assignmentDetailReturnTo,
   selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
   selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
@@ -643,7 +652,7 @@ function renderScreen({
   reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill, openStudyLogPrefilled, openAssignPrefilled,
   openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly, openProfile, setAuthUser, createBack, headerBack,
 }) {
-  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} onUserUpdated={setAuthUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
+  if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} accent={accent} onChangeAccent={setAccent} onUserUpdated={setAuthUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
   if (authUser.role === "PRINCIPAL" || authUser.role === "ADMIN") {
     const common = { user: authUser, unreadCount, onOpenNotifications: openNotifications };

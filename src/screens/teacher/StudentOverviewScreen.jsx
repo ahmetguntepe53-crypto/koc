@@ -355,7 +355,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
             <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 700, color: C.inkMuted }}>Bu haftanın neti</div>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 4 }}>
-                <span style={{ ...NUM, fontSize: 32, fontWeight: 800, lineHeight: 1.1, color: weekNet != null ? C.inkText : C.inkMuted }}>{weekNet != null ? fmtNet(weekNet) : "—"}</span>
+                <span style={{ ...NUM, fontSize: 32, fontWeight: 800, lineHeight: 1.1, color: weekNet != null ? C.numText : C.inkMuted }}>{weekNet != null ? fmtNet(weekNet) : "—"}</span>
                 {delta != null && <span style={{ ...NUM, fontSize: 13, fontWeight: 700, color: delta >= 0 ? C.success : C.danger }}>{delta >= 0 ? "+" : "−"}{fmtNet(Math.abs(delta))}</span>}
               </div>
               <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, marginTop: 2 }}>
@@ -364,7 +364,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
             </div>
             <div role="img" aria-label={`Günlük net: ${days.map((d) => `${d.label} ${d.net != null ? fmtNet(d.net) : "yok"}`).join(", ")}`} style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 40, flexShrink: 0 }}>
               {days.map((d) => (
-                <span key={d.key} style={{ width: 12, borderRadius: 4, height: d.net != null && d.net > 0 ? Math.max(14, Math.round((d.net / maxDay) * 40)) : 12, background: d.net != null ? C.brand : C.track }} />
+                <span key={d.key} style={{ width: 12, borderRadius: 4, height: d.net != null && d.net > 0 ? Math.max(14, Math.round((d.net / maxDay) * 40)) : 12, background: d.net != null ? C.cta : C.track }} />
               ))}
             </div>
           </div>
@@ -450,7 +450,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
                       <span style={{ flex: 1, minWidth: 0, fontFamily: bodyFont, fontSize: 14, fontWeight: 600, color: C.inkText }}>{b.label}</span>
                       <MiniBars values={b.series.map((x) => (x ? x.pct : null))} height={24} barWidth={5} gap={3} colorFor={(v, i) => (down ? (i === WEEKS - 1 ? C.danger : `${C.danger}77`) : (i === WEEKS - 1 ? C.brand : `${C.brand}66`))} />
                       <span style={{ textAlign: "right", minWidth: 58 }}>
-                        <span style={{ ...NUM, display: "block", fontSize: 14.5, fontWeight: 700, color: C.inkText }}>{last ? fmtNet(last.net) : "—"}</span>
+                        <span style={{ ...NUM, display: "block", fontSize: 14.5, fontWeight: 700, color: C.numText }}>{last ? fmtNet(last.net) : "—"}</span>
                         {d != null && <span style={{ ...NUM, display: "block", fontSize: 11.5, fontWeight: 600, color: d >= 0 ? C.success : C.danger }}>{d >= 0 ? "+" : "−"}{Math.abs(d)} puan</span>}
                       </span>
                     </div>
@@ -486,7 +486,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
 
         {!readOnly && <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
           {onCreateAssignment && (
-            <Button icon={Plus} onClick={() => onCreateAssignment(studentId)} style={{ flex: 3, minHeight: 52, borderRadius: 16, background: C.brand, color: C.onBrand }}>Kişisel ödev ver</Button>
+            <Button icon={Plus} onClick={() => onCreateAssignment(studentId)} style={{ flex: 3, minHeight: 52, borderRadius: 16, background: C.cta, color: C.onCta }}>Kişisel ödev ver</Button>
           )}
           <Button icon={PenLine} variant="secondary" onClick={() => setNoteModal({ note: null })} style={{ flex: 2, minHeight: 52, borderRadius: 16, background: C.surface, color: C.inkText, borderColor: C.brandOutline }}>Not ekle</Button>
         </div>}

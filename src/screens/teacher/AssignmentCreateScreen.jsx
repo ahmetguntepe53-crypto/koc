@@ -36,7 +36,7 @@ function StepCard({ n, title, right, children }) {
   return (
     <section aria-labelledby={`step-${n}`} style={{ background: C.surface, borderRadius: 20, padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-        <span aria-hidden="true" style={{ ...NUM, width: 26, height: 26, borderRadius: 999, background: C.brand, color: C.onBrand, fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{n}</span>
+        <span aria-hidden="true" style={{ ...NUM, width: 26, height: 26, borderRadius: 999, background: C.cta, color: C.onCta, fontSize: 13, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>{n}</span>
         <h2 id={`step-${n}`} style={{ flex: 1, minWidth: 0, margin: 0, fontFamily: displayFont, fontSize: 16, fontWeight: 800, color: C.inkText }}>{title}</h2>
         {right}
       </div>

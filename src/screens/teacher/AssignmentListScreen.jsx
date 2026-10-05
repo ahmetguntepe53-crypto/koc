@@ -108,7 +108,7 @@ export default function AssignmentListScreen({ principal, onOpen, refreshKey, us
         <OverlapCard overlap={44} style={{ padding: 8 }}>
           {principal && (
             <label style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, minHeight: 44, padding: "0 12px 0 8px", borderRadius: 14, background: C.pageTint, cursor: "pointer", marginBottom: 8 }}>
-              <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: C.brand, color: C.onBrand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: C.cta, color: C.onCta, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                 <GraduationCap size={15} strokeWidth={2.4} />
               </span>
               <span style={{ flex: 1, minWidth: 0, fontFamily: bodyFont, fontSize: 14.5, fontWeight: 600, color: C.inkText }}>{teachers.find(([id]) => id === teacher)?.[1] || "Tüm öğretmenler"}</span>
@@ -120,7 +120,7 @@ export default function AssignmentListScreen({ principal, onOpen, refreshKey, us
             </label>
           )}
           <label style={{ position: "relative", display: "flex", alignItems: "center", gap: 10, minHeight: 44, padding: "0 12px 0 8px", borderRadius: 14, background: C.pageTint, cursor: "pointer" }}>
-            <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: C.brand, color: C.onBrand, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <span aria-hidden="true" style={{ width: 28, height: 28, borderRadius: 8, background: C.cta, color: C.onCta, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               <BookOpen size={15} strokeWidth={2.4} />
             </span>
             <span style={{ flex: 1, minWidth: 0, fontFamily: bodyFont, fontSize: 14.5, fontWeight: 600, color: C.inkText }}>{subject || "Tüm dersler"}</span>
@@ -183,7 +183,7 @@ function AssignmentCard({ item, onOpen }) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <ProgressRing size={52} stroke={6} value={total ? done / total : 0} showZero color={hasLate ? C.success : C.brand} track={C.track} label={`${total} öğrenciden ${done} tamamladı`}>
-          <span style={{ ...NUM, fontSize: 13, fontWeight: 800, color: C.inkText }}>{done}/{total}</span>
+          <span style={{ ...NUM, fontSize: 13, fontWeight: 800, color: C.numText }}>{done}/{total}</span>
         </ProgressRing>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 600, color: C.brandText }}>{[a.subject, a.sourceBook, a.teacher?.name].filter(Boolean).join(" · ")}</div>
@@ -195,7 +195,7 @@ function AssignmentCard({ item, onOpen }) {
         </div>
         {a.successPct != null && (
           <div style={{ textAlign: "right", flexShrink: 0, alignSelf: "flex-start" }}>
-            <div style={{ ...NUM, fontSize: 20, fontWeight: 800, color: C.inkText, lineHeight: 1.1 }}>%{a.successPct}</div>
+            <div style={{ ...NUM, fontSize: 20, fontWeight: 800, color: C.numText, lineHeight: 1.1 }}>%{a.successPct}</div>
             <div style={{ fontFamily: bodyFont, fontSize: 11, color: C.inkMuted, marginTop: 2 }}>başarı</div>
           </div>
         )}
