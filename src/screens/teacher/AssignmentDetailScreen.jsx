@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ChevronLeft, ChevronRight, Bell, TrendingUp, Check, Clock, Star, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, Bell, TrendingUp, Check, Clock, Star, Pencil, FileDown } from "lucide-react";
 import { C, displayFont, bodyFont } from "../../theme.js";
 import { Card, Button, EmptyState, Avatar, Modal, LoadingState, confirmDialog, SegmentBar, Legend, HeaderIconButton, Input, Textarea } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, OverlapCard, SegmentFilter, StatusChip, ProgressRing, NUM } from "../../components/brand.jsx";
@@ -43,6 +43,7 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
   const [lightbox, setLightbox] = useState(null); // { photos, index }
   const [filter, setFilter] = useState("all");
   const [editing, setEditing] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -68,11 +69,32 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
     try { await api.deleteAssignment(assignmentId); onBack(); } catch (e) { setActionError(e.message); setBusy(false); }
   };
 
+  // Ödevi yapan/yapmayan öğrencilerin durum listesi (PDF) — durum tanımı aşağıdaki `rows` ile aynı.
+  const downloadPdf = async () => {
+    if (pdfBusy || !assignment) return;
+    setPdfBusy(true);
+    setActionError("");
+    try {
+      const ended = daysUntil(assignment.endDate) < 0;
+      const list = assignment.recipients.map((r) => ({
+        name: r.student.name, className: r.student.className,
+        state: r.submission ? "done" : r.skippedAt ? "skipped" : ended ? "overdue" : "waiting",
+      }));
+      const { downloadAssignmentPdf } = await import("../../reportPdf.js");
+      await downloadAssignmentPdf({ assignment, rows: list });
+    } catch (e) {
+      setActionError(e.message || "Rapor oluşturulamadı");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   const header = (
     <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12 }}>
       <HeaderIconButton onBrand icon={ChevronLeft} label="Geri" onClick={onBack} />
       <h1 style={{ flex: 1, minWidth: 0, margin: 0, fontFamily: displayFont, fontSize: 17, fontWeight: 600, color: C.onBrand }}>Ödev detayı</h1>
       {assignment && !assignment.readOnly && <HeaderIconButton onBrand icon={Pencil} label="Ödevi düzenle" onClick={() => setEditing(true)} />}
+      {assignment?.status === "SENT" && <HeaderIconButton onBrand icon={FileDown} label={pdfBusy ? "Rapor hazırlanıyor" : "Rapor (PDF)"} onClick={downloadPdf} />}
       <HeroBell unreadCount={unreadCount} onClick={onOpenNotifications} />
     </div>
   );

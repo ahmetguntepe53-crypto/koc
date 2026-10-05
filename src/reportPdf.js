@@ -1736,3 +1736,53 @@ export async function downloadMonthlyReportsPdf({ month, monthLabel, coachName, 
   const doc = await buildMonthlyReportsPdfDoc({ month, monthLabel, coachName, entries });
   await saveDoc(doc, monthlyPdfFileName(month));
 }
+
+// ---------------------------------------------------------------- tek ödevin durum listesi (öğretmenin "Rapor" düğmesi)
+// KULLANICI İSTEĞİ (2026-10-05): ödev detayında sağ üstte "Rapor" → o ödevi yapan/yapmayan öğrencilerin listesi; yalnızca
+// durum (tamamladı / bekliyor / gecikti / pas geçti), net ya da başarı yok.
+const ASSIGNMENT_STATES = {
+  done: ["Tamamladı", GREEN], overdue: ["Gecikti", RED], waiting: ["Bekliyor", AMBER], skipped: ["Pas geçti", GREY],
+};
+const STATE_ORDER = ["done", "waiting", "overdue", "skipped"];
+const fmtTrDate = (iso) => trStamp(iso).date;
+
+export function assignmentPdfFileName(a, now = new Date()) {
+  return `Odev-Raporu_${asciiSlug(`${a?.subject || ""} ${a?.topic || ""}`)}_${trStamp(now).iso}.pdf`;
+}
+
+// rows: [{ name, className, state: "done" | "waiting" | "overdue" | "skipped" }]
+export async function buildAssignmentPdfDoc({ assignment: a, rows = [], jsPDF, autoTable, font, logo, now } = {}) {
+  const w = await setup({ jsPDF, autoTable, font, logo, variant: "assignment" });
+  const generatedAt = now ?? new Date();
+  w.headerText = `Ödev raporu · ${a.subject} · ${a.topic}`;
+  w.headers[1] = w.headerText;
+  const { doc } = w;
+  const y = w.y;
+  let x = M;
+  if (w.logo) {
+    try { doc.addImage(w.logo, "PNG", M, y, 13, 13); x = M + 17; } catch { x = M; }
+  }
+  w.font(true, 8.5, GREY);
+  w.text(SCHOOL_NAME, x, y + 4);
+  w.font(true, 15, INK);
+  w.text(doc.splitTextToSize(w.t(`${a.subject} · ${a.topic}`), M + CW - x)[0], x, y + 11.5);
+  w.y = y + 17;
+  const range = fmtTrDate(a.scheduledDate) === fmtTrDate(a.endDate) ? fmtTrDate(a.endDate) : `${fmtTrDate(a.scheduledDate)} – ${fmtTrDate(a.endDate)}`;
+  w.block([{ text: [a.examType, a.sourceBook, a.questionCount ? `${a.questionCount} soru` : null, `Tarih: ${range}`, a.teacher?.name ? `Öğretmen: ${a.teacher.name}` : null].filter(Boolean).join(" · "), size: 8.5, color: GREY, gap: 2 }]);
+  const count = (s) => rows.filter((r) => r.state === s).length;
+  w.block([{ text: [`${rows.length} öğrenci`, ...STATE_ORDER.filter((s) => count(s) || s !== "skipped").map((s) => `${ASSIGNMENT_STATES[s][0]}: ${count(s)}`)].join(" · "), size: 9.5, bold: true, gap: 3 }]);
+  const sorted = [...rows].sort((p, q) => STATE_ORDER.indexOf(p.state) - STATE_ORDER.indexOf(q.state) || p.name.localeCompare(q.name, "tr"));
+  const body = sorted.map((r, i) => {
+    const [label, color] = ASSIGNMENT_STATES[r.state] || ["—", INK];
+    return [String(i + 1), { content: r.name, styles: { fontStyle: "bold" } }, r.className || "—", colored(label, color, true)];
+  });
+  w.table({ head: ["#", "Öğrenci", "Sınıf", "Durum"], body, columnStyles: { 0: { cellWidth: 10, halign: "right" }, 2: { cellWidth: 28 }, 3: { cellWidth: 32 } }, fontSize: 8.5 });
+  w.note("Tamamladı: sonucunu girdi · Bekliyor: süresi sürüyor, henüz girmedi · Gecikti: süresi doldu, sonuç yok · Pas geçti: çözemediğini sebebiyle bildirdi.");
+  stampPages(w, stampText(generatedAt));
+  return w.doc;
+}
+
+export async function downloadAssignmentPdf({ assignment, rows } = {}) {
+  const doc = await buildAssignmentPdfDoc({ assignment, rows });
+  await saveDoc(doc, assignmentPdfFileName(assignment));
+}
