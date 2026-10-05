@@ -253,7 +253,6 @@ export default function AssignmentSubmitScreen({ user, recipientId, onBack }) {
         <div style={{ marginTop: 16 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             <StatusChip tone="lime">{a.subject}</StatusChip>
-            <StatusChip tone="onBrand">{branch ? "Branş ödevi" : "Koçundan"}</StatusChip>
             {expected != null && <StatusChip tone="onBrand">{expected} soru</StatusChip>}
             {deadlineText && <StatusChip tone={status === "missed" ? "danger" : "onBrand"}>{deadlineText}</StatusChip>}
             {status === "done" && <StatusChip tone="success">Sonucun girildi</StatusChip>}

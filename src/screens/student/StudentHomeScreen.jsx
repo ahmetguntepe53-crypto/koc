@@ -4,11 +4,11 @@ import { C, bodyFont, displayFont, formatNet, recipientStatus, netOf } from "../
 import { EmptyState, LoadingState, StatusSquare, SegmentBar, Legend, AlertBox, ShowMoreButton } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, SectionCard, StatusChip, PrimaryButton, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
-import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, questionCountOf, isSchoolWide } from "../../work.js";
+import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, questionCountOf } from "../../work.js";
 import PushPermissionBanner from "../../components/PushPermissionBanner.jsx";
 
 // Öğrenci ana ekranı — "Bu hafta" (şartname Z1). Branş ödevleri ile koç ödevleri AYNI haftanın işi: tek
-// listede; koçun verdiği ödevde "Koçundan" çipi. Geciken ödevler ayrı bir kovaya konmaz (suçluluk motive
+// listede (kaynak çipi 2026-10-05 kaldırıldı). Geciken ödevler ayrı bir kovaya konmaz (suçluluk motive
 // etmiyor) — tek satırlık uyarı + listenin başı.
 
 const PAGE_SIZE = 6;
@@ -29,7 +29,6 @@ function yksStat(examDate) {
 
 // Koçun verdiği ödev mi (öğrencinin koçu = ödevi veren) — "Tüm okul" kaldırıldığından beri branş öğretmeninin
 // sınıfa gönderdiği ödev de okul çapında değil; kaynağı hedef tipinden değil öğretmenden anlaşılır.
-const fromCoach = (a, user) => !!user?.teacherId && a.teacherId === user.teacherId && !isSchoolWide(a);
 
 // Satır: "Cuma 23:59'a kadar", "Salı çözdün · 15,5 net", "süresi dün doldu", "pas geçtin".
 function rowStatus(r) {
@@ -59,7 +58,6 @@ function AssignmentItem({ r, onOpen, user }) {
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <span style={{ fontFamily: bodyFont, fontSize: 12, fontWeight: 600, color: C.brandText }}>{a.subject}</span>
-          {fromCoach(a, user) && <StatusChip tone="brand">Koçundan</StatusChip>}
         </span>
         <span style={{ display: "block", fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText, marginTop: 1, overflowWrap: "anywhere" }}>{a.topic}</span>
         <span style={{ ...NUM, display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: C.inkMuted, marginTop: 3 }}>
