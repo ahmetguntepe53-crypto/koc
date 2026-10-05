@@ -201,9 +201,32 @@ export const ACCENTS = [
   { id: "beyaz", label: "Beyaz", color: "#EDEDEF" },
 ];
 export const DEFAULT_ACCENT = "yesil";
-export function accentTokens(id) {
-  const c = (ACCENTS.find((a) => a.id === id) || ACCENTS[0]).color;
-  return { lime: c, numText: c, numOnBrand: c, cta: c };
+const HEX = /^#[0-9a-f]{6}$/i;
+// Paletten seçilen serbest renk "#rrggbb" olarak saklanır; hazır renkler kimlikleriyle.
+export const resolveColor = (value, list) => (HEX.test(value || "") ? value : (list.find((a) => a.id === value) || list[0]).color);
+function luminance(hex) {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4));
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+export function accentTokens(value) {
+  const c = resolveColor(value, ACCENTS);
+  // Koyu bir serbest renk seçilirse düğme yazısı beyaza döner (okunurluk).
+  return { lime: c, numText: c, numOnBrand: c, cta: c, onCta: luminance(c) > 0.18 ? "#0B0B0C" : "#FFFFFF" };
+}
+
+// Koyu temanın yazı rengi (KULLANICI İSTEĞİ 2026-10-05): başlıklar ve ana metin; ikincil (soluk) yazılar griden kalır.
+export const TEXT_COLORS = [
+  { id: "beyaz", label: "Beyaz", color: "#F2F2F3" },
+  { id: "krem", label: "Krem", color: "#F5EBD7" },
+  { id: "gri", label: "Açık gri", color: "#C8C8CE" },
+  { id: "mavi", label: "Buz mavisi", color: "#D6E6FF" },
+  { id: "yesil", label: "Nane", color: "#D7F5E3" },
+  { id: "pembe", label: "Pudra", color: "#FADDE6" },
+];
+export const DEFAULT_TEXT_COLOR = "beyaz";
+export function textTokens(value) {
+  const c = resolveColor(value, TEXT_COLORS);
+  return { text: c, inkText: c, onBrand: c, accent: c };
 }
 
 // Paleti taşıyan TEK, paylaşılan nesne — bileşenler her zaman C.* okur.

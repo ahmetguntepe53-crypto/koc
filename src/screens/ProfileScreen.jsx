@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Target, KeyRound, LogOut, Check, Sun, Moon, Palette } from "lucide-react";
-import { C, displayFont, bodyFont, ACCENTS } from "../theme.js";
+import { Target, KeyRound, LogOut, Check, Sun, Moon, Palette, Plus } from "lucide-react";
+import { C, displayFont, bodyFont, ACCENTS, TEXT_COLORS } from "../theme.js";
 import { Avatar, roleLabel } from "../components/common.jsx";
 import { HeroHeader, HeroBell, SectionCard, StatusChip, FieldLabel, fieldBox, PrimaryButton } from "../components/brand.jsx";
 import { api, setToken } from "../api.js";
@@ -64,7 +64,42 @@ const THEME_OPTIONS = [
 ];
 
 // Görünüm: açık (mor) ya da koyu (siyah-beyaz-gri) tema — bu cihazda saklanır.
-function ThemeCard({ theme, onChange, accent, onChangeAccent }) {
+// Hazır renkler + en sonda serbest renk paleti (dokununca sistemin renk seçicisi açılır; seçilen "#rrggbb" saklanır).
+function Swatches({ title, label, list, value, onChange }) {
+  const custom = /^#[0-9a-f]{6}$/i.test(value || "");
+  const dot = (on, bg, children, extra = {}) => ({
+    width: 40, height: 40, borderRadius: 999, cursor: "pointer", background: bg, color: "#0B0B0C", position: "relative",
+    border: `3px solid ${on ? C.inkText : "transparent"}`, outline: on ? `2px solid ${C.bg}` : "none", outlineOffset: -5,
+    display: "flex", alignItems: "center", justifyContent: "center", boxSizing: "border-box", ...extra,
+  });
+  return (
+    <>
+      <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted, margin: "14px 0 10px" }}>{title}</div>
+      <div role="group" aria-label={label} style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
+        {list.map((a) => {
+          const on = value === a.id;
+          return (
+            <button key={a.id} type="button" aria-pressed={on} aria-label={a.label} title={a.label} onClick={() => onChange(a.id)} style={dot(on, a.color)}>
+              {on && <Check size={18} strokeWidth={3} aria-hidden="true" />}
+            </button>
+          );
+        })}
+        <label title="Paletten seç" style={dot(custom, custom ? value : "conic-gradient(#f87171, #fbbf24, #4ade80, #60a5fa, #a78bfa, #f472b6, #f87171)")}>
+          {custom ? <Check size={18} strokeWidth={3} aria-hidden="true" /> : <Plus size={18} strokeWidth={3} aria-hidden="true" color="#0B0B0C" />}
+          <input
+            type="color"
+            aria-label={`${label}: paletten seç`}
+            value={custom ? value : list[0].color}
+            onChange={(e) => onChange(e.target.value)}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", opacity: 0, cursor: "pointer", border: "none", padding: 0 }}
+          />
+        </label>
+      </div>
+    </>
+  );
+}
+
+function ThemeCard({ theme, onChange, accent, onChangeAccent, textColor, onChangeTextColor }) {
   return (
     <SectionCard icon={Palette} iconBg={C.brandTint} iconFg={C.brandText} title="Görünüm">
       <div role="group" aria-label="Tema" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
@@ -88,37 +123,16 @@ function ThemeCard({ theme, onChange, accent, onChangeAccent }) {
         })}
       </div>
       {theme === "dark" && onChangeAccent && (
-        <>
-          <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted, margin: "14px 0 10px" }}>Vurgu rengi — rakamlar ve düğmeler bu renkte</div>
-          <div role="group" aria-label="Vurgu rengi" style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-            {ACCENTS.map((a) => {
-              const on = accent === a.id;
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  aria-pressed={on}
-                  aria-label={a.label}
-                  title={a.label}
-                  onClick={() => onChangeAccent(a.id)}
-                  style={{
-                    width: 40, height: 40, borderRadius: 999, cursor: "pointer", background: a.color, color: C.ink,
-                    border: `3px solid ${on ? C.inkText : "transparent"}`, outline: on ? `2px solid ${C.bg}` : "none", outlineOffset: -5,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                  }}
-                >
-                  {on && <Check size={18} strokeWidth={3} aria-hidden="true" />}
-                </button>
-              );
-            })}
-          </div>
-        </>
+        <Swatches title="Vurgu rengi — rakamlar ve düğmeler" label="Vurgu rengi" list={ACCENTS} value={accent} onChange={onChangeAccent} />
+      )}
+      {theme === "dark" && onChangeTextColor && (
+        <Swatches title="Yazı rengi — başlıklar ve ana metin" label="Yazı rengi" list={TEXT_COLORS} value={textColor} onChange={onChangeTextColor} />
       )}
     </SectionCard>
   );
 }
 
-export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCount, onOpenNotifications, theme, onChangeTheme, accent, onChangeAccent }) {
+export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCount, onOpenNotifications, theme, onChangeTheme, accent, onChangeAccent, textColor, onChangeTextColor }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [msg, setMsg] = useState(null);
@@ -163,7 +177,7 @@ export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCou
 
       <div style={{ maxWidth: 580, margin: "0 auto", padding: "16px 16px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
         {user.role === "STUDENT" && <FieldCard user={user} onUserUpdated={onUserUpdated} />}
-        {onChangeTheme && <ThemeCard theme={theme} onChange={onChangeTheme} accent={accent} onChangeAccent={onChangeAccent} />}
+        {onChangeTheme && <ThemeCard theme={theme} onChange={onChangeTheme} accent={accent} onChangeAccent={onChangeAccent} textColor={textColor} onChangeTextColor={onChangeTextColor} />}
 
         <SectionCard icon={KeyRound} iconBg={C.brandTint} iconFg={C.brandText} title="Şifremi değiştir">
           <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
