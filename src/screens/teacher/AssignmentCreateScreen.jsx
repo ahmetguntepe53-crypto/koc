@@ -333,7 +333,7 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
                 onClick={() => q.date && setEndDate(q.date)}
                 style={{ width: "100%",
                   minHeight: 44, borderRadius: 12, cursor: "pointer", padding: "0 4px", whiteSpace: "nowrap",
-                  background: on ? C.lime : C.surface, border: `1px solid ${on ? C.lime : C.brandOutline}`, color: C.inkText,
+                  background: on ? C.lime : C.surface, border: `1px solid ${on ? C.lime : C.brandOutline}`, color: on ? C.ink : C.inkText,
                   fontFamily: bodyFont, fontSize: 13.5, fontWeight: on ? 800 : 600,
                 }}
               >

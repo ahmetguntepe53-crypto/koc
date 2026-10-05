@@ -52,13 +52,15 @@ async function setupPage(page, persona, theme, ctx) {
   ctx.persona = persona || "anon";
   const recorded = loadRec(ctx.persona);
   await page.clock.setFixedTime(new Date(meta.now));
-  await page.addInitScript(({ token, theme }) => {
+  await page.addInitScript(({ token, theme, dark }) => {
     try {
       localStorage.clear();
       if (token) localStorage.setItem("kocluk:token", token);
       localStorage.setItem("kocluk-theme", theme);
+      // GOLDEN_DARK=1: koyu temayı gözle incelemek için (referans görüntüler açık temada kayıtlı).
+      if (dark) localStorage.setItem("kocluk-tema", "dark");
     } catch { /* yok say */ }
-  }, { token: tokenFor(persona), theme });
+  }, { token: tokenFor(persona), theme, dark: process.env.GOLDEN_DARK === "1" });
 
   page.on("pageerror", (e) => ctx.errors.push(e.message));
   // Varsayılan: dış ağ KAPALI (fontlar yerelden).

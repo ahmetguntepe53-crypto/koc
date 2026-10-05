@@ -3,7 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      // İlk boyada koyu tema kullanıcısına beyaz zemin parlamasın (React devreye girmeden). theme.js > THEMES.dark.bg ile senkron.
+      try { if (localStorage.getItem("kocluk-tema") === "dark") document.write('<style>body{background:#0B0B0C !important}</style>'); } catch (_) {}
+    </script>
     <title>Koçluk</title>
     <link rel="icon" href="/logo.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />

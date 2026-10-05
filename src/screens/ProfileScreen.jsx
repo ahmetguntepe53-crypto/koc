@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Target, KeyRound, LogOut, Check } from "lucide-react";
+import { Target, KeyRound, LogOut, Check, Sun, Moon, Palette } from "lucide-react";
 import { C, displayFont, bodyFont } from "../theme.js";
 import { Avatar, roleLabel } from "../components/common.jsx";
 import { HeroHeader, HeroBell, SectionCard, StatusChip, FieldLabel, fieldBox, PrimaryButton } from "../components/brand.jsx";
@@ -58,7 +58,40 @@ function FieldCard({ user, onUserUpdated }) {
   );
 }
 
-export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCount, onOpenNotifications }) {
+const THEME_OPTIONS = [
+  { value: "light", label: "Açık", icon: Sun },
+  { value: "dark", label: "Koyu", icon: Moon },
+];
+
+// Görünüm: açık (mor) ya da koyu (siyah-beyaz-gri) tema — bu cihazda saklanır.
+function ThemeCard({ theme, onChange }) {
+  return (
+    <SectionCard icon={Palette} iconBg={C.brandTint} iconFg={C.brandText} title="Görünüm">
+      <div role="group" aria-label="Tema" style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
+        {THEME_OPTIONS.map(({ value, label, icon: Icon }) => {
+          const on = theme === value;
+          return (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={on}
+              onClick={() => onChange(value)}
+              style={{
+                minHeight: 48, borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                background: on ? C.brand : C.pageTint, border: `1px solid ${on ? C.brand : C.brandOutline}`, color: on ? C.onBrand : C.inkText,
+                fontFamily: bodyFont, fontSize: 14, fontWeight: 700,
+              }}
+            >
+              <Icon size={16} aria-hidden="true" />{label}
+            </button>
+          );
+        })}
+      </div>
+    </SectionCard>
+  );
+}
+
+export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCount, onOpenNotifications, theme, onChangeTheme }) {
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [msg, setMsg] = useState(null);
@@ -103,6 +136,7 @@ export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCou
 
       <div style={{ maxWidth: 580, margin: "0 auto", padding: "16px 16px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
         {user.role === "STUDENT" && <FieldCard user={user} onUserUpdated={onUserUpdated} />}
+        {onChangeTheme && <ThemeCard theme={theme} onChange={onChangeTheme} />}
 
         <SectionCard icon={KeyRound} iconBg={C.brandTint} iconFg={C.brandText} title="Şifremi değiştir">
           <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>

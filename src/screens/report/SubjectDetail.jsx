@@ -6,7 +6,8 @@ import { fmtPct, fmtInt, fmtNet, fmtDay, TOPIC_STATUS, SKIP_OWNER } from "../../
 import { SKIP_REASONS } from "../../theme.js";
 import { LabelChip, TrendMark, NoValue, Collapsible, SmallButton, mono, text } from "./parts.jsx";
 
-const TONE = { solid: C.green, review: C.amber, open: C.amber, growing: C.text2, few: C.mutedLight };
+// Fonksiyon: tema değişince C güncel okunsun (modül düzeyinde sabit tutulursa ilk temada kalır).
+const TONE = (st) => ({ solid: C.green, review: C.amber, open: C.amber, growing: C.text2, few: C.mutedLight })[st];
 
 function TopicRow({ t, right, sub }) {
   return (
@@ -142,7 +143,7 @@ export default function SubjectDetail({ subject: s, isCoach, onClose, onStudy, o
             <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
               <span style={{ ...text(12.5, 600), flex: 1, minWidth: 0 }}>{t.name}{t.approx ? " ~" : ""}</span>
               <span style={mono(12, 700, t.NO < 0 ? C.red : C.text)}>{fmtPct(t.NO)}</span>
-              <span style={text(11.5, 600, TONE[t.status])}>{TOPIC_STATUS[t.status]}</span>
+              <span style={text(11.5, 600, TONE(t.status))}>{TOPIC_STATUS[t.status]}</span>
             </div>
             <div style={{ height: 4, borderRadius: 2, background: C.surface2, marginTop: 5 }}>
               <div style={{ width: `${Math.max(0, Math.min(100, t.NO ?? 0))}%`, height: "100%", borderRadius: 2, background: C.text2 }} />
