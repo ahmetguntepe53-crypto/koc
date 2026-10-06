@@ -8,11 +8,12 @@ import { Button, LogoMark } from "../components/common.jsx";
 // edilmez, yalnızca mağaza bağlantısı ve "tekrar dene" (mağazada güncellemiş ama uygulama içi kontrol
 // henüz yenilenmediyse).
 //
-// PLAY_STORE_URL paket adından (com.kocluk.app) türer, hep doğru. APP_STORE_URL'de sayısal Apple ID
-// henüz yok (iOS ilk kez App Store'a çıkana kadar) — o günden sonra buraya gerçek "id..." eklenmeli;
-// o güne kadar bu ekran yalnızca Android'de (minAndroidBuild ile) tetikleniyor olacak.
-const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.kocluk.app";
-const APP_STORE_URL = "https://apps.apple.com/app/id0000000000"; // TODO: iOS ilk onaylandığında gerçek id
+// PLAY_STORE_URL paket adından (com.kocluk.app) türer. APP_STORE_URL'deki sayısal Apple ID, App Store'daki "Mai Koçluk"
+// kaydının kimliği (itunes.apple.com/lookup?bundleId=com.kocluk.app ile doğrulandı). OLAY (2026-10-06): 2.0–2.4'te burada
+// yer tutucu "id0000000000" kalmıştı; iOS eşiği yükseltilince App Store "ülkenizde veya bölgenizde kullanılamıyor" dedi ve
+// iPhone kullanıcıları duvarda kaldı. Bu sürümlerdeki kullanıcılar için iOS eşiği yükseltilmemeli (bağlantıları bozuk).
+export const PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=com.kocluk.app";
+export const APP_STORE_URL = "https://apps.apple.com/tr/app/mai-ko%C3%A7luk/id6803681138";
 
 export default function UpdateRequiredScreen({ platform, onRetry, retrying }) {
   const storeUrl = platform === "ios" ? APP_STORE_URL : PLAY_STORE_URL;
@@ -27,6 +28,9 @@ export default function UpdateRequiredScreen({ platform, onRetry, retrying }) {
         <div style={{ fontFamily: displayFont, fontSize: 20, fontWeight: 800, color: C.text, letterSpacing: -0.3 }}>Güncelleme gerekli</div>
         <div style={{ fontSize: 14, color: C.mutedLight, lineHeight: 1.55, marginTop: 8, maxWidth: 320 }}>
           Kullandığın sürüm artık desteklenmiyor. Devam edebilmek için uygulamayı güncellemen gerekiyor.
+        </div>
+        <div style={{ fontSize: 13, color: C.mutedLight, lineHeight: 1.5, marginTop: 8, maxWidth: 320 }}>
+          Bağlantı açılmazsa {platform === "ios" ? "App Store" : "Play Store"}'da "Mai Koçluk" diye aratıp güncelle.
         </div>
       </div>
       <a href={storeUrl} target="_blank" rel="noreferrer" style={{ textDecoration: "none", width: "100%", maxWidth: 280 }}>

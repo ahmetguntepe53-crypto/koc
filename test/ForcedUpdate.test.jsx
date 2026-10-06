@@ -21,6 +21,7 @@ vi.mock("../src/native/push.js", () => ({
 vi.mock("../src/native/badge.js", () => ({ setAppBadge: vi.fn(async () => {}) }));
 import { api } from "../src/api.js";
 import App from "../src/App.jsx";
+import UpdateRequiredScreen, { APP_STORE_URL } from "../src/screens/UpdateRequiredScreen.jsx";
 
 beforeEach(() => {
   vi.stubGlobal("localStorage", {
@@ -30,6 +31,15 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe("Zorunlu güncelleme", () => {
+  // OLAY (2026-10-06): yer tutucu App Store kimliği iPhone'ları duvarda bıraktı — gerçek kimlik olmalı.
+  it("iOS'ta gerçek App Store sayfasına gider (yer tutucu kimlik değil)", () => {
+    render(<UpdateRequiredScreen platform="ios" onRetry={() => {}} />);
+    const href = screen.getByRole("link", { name: "App Store'da aç" }).getAttribute("href");
+    expect(href).toBe(APP_STORE_URL);
+    expect(href).toContain("id6803681138");
+    expect(href).not.toMatch(/id0{6,}/);
+  });
+
   it("Android build sunucu eşiğinin altındaysa giriş ekranı YERİNE güncelleme duvarı gösterilir", async () => {
     nativeBuild.mockResolvedValue(13);
     api.appVersion.mockResolvedValue({ minAndroidBuild: 14, minIosBuild: null });
