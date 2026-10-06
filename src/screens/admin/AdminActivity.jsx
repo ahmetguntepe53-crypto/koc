@@ -11,7 +11,8 @@ const WINDOWS = [7, 14, 30];
 const textStyle = (size = 13, weight = 500, color) => ({ fontFamily: bodyFont, fontSize: size, fontWeight: weight, color: color || C.text });
 const M = ({ children, size = 12, weight = 700, color }) => <span style={{ fontFamily: monoFont, fontSize: size, fontWeight: weight, color: color || "inherit", fontVariantNumeric: "tabular-nums" }}>{children}</span>;
 
-export default function AdminActivity() {
+// fetcher: müdürün İstatistik sekmesi aynı ekranı /principal/activity ile kullanır.
+export default function AdminActivity({ fetcher = api.adminActivity, hint }) {
   const [days, setDays] = useState(14);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -20,7 +21,7 @@ export default function AdminActivity() {
   const load = () => {
     setLoading(true);
     setError("");
-    api.adminActivity(days)
+    fetcher(days)
       .then(setData)
       .catch((e) => setError(e.message || "Aktivite yüklenemedi"))
       .finally(() => setLoading(false));
@@ -30,8 +31,7 @@ export default function AdminActivity() {
   return (
     <div>
       <div style={{ ...textStyle(13, 500, C.mutedLight), lineHeight: 1.5, marginBottom: 12 }}>
-        Kim değil, kaç kişi: günlük ve haftalık giriş sayıları. Tek bir öğrenci ya da öğretmenin adı burada geçmez —
-        birinin son girişini görmek için Hesaplar'daki listeye bakın.
+        {hint || "Kim değil, kaç kişi: günlük ve haftalık giriş sayıları. Tek bir öğrenci ya da öğretmenin adı burada geçmez — birinin son girişini görmek için Hesaplar'daki listeye bakın."}
       </div>
       <div className="k-chip-row" role="group" aria-label="Pencere" style={{ marginBottom: 16 }}>
         {WINDOWS.map((w) => <Chip key={w} active={days === w} onClick={() => setDays(w)}>{w} gün</Chip>)}

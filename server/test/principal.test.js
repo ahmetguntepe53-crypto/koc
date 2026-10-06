@@ -52,6 +52,35 @@ describe("GET /api/principal/*", () => {
     expect(s3).toMatchObject({ completionRate: 0, overdue: 1, successPct: null });
   });
 
+  it("İstatistik: okul, sınıf düzeyi, şube ve ders kırılımları; pas sebebi, serbest çalışma, 8 haftalık eğilim", async () => {
+    const { prisma } = await import("./helpers.js");
+    const math = await prisma.assignment.findFirst({ where: { subject: "Matematik" } });
+    await prisma.studySession.create({ data: { studentId: S1.id, examType: math.examType, subject: "Matematik", topic: "Limit", correctCount: 8, wrongCount: 2, blankCount: 0 } });
+
+    expect((await api(t.coach).get("/api/principal/stats")).status).toBe(403);
+    expect((await api(t.student).get("/api/principal/stats")).status).toBe(403);
+    expect((await api(t.principal).get("/api/principal/stats?period=year")).status).toBe(400);
+    const r = await api(t.principal).get("/api/principal/stats?period=all");
+    expect(r.status).toBe(200);
+    const d = r.body;
+    expect(d.people.students).toBe(w.grade11.length + w.grade12.length);
+    expect(d.school).toMatchObject({ completionRate: 33, successPct: 75, overdue: 1, assignments: 2, skipped: 1, studyQuestions: 10, studySessions: 1, studyStudents: 1 });
+    expect(d.school.skips).toEqual({ KONU: 0, ZAMAN: 1, KAYNAK: 0, DIGER: 0 });
+    expect(d.grades.find((g) => g.gradeLevel === 12)).toMatchObject({ students: w.grade12.length, studyQuestions: 10 });
+    expect(d.classes.find((c) => c.className === "11-A")).toMatchObject({ completionRate: 0, overdue: 1 });
+    const mathRow = d.subjects.find((x) => x.subject === "Matematik" && x.examType === math.examType);
+    expect(mathRow).toMatchObject({ assignments: 1, completionRate: 33, studyQuestions: 10 });
+    expect(mathRow.skips.ZAMAN).toBe(1);
+    expect(d.weeks).toHaveLength(8);
+    expect(d.weeks.every((x) => typeof x.activeStudents === "number")).toBe(true);
+
+    const list = await api(t.principal).get("/api/principal/students?period=all");
+    expect(list.body.students.find((s) => s.id === S1.id)).toMatchObject({ studyQuestions: 10, questions: 20 });
+    expect((await api(t.principal).get("/api/principal/activity")).status).toBe(200);
+    expect((await api(t.principal).get("/api/principal/analytics")).status).toBe(200);
+    expect((await api(t.coach).get("/api/principal/activity")).status).toBe(403);
+  });
+
   it("geçersiz dönem reddedilir; öğrenci olmayan id 404", async () => {
     expect((await api(t.principal).get("/api/principal/overview?period=year")).status).toBe(400);
     expect((await api(t.principal).get(`/api/principal/students/${w.coachA.id}/overview`)).status).toBe(404);

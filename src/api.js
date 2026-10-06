@@ -147,6 +147,9 @@ export const api = {
   principalStudents: (period) => request(`/principal/students?period=${encodeURIComponent(period)}`),
   principalStudentOverview: (id) => request(`/principal/students/${id}/overview`),
   principalLeaderboard: (period) => request(`/principal/leaderboard?period=${encodeURIComponent(period)}`),
+  principalStats: (period) => request(`/principal/stats?period=${encodeURIComponent(period)}`),
+  principalActivity: (days) => request(`/principal/activity?days=${encodeURIComponent(days)}`),
+  principalAnalytics: (weeks, gradeLevel) => request(`/principal/analytics?weeks=${encodeURIComponent(weeks)}${gradeLevel ? `&gradeLevel=${encodeURIComponent(gradeLevel)}` : ""}`),
   setMyField: (field) => request("/auth/me/field", { method: "PATCH", body: { field } }),
   // Koçun tarihli özel notları — yalnızca yazan koç görür.
   teacherAddNote: (studentId, text) => request(`/teacher/students/${studentId}/notes`, { method: "POST", body: { text } }),

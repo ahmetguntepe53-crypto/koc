@@ -2,9 +2,12 @@ import { Router } from "express";
 import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
-import { trWeekRange, recipientStatus, netOf, questionCountOf } from "../weekStats.js";
-import { trTodayAsDateOnly } from "../quietHours.js";
+import { recipientStatus, netOf, questionCountOf } from "../weekStats.js";
 import { adminLeaderboardRouter } from "./adminLeaderboard.js";
+import { adminActivityRouter } from "./adminActivity.js";
+import { adminAnalyticsRouter } from "./adminAnalytics.js";
+import { principalStatsRouter } from "./principalStats.js";
+import { DAY, periodRange, parsePeriod, emptyAgg, add, finish, bump, loadRecipients } from "../principalAgg.js";
 
 // Okul müdürü paneli — YALNIZCA okur (app.js'de requireRole("PRINCIPAL", "ADMIN")). Sınıf, öğrenci, ders ve öğretmen
 // bazında ödev takibi. Tanımlar Öğrencilerim ekranıyla aynı:
@@ -13,72 +16,6 @@ import { adminLeaderboardRouter } from "./adminLeaderboard.js";
 //  • Gecikti: süresi dolmuş, sonucu girilmemiş ve pas geçilmemiş.
 // Dönem, ödevin bitiş gününe göre: bu hafta (Pzt–Paz), bu ay ya da tüm dönem.
 export const principalRouter = Router();
-
-const DAY = 24 * 60 * 60 * 1000;
-const PERIODS = ["week", "month", "all"];
-
-function periodRange(period, now = new Date()) {
-  if (period === "all") return null;
-  if (period === "week") {
-    const { mon } = trWeekRange(now);
-    return [mon, new Date(mon.getTime() + 7 * DAY)];
-  }
-  const today = trTodayAsDateOnly(now);
-  return [new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1)), new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 1))];
-}
-
-function parsePeriod(req) {
-  const period = req.query.period || "month";
-  assert(PERIODS.includes(period), "Geçersiz dönem (week, month ya da all)");
-  return period;
-}
-
-// Toplayıcı: tamamlama, başarı, gecikme sayaçları.
-const emptyAgg = () => ({ due: 0, done: 0, overdue: 0, net: 0, q: 0, submissions: 0, total: 0 });
-function add(agg, r, now) {
-  const status = recipientStatus(r, now);
-  agg.total += 1;
-  if (status !== "open") agg.due += 1;
-  if (r.completed) agg.done += 1;
-  if (status === "missed") agg.overdue += 1;
-  if (r.submission) {
-    const { correctCount: c, wrongCount: w, blankCount: b } = r.submission;
-    const q = questionCountOf(r.assignment.pageRange) || c + w + b;
-    if (q > 0) {
-      agg.net += netOf(r.submission);
-      agg.q += q;
-      agg.submissions += 1;
-    }
-  }
-}
-const finish = (a) => ({
-  assigned: a.total,
-  completionRate: a.due ? Math.round((a.done / a.due) * 100) : null,
-  successPct: a.q ? Math.round((a.net / a.q) * 100) : null,
-  overdue: a.overdue,
-  submissions: a.submissions,
-});
-function bump(map, key, init) {
-  if (!map.has(key)) map.set(key, { ...init, agg: emptyAgg() });
-  return map.get(key);
-}
-
-async function loadRecipients(period, now, where = {}) {
-  const range = periodRange(period, now);
-  return prisma.assignmentRecipient.findMany({
-    where: {
-      ...where,
-      student: { role: "STUDENT", banned: false, ...(where.student || {}) },
-      assignment: { status: "SENT", ...(range ? { endDate: { gte: range[0], lt: range[1] } } : {}) },
-    },
-    select: {
-      id: true, studentId: true, completed: true, completedAt: true, skippedAt: true,
-      submission: { select: { correctCount: true, wrongCount: true, blankCount: true } },
-      student: { select: { className: true, gradeLevel: true } },
-      assignment: { select: { id: true, subject: true, examType: true, topic: true, endDate: true, pageRange: true, teacherId: true } },
-    },
-  });
-}
 
 // GET /api/principal/overview?period=week|month|all — okul geneli, sınıf, ders ve öğretmen özetleri.
 principalRouter.get("/overview", async (req, res) => {
@@ -149,14 +86,22 @@ principalRouter.get("/students", async (req, res) => {
   try {
     const period = parsePeriod(req);
     const now = new Date();
-    const [students, recipients] = await Promise.all([
+    const range = periodRange(period, now);
+    const [students, recipients, study] = await Promise.all([
       prisma.user.findMany({
         where: { role: "STUDENT", banned: false },
         select: { id: true, name: true, className: true, gradeLevel: true, field: true, lastSeenAt: true, teacher: { select: { name: true } } },
         orderBy: { name: "asc" },
       }),
       loadRecipients(period, now),
+      // Serbest çalışmada çözülen soru (İstatistik > şube ayrıntısı).
+      prisma.studySession.groupBy({
+        by: ["studentId"],
+        where: range ? { studyDate: { gte: range[0], lt: range[1] } } : {},
+        _sum: { correctCount: true, wrongCount: true, blankCount: true },
+      }),
     ]);
+    const studyQ = new Map(study.map((x) => [x.studentId, (x._sum.correctCount || 0) + (x._sum.wrongCount || 0) + (x._sum.blankCount || 0)]));
     const by = new Map();
     for (const r of recipients) {
       if (!by.has(r.studentId)) by.set(r.studentId, emptyAgg());
@@ -166,7 +111,7 @@ principalRouter.get("/students", async (req, res) => {
       period,
       students: students.map((s) => ({
         id: s.id, name: s.name, className: s.className, gradeLevel: s.gradeLevel, field: s.field, lastSeenAt: s.lastSeenAt,
-        coachName: s.teacher?.name || null, ...finish(by.get(s.id) || emptyAgg()),
+        coachName: s.teacher?.name || null, ...finish(by.get(s.id) || emptyAgg()), studyQuestions: studyQ.get(s.id) || 0,
       })),
     });
   } catch (e) {
@@ -246,3 +191,7 @@ principalRouter.get("/students/:id/overview", async (req, res) => {
 
 // Öğrenci adıyla genel başarı sıralaması (yöneticinin "Sıralama" sekmesiyle aynı veri ve uç).
 principalRouter.use("/leaderboard", adminLeaderboardRouter);
+// İstatistik sekmesi: okul/sınıf/ders kırılımları + yöneticinin Aktivite ve Okul analizi uçları (aynı veri, toplu sayılar).
+principalRouter.use("/stats", principalStatsRouter);
+principalRouter.use("/activity", adminActivityRouter);
+principalRouter.use("/analytics", adminAnalyticsRouter);

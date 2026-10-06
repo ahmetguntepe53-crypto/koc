@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Users, BookOpen, School, ChevronLeft, ChevronRight, Search, UserRound } from "lucide-react";
+import { Users, ChevronLeft, ChevronRight, Search, UserRound } from "lucide-react";
 import { C, bodyFont, displayFont } from "../../theme.js";
 import { Avatar, EmptyState, LoadingState, HeaderIconButton } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, SectionCard, SegmentFilter, StatusChip, fieldBox, NUM } from "../../components/brand.jsx";
@@ -11,27 +11,27 @@ import { gradeLabel } from "../../subjects.js";
 // tamamlama = sorumlu olunan (tamamlanmış ya da süresi dolmuş) ödevlerin tamamlanan yüzdesi; başarı = toplam net /
 // toplam soru; gecikti = süresi dolmuş, sonucu girilmemiş, pas geçilmemiş. Dönem ödevin bitiş gününe göre.
 
-const PERIODS = [
+export const PERIODS = [
   { id: "week", label: "Bu hafta" },
   { id: "month", label: "Bu ay" },
   { id: "all", label: "Tüm dönem" },
 ];
 const PERIOD_KEY = "kocluk-principal-period";
-function usePeriod() {
+export function usePeriod() {
   const [period, setPeriod] = useState(() => {
     try { const v = localStorage.getItem(PERIOD_KEY); return PERIODS.some((p) => p.id === v) ? v : "month"; } catch { return "month"; }
   });
   const change = (v) => { setPeriod(v); try { localStorage.setItem(PERIOD_KEY, v); } catch { /* yalnızca kolaylık */ } };
   return [period, change];
 }
-const pct = (v) => (v == null ? "—" : `%${v}`);
+export const pct = (v) => (v == null ? "—" : `%${v}`);
 
-function PeriodFilter({ value, onChange }) {
+export function PeriodFilter({ value, onChange }) {
   return <SegmentFilter small label="Dönem" value={value} onChange={onChange} options={PERIODS} />;
 }
 
 // Yüzde çubuğu: etiket, değer ve 6px çubuk (başarı mor, tamamlama yeşil).
-function Meter({ label, value, color }) {
+export function Meter({ label, value, color }) {
   return (
     <div style={{ minWidth: 0 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontFamily: bodyFont, fontSize: 12, color: C.inkMuted }}>
@@ -44,7 +44,7 @@ function Meter({ label, value, color }) {
   );
 }
 
-function MetricRow({ title, sub, chip, completion, success, overdue, onClick }) {
+export function MetricRow({ title, sub, chip, completion, success, overdue, onClick }) {
   const Tag = onClick ? "button" : "div";
   return (
     <Tag
@@ -72,7 +72,7 @@ function MetricRow({ title, sub, chip, completion, success, overdue, onClick }) 
   );
 }
 
-function Hero({ subtitle, title, onBack, unreadCount, onOpenNotifications, stats }) {
+export function Hero({ subtitle, title, onBack, unreadCount, onOpenNotifications, stats }) {
   return (
     <HeroHeader compact>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -87,9 +87,9 @@ function Hero({ subtitle, title, onBack, unreadCount, onOpenNotifications, stats
     </HeroHeader>
   );
 }
-const Body = ({ children }) => <div style={{ maxWidth: 760, margin: "0 auto", padding: "16px 16px 24px", display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>;
+export const Body = ({ children }) => <div style={{ maxWidth: 760, margin: "0 auto", padding: "16px 16px 24px", display: "flex", flexDirection: "column", gap: 10 }}>{children}</div>;
 
-function useLoad(fn, deps) {
+export function useLoad(fn, deps) {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -102,65 +102,7 @@ function useLoad(fn, deps) {
   return [data, error];
 }
 
-// ---------------------------------------------------------------- Genel bakış
-export function PrincipalOverviewScreen({ user, unreadCount, onOpenNotifications }) {
-  const [period, setPeriod] = usePeriod();
-  const [data, error] = useLoad(() => api.principalOverview(period), [period]);
-  const s = data?.school;
-  return (
-    <div>
-      <Hero
-        subtitle={[user?.name, "Okul müdürü"].filter(Boolean).join(" · ")} title="Genel bakış"
-        unreadCount={unreadCount} onOpenNotifications={onOpenNotifications}
-        stats={<>
-          <HeroStat lime label="tamamlama" value={s ? pct(s.completionRate) : "…"} />
-          <HeroStat label="başarı" value={s ? pct(s.successPct) : "…"} />
-          <HeroStat label="geciken ödev" value={s ? s.overdue : "…"} />
-        </>}
-      />
-      <Body>
-        <PeriodFilter value={period} onChange={setPeriod} />
-        {error ? <EmptyState text={error} /> : !data ? <LoadingState /> : (
-          <>
-            <SectionCard icon={School} iconBg={C.brand} iconFg={C.onBrand} title="Okul">
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8, marginTop: 12 }}>
-                {[
-                  [data.students.total, "öğrenci"],
-                  [data.students.activeWeek, "son 7 günde giren"],
-                  [s.assignments, "ödev"],
-                  [s.submissions, "sonuç girişi"],
-                ].map(([v, l]) => (
-                  <div key={l} style={{ padding: "10px 12px", borderRadius: 14, background: C.pageTint }}>
-                    <div style={{ ...NUM, fontSize: 20, fontWeight: 800, color: C.numText }}>{v}</div>
-                    <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted }}>{l}</div>
-                  </div>
-                ))}
-              </div>
-            </SectionCard>
-
-            <SectionCard icon={Users} iconBg={C.brandTint} iconFg={C.brandText} title="Sınıflar" count={data.classes.length}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-                {data.classes.length === 0 && <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted }}>Henüz öğrenci yok.</div>}
-                {data.classes.map((c) => (
-                  <MetricRow key={c.className} title={c.className} sub={`${c.students} öğrenci · ${c.assigned} ödev ataması`} completion={c.completionRate} success={c.successPct} overdue={c.overdue} />
-                ))}
-              </div>
-            </SectionCard>
-
-            <SectionCard icon={BookOpen} iconBg={C.successTint} iconFg={C.successText} title="Dersler" count={data.subjects.length}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-                {data.subjects.length === 0 && <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted }}>Bu dönemde ödev yok.</div>}
-                {data.subjects.map((x) => (
-                  <MetricRow key={`${x.examType}|${x.subject}`} title={x.subject} chip={<StatusChip tone="brand">{x.examType}</StatusChip>} sub={`${x.assignments} ödev · ${x.submissions} sonuç`} completion={x.completionRate} success={x.successPct} overdue={x.overdue} />
-                ))}
-              </div>
-            </SectionCard>
-          </>
-        )}
-      </Body>
-    </div>
-  );
-}
+// Genel bakış (eski "Özet" sekmesi) 2026-10-06'da İstatistik sekmesine dönüştü: bkz. ./PrincipalStats.jsx.
 
 // ---------------------------------------------------------------- Öğrenciler
 const SORTS = [

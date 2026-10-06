@@ -371,9 +371,11 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
 // rozetle aynı anlam, dar alana sığsın diye 9'dan büyükse "9+"). Görünürlüğü CSS medya sorgusu belirler;
 // burada her zaman render edilir.
 export function BottomNav({ tabs, activeId, onSelect }) {
+  // 6 sekmede (müdür) yazılar sığsın: daha dar boşluk ve 10px yazı — yoksa "Öğrenciler" kesiliyordu.
+  const dense = tabs.length >= 6;
   return (
     <nav className="k-bottom-nav" aria-label="Ana menü" style={{
-      display: "none", background: C.ink, borderRadius: 26, padding: 8, gap: 4,
+      display: "none", background: C.ink, borderRadius: 26, padding: dense ? 6 : 8, gap: dense ? 2 : 4,
       boxSizing: "border-box", boxShadow: C.shadowNav,
     }}>
       {tabs.map((t) => {
@@ -401,7 +403,7 @@ export function BottomNav({ tabs, activeId, onSelect }) {
                 }}>{t.badge > 9 ? "9+" : t.badge}</span>
               )}
             </span>
-            <span style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: active ? 700 : 500, letterSpacing: -0.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
+            <span style={{ fontFamily: bodyFont, fontSize: dense ? 10 : 11, fontWeight: active ? 700 : 500, letterSpacing: dense ? -0.3 : -0.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%" }}>
               {t.label}
             </span>
             {t.badge > 0 && <span className="k-sr-only">, {t.badge} okunmamış</span>}

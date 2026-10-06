@@ -35,7 +35,8 @@ function dateRange(start, end) {
   return a === b ? fmtDay(b, { short: false, year: true }) : fmtRange(a, b);
 }
 
-export default function AdminAnalytics() {
+// fetcher: müdürün İstatistik sekmesi aynı ekranı /principal/analytics ile kullanır.
+export default function AdminAnalytics({ fetcher = api.adminAnalytics }) {
   const [weeks, setWeeks] = useState(8);
   const [grade, setGrade] = useState("");
   const [data, setData] = useState(null);
@@ -49,7 +50,7 @@ export default function AdminAnalytics() {
     const id = ++reqId.current;
     setLoading(true);
     setError("");
-    api.adminAnalytics(weeks, grade)
+    fetcher(weeks, grade)
       .then((d) => { if (id === reqId.current) setData(d); })
       .catch((e) => { if (id === reqId.current) setError(e.message || "Okul analizi yüklenemedi"); })
       .finally(() => { if (id === reqId.current) setLoading(false); });

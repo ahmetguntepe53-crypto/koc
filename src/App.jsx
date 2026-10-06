@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3, LayoutDashboard, GraduationCap, Trophy } from "lucide-react";
-import { PrincipalOverviewScreen, PrincipalStudentsScreen, PrincipalLeaderboardScreen, PrincipalTeachersScreen } from "./screens/principal/PrincipalScreens.jsx";
+import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3, GraduationCap, Trophy } from "lucide-react";
+import { PrincipalStudentsScreen, PrincipalLeaderboardScreen, PrincipalTeachersScreen } from "./screens/principal/PrincipalScreens.jsx";
+import { PrincipalStatsScreen } from "./screens/principal/PrincipalStats.jsx";
 import { C, THEMES, DEFAULT_THEME, DEFAULT_ACCENT, accentTokens, DEFAULT_TEXT_COLOR, textTokens, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID, LoadingState } from "./components/common.jsx";
@@ -634,7 +635,7 @@ const TABS_BY_ROLE = {
     { id: "principalLeaderboard", label: "Sıralama", icon: Trophy },
     { id: "principalStudents", label: "Öğrenciler", icon: Users },
     { id: "assignments", label: "Ödevler", icon: ClipboardList },
-    { id: "principalOverview", label: "Özet", icon: LayoutDashboard },
+    { id: "principalOverview", label: "İstatistik", icon: BarChart3 },
     { id: "principalTeachers", label: "Öğretmen", icon: GraduationCap },
   ],
   STUDENT: [
@@ -658,7 +659,7 @@ function renderScreen({
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
   if (authUser.role === "PRINCIPAL" || authUser.role === "ADMIN") {
     const common = { user: authUser, unreadCount, onOpenNotifications: openNotifications };
-    if (screen === "principalOverview") return <PrincipalOverviewScreen {...common} />;
+    if (screen === "principalOverview") return <PrincipalStatsScreen {...common} onOpenStudent={(id, name) => openStudent(id, name, "principalOverview")} />;
     if (screen === "principalStudents") return <PrincipalStudentsScreen {...common} onOpenStudent={(id, name) => openStudent(id, name, "principalStudents")} />;
     if (screen === "principalLeaderboard") return <PrincipalLeaderboardScreen {...common} onOpenStudent={(id, name) => openStudent(id, name, "principalLeaderboard")} />;
     if (screen === "principalTeachers") return <PrincipalTeachersScreen {...common} />;
