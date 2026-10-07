@@ -55,7 +55,7 @@ export function PrincipalStatsScreen({ user, unreadCount, onOpenNotifications, o
       <Body>
         <SegmentFilter small label="Bölüm" value={section} onChange={setSection} options={SECTIONS} />
         {usesStats && <PeriodFilter value={period} onChange={setPeriod} />}
-        {section === "activity" && <AdminActivity fetcher={api.principalActivity} hint="Kaç öğrenci ve öğretmen giriş yapıyor: günlük ve haftalık sayılar. Bir öğrencinin son girişi Öğrenciler listesinde." />}
+        {section === "activity" && <AdminActivity fetcher={api.principalActivity} peopleFetcher={api.principalActivityPeople} onOpenStudent={onOpenStudent} hint="Kaç öğrenci ve öğretmen giriş yapıyor; bir kutuya dokununca kimler olduğu ve en son ne zaman girdikleri açılır." />}
         {section === "analysis" && <AdminAnalytics fetcher={api.principalAnalytics} />}
         {usesStats && (error ? <EmptyState text={error} /> : !data ? <LoadingState /> : (
           <>

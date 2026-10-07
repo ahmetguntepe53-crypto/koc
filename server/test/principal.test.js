@@ -81,6 +81,30 @@ describe("GET /api/principal/*", () => {
     expect((await api(t.coach).get("/api/principal/activity")).status).toBe(403);
   });
 
+  it("Aktivite kutuları: gruptaki kişiler son giriş zamanıyla (bugün / 7 gün / girmeyen)", async () => {
+    const { prisma } = await import("./helpers.js");
+    const tr = new Date(Date.now() + 3 * 60 * 60 * 1000);
+    const today = new Date(Date.UTC(tr.getUTCFullYear(), tr.getUTCMonth(), tr.getUTCDate()));
+    const now = new Date();
+    await prisma.user.update({ where: { id: w.branch.id }, data: { lastSeenAt: now } });
+    await prisma.loginDay.upsert({ where: { userId_day: { userId: w.branch.id, day: today } }, update: {}, create: { userId: w.branch.id, day: today } });
+    await prisma.user.update({ where: { id: w.coachA.id }, data: { lastSeenAt: new Date(Date.now() - 20 * 86400e3) } });
+    await prisma.loginDay.deleteMany({ where: { userId: w.coachA.id } });
+
+    const todayT = await api(t.principal).get("/api/principal/activity-people?role=TEACHER&group=today");
+    expect(todayT.status).toBe(200);
+    expect(todayT.body.people.find((p) => p.id === w.branch.id)).toMatchObject({ daysThisWeek: 1 });
+    expect(todayT.body.people.some((p) => p.id === w.coachA.id)).toBe(false);
+    const inactive = await api(t.principal).get("/api/principal/activity-people?role=TEACHER&group=inactive");
+    const coach = inactive.body.people.find((p) => p.id === w.coachA.id);
+    expect(coach.lastSeenAt).toBeTruthy();
+    expect(inactive.body.people.some((p) => p.id === w.branch.id)).toBe(false);
+    expect((await api(t.principal).get("/api/principal/activity-people?role=STUDENT&group=week")).status).toBe(200);
+    expect((await api(t.principal).get("/api/principal/activity-people?role=ADMIN&group=week")).status).toBe(400);
+    expect((await api(t.principal).get("/api/principal/activity-people?role=STUDENT&group=year")).status).toBe(400);
+    expect((await api(t.coach).get("/api/principal/activity-people?role=TEACHER&group=today")).status).toBe(403);
+  });
+
   it("geçersiz dönem reddedilir; öğrenci olmayan id 404", async () => {
     expect((await api(t.principal).get("/api/principal/overview?period=year")).status).toBe(400);
     expect((await api(t.principal).get(`/api/principal/students/${w.coachA.id}/overview`)).status).toBe(404);

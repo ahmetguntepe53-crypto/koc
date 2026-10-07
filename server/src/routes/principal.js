@@ -3,6 +3,7 @@ import { prisma } from "../db.js";
 import { handleErr } from "../handleErr.js";
 import { assert } from "../validators.js";
 import { recipientStatus, netOf, questionCountOf } from "../weekStats.js";
+import { trTodayAsDateOnly } from "../quietHours.js";
 import { adminLeaderboardRouter } from "./adminLeaderboard.js";
 import { adminActivityRouter } from "./adminActivity.js";
 import { adminAnalyticsRouter } from "./adminAnalytics.js";
@@ -191,6 +192,51 @@ principalRouter.get("/students/:id/overview", async (req, res) => {
 
 // Öğrenci adıyla genel başarı sıralaması (yöneticinin "Sıralama" sekmesiyle aynı veri ve uç).
 principalRouter.use("/leaderboard", adminLeaderboardRouter);
+// İstatistik > Aktivite'deki kutulara dokununca: o gruptaki kişiler, son giriş zamanıyla (KULLANICI İSTEĞİ 2026-10-07:
+// "6 öğretmen giriş yapmadı diyor, kim, en son ne zaman giriş yapmış"). Yöneticinin Aktivite ekranı yalnız sayı gösterir;
+// bu liste müdür ekranı içindir (müdür öğrenci/öğretmen listelerinde kişileri zaten adıyla görüyor).
+// GET /api/principal/activity-people?role=STUDENT|TEACHER&group=today|week|inactive
+const PEOPLE_GROUPS = ["today", "week", "inactive"];
+principalRouter.get("/activity-people", async (req, res) => {
+  try {
+    const { role, group } = req.query || {};
+    assert(["STUDENT", "TEACHER"].includes(role), "Geçersiz rol");
+    assert(PEOPLE_GROUPS.includes(group), "Geçersiz grup (today, week ya da inactive)");
+    const today = trTodayAsDateOnly(new Date());
+    const weekFrom = new Date(today.getTime() - 6 * DAY);
+    // adminActivity.js ile aynı tanımlar: "son 7 gün" = bugün dahil 7 takvim günü (LoginDay); "girmeyen" = lastSeenAt yok
+    // ya da 7 günden eski.
+    const inactiveCutoff = new Date(today.getTime() - 7 * DAY);
+    const [users, days] = await Promise.all([
+      prisma.user.findMany({
+        where: { role, banned: false },
+        select: { id: true, name: true, className: true, gradeLevel: true, isSubjectTeacher: true, teachingSubjects: true, lastSeenAt: true, createdAt: true, teacher: { select: { name: true } } },
+      }),
+      prisma.loginDay.findMany({ where: { day: { gte: weekFrom }, user: { role } }, select: { userId: true, day: true } }),
+    ]);
+    const daysOf = new Map();
+    const todayIds = new Set();
+    for (const d of days) {
+      daysOf.set(d.userId, (daysOf.get(d.userId) || 0) + 1);
+      if (d.day.getTime() === today.getTime()) todayIds.add(d.userId);
+    }
+    const pick = group === "today" ? (u) => todayIds.has(u.id)
+      : group === "week" ? (u) => daysOf.has(u.id)
+      : (u) => !u.lastSeenAt || u.lastSeenAt < inactiveCutoff;
+    const people = users.filter(pick).map((u) => ({
+      id: u.id, name: u.name, className: u.className, gradeLevel: u.gradeLevel, coachName: u.teacher?.name || null,
+      isSubjectTeacher: u.isSubjectTeacher, teachingSubjects: u.teachingSubjects,
+      lastSeenAt: u.lastSeenAt, createdAt: u.createdAt, daysThisWeek: daysOf.get(u.id) || 0,
+    }));
+    // Girenler: en son gireni üstte. Girmeyenler: hiç girmeyenler üstte, sonra en uzun süredir girmeyen.
+    const t = (u) => (u.lastSeenAt ? new Date(u.lastSeenAt).getTime() : 0);
+    people.sort((a, b) => (group === "inactive" ? t(a) - t(b) : t(b) - t(a)) || a.name.localeCompare(b.name, "tr"));
+    res.json({ role, group, people });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
 // İstatistik sekmesi: okul/sınıf/ders kırılımları + yöneticinin Aktivite ve Okul analizi uçları (aynı veri, toplu sayılar).
 principalRouter.use("/stats", principalStatsRouter);
 principalRouter.use("/activity", adminActivityRouter);
