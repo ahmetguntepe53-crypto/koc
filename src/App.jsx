@@ -655,6 +655,8 @@ function renderScreen({
   reportMonth, monthlyMonth, setMonthlyMonth, studyPrefill, assignPrefill, openStudyLogPrefilled, openAssignPrefilled,
   openHome, exportMonthlyPdf, openRecipientFromReport, unreadCount, openNotifications, openMonthly, openProfile, setAuthUser, createBack, headerBack,
 }) {
+  // Ödev bir öğrencinin sayfasından (ya da raporundan) açıldıysa yalnızca o öğrencinin sonucu gösterilir.
+  const focusStudentId = (assignmentDetailReturnTo === "studentOverview" || assignmentDetailReturnTo === "reports") ? selectedStudentId : null;
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} accent={accent} onChangeAccent={setAccent} textColor={textColor} onChangeTextColor={setTextColor} onUserUpdated={setAuthUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
   if (authUser.role === "PRINCIPAL" || authUser.role === "ADMIN") {
@@ -688,7 +690,7 @@ function renderScreen({
   // Okul müdürü koçun öğrenci ve ödev ekranlarını SALT OKUNUR açar (veri müdür ucundan, koçun özel notları yok).
   if (authUser.role === "PRINCIPAL") {
     if (screen === "studentOverview" && selectedStudentId) return <StudentOverviewScreen studentId={selectedStudentId} onBack={backToStudents} onOpenReport={() => openReport("studentOverview", selectedStudentId, selectedStudentName)} onOpenAssignment={openAssignment} readOnly />;
-    if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
+    if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} unreadCount={unreadCount} onOpenNotifications={openNotifications} focusStudentId={focusStudentId} />;
   }
   if (authUser.role === "TEACHER") {
     if (screen === "students") return <TeacherStudentsScreen user={authUser} onOpen={openStudent} unreadCount={unreadCount} onOpenNotifications={openNotifications} onOpenMonthly={() => openMonthly(null)} />;
@@ -711,7 +713,7 @@ function renderScreen({
     // sunucu da aynı kuralı uygular (routes/assignments.js > assertCanAssign).
     if (screen === "assignmentCreate" && authUser.isSubjectTeacher) return <AssignmentCreateScreen user={authUser} key={assignPrefill?.key || "new"} onCreated={onAssignmentCreated} initialStudentId={assignmentCreateInitialStudentId} prefill={assignPrefill} onBack={createBack} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
     if (screen === "assignments") return <AssignmentListScreen onOpen={openAssignment} refreshKey={assignmentsRefreshKey} user={authUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
-    if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
+    if (screen === "assignmentDetail" && selectedAssignmentId) return <AssignmentDetailScreen assignmentId={selectedAssignmentId} onBack={backToAssignments} unreadCount={unreadCount} onOpenNotifications={openNotifications} focusStudentId={focusStudentId} />;
     if (screen === "plan") return <PlanScreen user={authUser} />;
   }
   if (authUser.role === "STUDENT") {

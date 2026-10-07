@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, Bell, TrendingUp, Check, Clock, Star, Pencil, FileDown } from "lucide-react";
-import { C, displayFont, bodyFont } from "../../theme.js";
+import { C, displayFont, bodyFont, SKIP_REASONS } from "../../theme.js";
 import { Card, Button, EmptyState, Avatar, Modal, LoadingState, confirmDialog, SegmentBar, Legend, HeaderIconButton, Input, Textarea } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, OverlapCard, SegmentFilter, StatusChip, ProgressRing, NUM } from "../../components/brand.jsx";
 import { api, photoUrl } from "../../api.js";
@@ -34,7 +34,9 @@ function sendLine(a) {
   return "Elle gönderilecek";
 }
 
-export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCount = 0, onOpenNotifications }) {
+// focusStudentId: ödev bir öğrencinin sayfasından (koç/müdür) açıldıysa yalnızca o öğrencinin sonucu gösterilir —
+// KULLANICI İSTEĞİ (2026-10-07): "o ödevden sadece Ayşe Betül'ün durumunu görmeliyim, kaç soru çözdü, kaç boş, fotoğraf".
+export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCount = 0, onOpenNotifications, focusStudentId = null }) {
   const [assignment, setAssignment] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -135,6 +137,7 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
   const daysLeft = daysUntil(assignment.endDate);
   const timeTitle = !isSent ? "Henüz gönderilmedi" : expired ? "Süre doldu" : daysLeft === 0 ? "Son gün bugün" : `${daysLeft} gün kaldı`;
   const footer = [sendLine(assignment), readOnly && assignment.teacher?.name].filter(Boolean).join(" · ");
+  const focus = focusStudentId ? rows.find((x) => x.r.studentId === focusStudentId || x.r.student?.id === focusStudentId) : null;
 
   return (
     <div>
@@ -153,24 +156,40 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
               {[assignment.sourceBook, rangeLabel(assignment.scheduledDate, assignment.endDate)].filter(Boolean).join(" · ")}
             </div>
           </div>
-          <ProgressRing
-            size={104} stroke={10} value={assignment.successPct == null ? null : assignment.successPct / 100}
-            color={C.lime} track={C.onBrandTrack}
-            label={assignment.successPct == null ? "Sınıf başarısı: henüz teslim yok" : `Sınıf başarısı yüzde ${assignment.successPct}`}
-          >
-            <span style={{ ...NUM, fontSize: 26, fontWeight: 800, lineHeight: 1, color: C.onBrand }}>{assignment.successPct == null ? "—" : `%${assignment.successPct}`}</span>
-            <span style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 500, marginTop: 4, color: C.onBrand }}>sınıf başarısı</span>
-          </ProgressRing>
+          {(() => {
+            const v = focus ? focus.pct : assignment.successPct;
+            const who = focus ? "başarısı" : "sınıf başarısı";
+            return (
+              <ProgressRing
+                size={104} stroke={10} value={v == null ? null : Math.max(0, v) / 100}
+                color={C.lime} track={C.onBrandTrack}
+                label={v == null ? `${focus ? focus.r.student.name : "Sınıf"} başarısı: henüz teslim yok` : `${focus ? focus.r.student.name : "Sınıf"} başarısı yüzde ${v}`}
+              >
+                <span style={{ ...NUM, fontSize: 26, fontWeight: 800, lineHeight: 1, color: C.onBrand }}>{v == null ? "—" : `%${v}`}</span>
+                <span style={{ fontFamily: bodyFont, fontSize: 11, fontWeight: 500, marginTop: 4, color: C.onBrand }}>{who}</span>
+              </ProgressRing>
+            );
+          })()}
         </div>
       </HeroHeader>
 
       <div style={{ maxWidth: 760, margin: "0 auto", padding: "0 16px 24px" }}>
         <OverlapCard>
+          {focus ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <Avatar name={focus.r.student.name} size={44} tint />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontFamily: bodyFont, fontSize: 16, fontWeight: 800, color: C.inkText }}>{focus.r.student.name}</div>
+                <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>{[focus.r.student.className, "bu ödevdeki durumu"].filter(Boolean).join(" · ")}</div>
+              </div>
+            </div>
+          ) : (
           <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8 }}>
             <StatBox icon={TrendingUp} tint={C.brandTint} color={C.brand} label="Ortalama net" value={fmtNet(assignment.avgNet)} />
             <StatBox icon={Check} tint={C.successTint} color={C.success} label="Teslim etti" value={<>{doneCount}<span style={{ color: C.inkMuted }}>/{rows.length}</span></>} />
             <StatBox icon={Clock} tint={C.dangerTint} color={C.danger} label="Gecikti" value={overdueCount} />
           </div>
+          )}
 
           <div style={{ marginTop: 16 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
@@ -195,6 +214,13 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
           {actionError && <div style={{ color: C.danger, fontSize: 12.5, marginTop: 10 }}>{actionError}</div>}
         </OverlapCard>
 
+        {focus ? (
+          <StudentResult
+            {...focus} Q={Q} isSent={isSent} endDate={assignment.endDate}
+            onPhoto={(i) => setLightbox({ photos: focus.r.photos, index: i })}
+          />
+        ) : (
+          <>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", margin: "22px 0 12px" }}>
           <h3 style={{ margin: 0, fontFamily: displayFont, fontSize: 19, fontWeight: 800, color: C.inkText }}>Öğrenciler</h3>
           <span style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted }}>Nete göre sıralı</span>
@@ -222,6 +248,8 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
             />
           ))}
         </div>
+          </>
+        )}
       </div>
 
       {editing && (
@@ -371,7 +399,7 @@ function StudentCard({ r, net, pct, state, Q, isSent, best, endDate, onPhoto, as
       )}
       {remindError && <div role="alert" style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.dangerText, marginTop: 8 }}>{remindError}</div>}
       {state === "skipped" && r.skipReason && (
-        <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 8, fontStyle: "italic" }}>"{r.skipReason}"</div>
+        <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 8, fontStyle: "italic" }}>"{SKIP_REASONS[r.skipReason] || r.skipReason}"{r.skipNote ? ` — ${r.skipNote}` : ""}</div>
       )}
       {sub?.note && (
         <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 8, fontStyle: "italic" }}>"{sub.note}"</div>
@@ -392,6 +420,104 @@ function StudentCard({ r, net, pct, state, Q, isSent, best, endDate, onPhoto, as
         </div>
       )}
     </Card>
+  );
+}
+
+// Tek öğrencinin bu ödevdeki sonucu (odak görünümü): durum, D/Y/B ve net, cevapsız soru, teslim zamanı (zamanında/geç),
+// yanlış-boş soru numaraları, not, pas sebebi ve kanıt fotoğrafları büyük kutularla.
+const TR_GRACE_MS = 21 * 60 * 60 * 1000; // bitiş gününün Türkiye'deki sonu (bkz. server > weekStats.js)
+function StudentResult({ r, net, pct, state, Q, isSent, endDate, onPhoto }) {
+  const sub = r.submission;
+  const answered = sub ? sub.correctCount + sub.wrongCount + sub.blankCount : 0;
+  const unanswered = sub && Q && Q > answered ? Q - answered : 0;
+  const doneAt = sub ? new Date(r.completedAt || sub.createdAt) : null;
+  const lateDays = doneAt ? Math.ceil((doneAt.getTime() - (new Date(endDate).getTime() + TR_GRACE_MS)) / DAY_MS) : 0;
+  const status = state === "done" ? { tone: "success", text: "Tamamladı" }
+    : state === "skipped" ? { tone: "warning", text: "Pas geçti" }
+    : state === "overdue" ? { tone: "danger", text: "Gecikti" }
+    : { tone: isSent ? "warning" : "track", text: isSent ? "Bekliyor" : "Gönderilmedi" };
+  const parts = sub ? [
+    { label: "doğru", value: sub.correctCount, color: C.success },
+    { label: "yanlış", value: sub.wrongCount, color: C.barWrong },
+    { label: "boş", value: sub.blankCount, color: C.barEmpty },
+  ] : [];
+  const Box = ({ label, value, color }) => (
+    <div style={{ minWidth: 0, padding: "10px 8px", borderRadius: 14, background: C.pageTint, textAlign: "center" }}>
+      <div style={{ ...NUM, fontSize: 22, fontWeight: 800, color: color || C.numText, lineHeight: 1.1 }}>{value}</div>
+      <div style={{ fontFamily: bodyFont, fontSize: 11.5, color: C.inkMuted, marginTop: 3 }}>{label}</div>
+    </div>
+  );
+  const nums = sub?.questionNumbers?.length ? [...sub.questionNumbers].sort((a, b) => a - b) : [];
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 18 }}>
+      <Card style={{ padding: 16, borderRadius: 20 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <h3 style={{ margin: 0, fontFamily: displayFont, fontSize: 17, fontWeight: 800, color: C.inkText }}>Sonuç</h3>
+          <StatusChip tone={status.tone}>{status.text}</StatusChip>
+        </div>
+        {sub ? (
+          <>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr))", gap: 8, marginTop: 14 }}>
+              <Box label="doğru" value={sub.correctCount} color={C.success} />
+              <Box label="yanlış" value={sub.wrongCount} color={C.danger} />
+              <Box label="boş" value={sub.blankCount} color={C.inkMuted} />
+              <Box label="net" value={fmtNet(net)} />
+            </div>
+            <div style={{ marginTop: 14 }}>
+              <SegmentBar height={10} gap={3} radius={5} parts={unanswered ? [...parts, { label: "cevapsız", value: unanswered, color: C.track }] : parts} />
+            </div>
+            <div style={{ ...NUM, display: "flex", flexWrap: "wrap", gap: "4px 14px", fontSize: 12.5, color: C.inkMuted, marginTop: 10 }}>
+              <span>{answered}{Q ? `/${Q}` : ""} soru işaretledi</span>
+              {unanswered > 0 && <span>{unanswered} soru girilmedi</span>}
+              {pct != null && <span>başarı %{pct}</span>}
+            </div>
+            <div style={{ ...NUM, fontSize: 12.5, marginTop: 10, color: lateDays > 0 ? C.dangerText : C.successText }}>
+              {formatDate(doneAt)} teslim · {lateDays > 0 ? `${lateDays} gün geç` : "zamanında"}
+            </div>
+          </>
+        ) : state === "skipped" ? (
+          <div style={{ fontFamily: bodyFont, fontSize: 14, color: C.inkText, marginTop: 12, lineHeight: 1.5 }}>
+            Sebep: <b>{SKIP_REASONS[r.skipReason] || "Belirtilmedi"}</b>{r.skipNote ? ` — ${r.skipNote}` : ""}
+          </div>
+        ) : (
+          <div style={{ fontFamily: bodyFont, fontSize: 14, color: state === "overdue" ? C.dangerText : C.inkMuted, marginTop: 12, lineHeight: 1.5 }}>
+            {state === "overdue" ? `Son gün ${shortDate(endDate)} geçti, sonuç girilmedi.` : isSent ? `Henüz sonuç girmedi · son gün ${shortDate(endDate)}.` : "Ödev henüz gönderilmedi."}
+          </div>
+        )}
+      </Card>
+
+      {nums.length > 0 && (
+        <Card style={{ padding: 16, borderRadius: 20 }}>
+          <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 800, color: C.inkText }}>Yanlış / boş soru numaraları</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+            {nums.map((n) => <span key={n} style={{ ...NUM, minWidth: 32, padding: "5px 8px", borderRadius: 10, background: C.dangerTint, color: C.dangerText, fontSize: 13, fontWeight: 800, textAlign: "center" }}>{n}</span>)}
+          </div>
+        </Card>
+      )}
+
+      {sub?.note && (
+        <Card style={{ padding: 16, borderRadius: 20 }}>
+          <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 800, color: C.inkText }}>Öğrencinin notu</div>
+          <div style={{ fontFamily: bodyFont, fontSize: 14, color: C.inkText, marginTop: 8, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>{sub.note}</div>
+        </Card>
+      )}
+
+      <Card style={{ padding: 16, borderRadius: 20 }}>
+        <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 800, color: C.inkText }}>Fotoğraflar{r.photos?.length ? ` (${r.photos.length})` : ""}</div>
+        {r.photos?.length ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginTop: 10 }}>
+            {r.photos.map((p, i) => (
+              <button key={p.id} type="button" aria-label={`Fotoğraf ${i + 1}: büyüt`} onClick={() => onPhoto(i)}
+                style={{ aspectRatio: "1 / 1", width: "100%", borderRadius: 14, overflow: "hidden", border: `1px solid ${C.border}`, padding: 0, cursor: "pointer", background: C.surface2 }}>
+                <img src={photoUrl(p)} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted, marginTop: 8 }}>Fotoğraf yüklemedi.</div>
+        )}
+      </Card>
+    </div>
   );
 }
 
