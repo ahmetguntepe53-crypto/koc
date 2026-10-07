@@ -172,7 +172,7 @@ function PeopleList({ role, group, fetcher, onClose, onOpenStudent }) {
                 className={Row === "button" ? "k-list-row" : undefined}
                 style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", boxSizing: "border-box", padding: "9px 10px", borderRadius: 12, border: "none", background: C.surface2, textAlign: "left", cursor: Row === "button" ? "pointer" : "default", fontFamily: "inherit" }}
               >
-                <Avatar name={p.name} size={34} tint />
+                <Avatar name={p.name} size={34} tint avatar={p.avatar} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ ...textStyle(14, 700), display: "block" }}>{p.name}</span>
                   {sub && <span style={{ ...textStyle(12, 500, C.mutedLight), display: "block", marginTop: 1 }}>{sub}</span>}

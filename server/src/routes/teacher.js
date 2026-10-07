@@ -14,7 +14,7 @@ teacherRouter.get("/students", async (req, res) => {
   try {
     const students = await prisma.user.findMany({
       where: { teacherId: req.userId, role: "STUDENT" },
-      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, field: true, banned: true, lastSeenAt: true, createdAt: true },
+      select: { id: true, name: true, avatar: true, email: true, username: true, className: true, gradeLevel: true, field: true, banned: true, lastSeenAt: true, createdAt: true },
       orderBy: { name: "asc" },
     });
 
@@ -115,7 +115,7 @@ teacherRouter.get("/monthly-reports", async (req, res) => {
     assert(monthBounds(month), "Geçersiz ay");
     const students = await prisma.user.findMany({
       where: { teacherId: req.userId, role: "STUDENT", banned: false },
-      select: { id: true, name: true, className: true },
+      select: { id: true, name: true, avatar: true, className: true },
       orderBy: { name: "asc" },
     });
     const analyses = await prisma.aiAnalysis.findMany({ where: { month, studentId: { in: students.map((s) => s.id) } }, select: { studentId: true } });
@@ -143,7 +143,7 @@ teacherRouter.get("/students/:id/overview", async (req, res) => {
   try {
     const student = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, field: true, banned: true, teacherId: true, role: true, lastSeenAt: true, createdAt: true },
+      select: { id: true, name: true, avatar: true, email: true, username: true, className: true, gradeLevel: true, field: true, banned: true, teacherId: true, role: true, lastSeenAt: true, createdAt: true },
     });
     assert(student && student.role === "STUDENT" && student.teacherId === req.userId, "Bu öğrenci sana atanmamış", 403);
     const [recipients, studySessions, notes] = await Promise.all([

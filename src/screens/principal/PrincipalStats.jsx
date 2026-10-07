@@ -268,7 +268,7 @@ function ClassDetail({ cls, className, period, onBack, onOpenStudent }) {
                 style={{ display: "block", width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 18, border: "none", background: C.surface, textAlign: "left", cursor: "pointer" }}>
                 <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   <span style={{ ...NUM, width: 20, textAlign: "center", fontSize: 13, fontWeight: 800, color: C.inkMuted, flexShrink: 0 }}>{i + 1}</span>
-                  <Avatar name={s.name} size={36} tint />
+                  <Avatar name={s.name} size={36} tint avatar={s.avatar} />
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <span style={{ display: "block", fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{s.name}</span>
                     <span style={{ display: "block", fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, marginTop: 2 }}>

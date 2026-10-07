@@ -247,7 +247,7 @@ export default function AssignmentCreateScreen({ user, onCreated, initialStudent
             <div role="group" aria-label="Öğrenciler" style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 10 }}>
               {students.map((s) => (
                 <ToggleChip key={s.id} active={picked.has(s.id)} onClick={() => toggleIn(setPicked)(s.id)} label={s.className ? `${s.name}, ${s.className}` : s.name}>
-                  <Avatar name={s.name} size={26} />{s.name}
+                  <Avatar name={s.name} size={26} avatar={s.avatar} />{s.name}
                 </ToggleChip>
               ))}
             </div>

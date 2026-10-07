@@ -59,6 +59,9 @@ enum AssignmentTarget {
 
 model User {
   id    String  @id @default(cuid())
+  // Öğrencinin profil resmi: hazır "ruh hayvanı" avatarlarından birinin kimliği (bkz. src/avatars.js, KULLANICI İSTEĞİ
+  // 2026-10-07). null = baş harfler. Fotoğraf yükleme YOK (reşit olmayan öğrencilerin fotoğrafı — KVKK).
+  avatar String?
   // Giriş kimliği e-posta YA DA kullanıcı adı (username) olabilir — ikisi de tekil, en az biri dolu
   // (bkz. routes/admin.js > createOneUser). Okuldaki öğrencilerin çoğunun e-postası yok: okul
   // numarası kullanıcı adı olur. E-postası olmayan hesap "şifremi unuttum" kullanamaz, şifresini

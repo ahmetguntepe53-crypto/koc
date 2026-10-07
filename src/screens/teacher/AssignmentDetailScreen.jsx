@@ -177,7 +177,7 @@ export default function AssignmentDetailScreen({ assignmentId, onBack, unreadCou
         <OverlapCard>
           {focus ? (
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <Avatar name={focus.r.student.name} size={44} tint />
+              <Avatar name={focus.r.student.name} size={44} tint avatar={focus.r.student.avatar} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontFamily: bodyFont, fontSize: 16, fontWeight: 800, color: C.inkText }}>{focus.r.student.name}</div>
                 <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>{[focus.r.student.className, "bu ödevdeki durumu"].filter(Boolean).join(" · ")}</div>
@@ -338,7 +338,7 @@ function StudentCard({ r, net, pct, state, Q, isSent, best, endDate, onPhoto, as
   return (
     <Card style={{ padding: 14, borderRadius: 20, border: overdue ? `1px solid ${C.dangerBorder}` : "none", background: overdue ? C.dangerTint : C.surface }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <Avatar name={r.student.name} size={44} tint />
+        <Avatar name={r.student.name} size={44} tint avatar={r.student.avatar} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
             <span style={{ fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{r.student.name}</span>

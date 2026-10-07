@@ -526,7 +526,7 @@ function UserRow({ user, teachers, onReassignTeacher, onChangeGradeLevel, onChan
   return (
     <Card style={{ padding: 16 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-        <Avatar name={user.name} size={40} />
+        <Avatar name={user.name} size={40} avatar={user.avatar} />
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
             <span style={{ fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.text, marginRight: 2 }}>{user.name}</span>

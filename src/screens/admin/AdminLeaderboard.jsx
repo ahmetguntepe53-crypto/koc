@@ -71,7 +71,7 @@ function Row({ rank, s }) {
       {rank != null && (
         <span style={{ width: 22, flexShrink: 0, textAlign: "center", fontFamily: monoFont, fontSize: 13, fontWeight: 700, color: rank <= 3 ? C.amber : C.mutedLight }}>{rank}</span>
       )}
-      <Avatar name={s.name} size={36} />
+      <Avatar name={s.name} size={36} avatar={s.avatar} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: bodyFont, fontSize: 14, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{s.name}</div>
         <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.mutedLight, marginTop: 1 }}>

@@ -1,4 +1,5 @@
 import { Component, useEffect, useId, useRef, useState } from "react";
+import { avatarSrc } from "../avatars.js";
 import { createPortal } from "react-dom";
 import { X, LogOut, ChevronLeft, ChevronRight, Minus, Plus, AlertTriangle } from "lucide-react";
 import { C, displayFont, bodyFont, monoFont, statusTone, STATUS_LABEL } from "../theme.js";
@@ -231,7 +232,12 @@ function firstLastInitials(name) {
 }
 // eslint-disable-next-line no-unused-vars
 // lime: lime zemin + ink baş harfler (öğretmenin kendi avatarı, mor üst alanda).
-export function Avatar({ name, size = 36, dark, tint, lime }) {
+// avatar: öğrencinin seçtiği hazır profil resmi kimliği (bkz. src/avatars.js); varsa baş harfler yerine o çizilir.
+export function Avatar({ name, size = 36, dark, tint, lime, avatar }) {
+  const src = avatarSrc(avatar);
+  if (src) {
+    return <img src={src} alt="" aria-hidden="true" width={size} height={size} style={{ width: size, height: size, borderRadius: 999, flexShrink: 0, display: "block" }} />;
+  }
   const [bg, fg] = lime ? [C.lime, C.ink] : tint ? [tintOf(name), C.onBrand] : [C.surfaceHover, C.text2];
   tint = tint || lime;
   return (
@@ -348,7 +354,7 @@ export function Sidebar({ user, tabs, activeId, onSelect, onLogout }) {
       </nav>
 
       <div className="k-sidebar-user" style={{ borderTop: `1px solid ${C.sidebarBorder}`, padding: "14px 16px", display: "flex", alignItems: "center", gap: 10 }}>
-        <Avatar name={user.name} size={34} dark />
+        <Avatar name={user.name} size={34} dark avatar={user.avatar} />
         <div className="k-sidebar-user-text" style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontFamily: bodyFont, fontSize: 12.5, fontWeight: 700, color: C.sidebarTextActive, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user.name}</div>
           <div style={{ fontFamily: bodyFont, fontSize: 10.5, color: C.sidebarText }}>{roleLabel(user.role)}</div>

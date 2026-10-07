@@ -77,7 +77,7 @@ function StudentCard({ s, st, onOpen, period, onPickPeriod }) {
     <div data-student-card="" onClick={() => onOpen(s.id, s.name)} className="k-card-hover" style={{ background: C.surface, padding: 14, borderRadius: 20, cursor: "pointer" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <button type="button" style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 12, padding: 0, background: "none", border: "none", textAlign: "left", cursor: "pointer" }}>
-          <Avatar name={s.name} size={44} tint />
+          <Avatar name={s.name} size={44} tint avatar={s.avatar} />
           <span style={{ minWidth: 0 }}>
             <span style={{ display: "block", fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{s.name}</span>
             {s.className && <span style={{ display: "block", fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted, marginTop: 2 }}>{s.className}</span>}

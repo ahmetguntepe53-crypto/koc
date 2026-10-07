@@ -152,6 +152,7 @@ export const api = {
   principalActivityPeople: (role, group) => request(`/principal/activity-people?role=${encodeURIComponent(role)}&group=${encodeURIComponent(group)}`),
   principalAnalytics: (weeks, gradeLevel) => request(`/principal/analytics?weeks=${encodeURIComponent(weeks)}${gradeLevel ? `&gradeLevel=${encodeURIComponent(gradeLevel)}` : ""}`),
   setMyField: (field) => request("/auth/me/field", { method: "PATCH", body: { field } }),
+  setMyAvatar: (avatar) => request("/auth/me/avatar", { method: "PATCH", body: { avatar } }),
   // Koçun tarihli özel notları — yalnızca yazan koç görür.
   teacherAddNote: (studentId, text) => request(`/teacher/students/${studentId}/notes`, { method: "POST", body: { text } }),
   teacherEditNote: (noteId, text) => request(`/teacher/notes/${noteId}`, { method: "PATCH", body: { text } }),

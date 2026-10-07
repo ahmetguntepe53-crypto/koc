@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ClipboardCheck, Plus, ChevronRight, Clock, BookOpen, ClipboardList, History } from "lucide-react";
 import { C, bodyFont, displayFont, formatNet, recipientStatus, netOf } from "../../theme.js";
-import { EmptyState, LoadingState, StatusSquare, SegmentBar, Legend, AlertBox, ShowMoreButton } from "../../components/common.jsx";
+import { EmptyState, LoadingState, StatusSquare, SegmentBar, Legend, AlertBox, ShowMoreButton, Avatar } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, SectionCard, StatusChip, PrimaryButton, NUM } from "../../components/brand.jsx";
 import { api } from "../../api.js";
 import { weekBounds, inWeek, dayKey, deadlineLabel, endedLabel, questionCountOf } from "../../work.js";
@@ -150,6 +150,11 @@ export default function StudentHomeScreen({ user, onOpen, onOpenStudyLog, onOpen
     <div>
       <HeroHeader compact>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {user?.avatar && (
+            <button type="button" onClick={onOpenProfile} aria-label="Profil resmim" style={{ padding: 0, border: "none", background: "none", cursor: onOpenProfile ? "pointer" : "default", borderRadius: 999, flexShrink: 0 }}>
+              <Avatar name={user.name} size={48} avatar={user.avatar} />
+            </button>
+          )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.onBrandMuted, lineHeight: 1.35 }}>
               {[user?.name, user?.className, user?.coach?.name && `Koçun: ${user.coach.name}`].filter(Boolean).join(" · ")}

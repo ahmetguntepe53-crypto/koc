@@ -45,7 +45,7 @@ assignmentRecipientsRouter.get("/:id", async (req, res) => {
   try {
     const recipient = await prisma.assignmentRecipient.findUnique({
       where: { id: req.params.id },
-      include: { ...assignmentInclude, student: { select: { id: true, name: true, className: true } } },
+      include: { ...assignmentInclude, student: { select: { id: true, name: true, avatar: true, className: true } } },
     });
     assert(recipient, "Bulunamadı", 404);
     const isOwner = req.userRole === "STUDENT" && recipient.studentId === req.userId;

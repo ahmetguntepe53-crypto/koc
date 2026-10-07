@@ -398,7 +398,7 @@ adminRouter.get("/photos", async (req, res) => {
       include: {
         recipient: {
           include: {
-            student: { select: { id: true, name: true, className: true } },
+            student: { select: { id: true, name: true, avatar: true, className: true } },
             assignment: { select: { id: true, subject: true, topic: true, examType: true } },
           },
         },

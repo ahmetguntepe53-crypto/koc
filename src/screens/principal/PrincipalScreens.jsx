@@ -155,7 +155,7 @@ export function PrincipalStudentsScreen({ unreadCount, onOpenNotifications, onOp
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {list.map((s) => (
               <button key={s.id} type="button" onClick={() => onOpenStudent(s.id, s.name)} className="k-list-row" style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 18, border: "none", background: C.surface, textAlign: "left", cursor: "pointer" }}>
-                <Avatar name={s.name} size={40} tint />
+                <Avatar name={s.name} size={40} tint avatar={s.avatar} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: "block", fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{s.name}</span>
                   <span style={{ display: "block", fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, marginTop: 2 }}>
@@ -254,7 +254,7 @@ export function PrincipalLeaderboardScreen({ unreadCount, onOpenNotifications, o
   const row = (s, rank) => (
     <button key={s.id} type="button" onClick={() => onOpenStudent(s.id, s.name)} className="k-list-row" style={{ display: "flex", alignItems: "center", gap: 12, width: "100%", boxSizing: "border-box", padding: 12, borderRadius: 18, border: "none", background: C.surface, textAlign: "left", cursor: "pointer" }}>
       {rank != null && <span style={{ ...NUM, width: 24, flexShrink: 0, textAlign: "center", fontSize: 14, fontWeight: 800, color: rank <= 3 ? C.warningText : C.inkMuted }}>{rank}</span>}
-      <Avatar name={s.name} size={40} tint />
+      <Avatar name={s.name} size={40} tint avatar={s.avatar} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: "block", fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{s.name}</span>
         <span style={{ display: "block", fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, marginTop: 2 }}>{[s.className, gradeLabel(s.gradeLevel)].filter(Boolean).join(" · ")}</span>

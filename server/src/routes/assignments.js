@@ -19,7 +19,7 @@ const SEND_MODES = ["AUTO_ON_DATE", "AUTO_DAY_BEFORE", "MANUAL_NOW"];
 export const recipientInclude = {
   recipients: {
     include: {
-      student: { select: { id: true, name: true, className: true } },
+      student: { select: { id: true, name: true, avatar: true, className: true } },
       submission: true,
       photos: { orderBy: { createdAt: "asc" } },
     },
@@ -186,7 +186,7 @@ assignmentsRouter.get("/audience", async (req, res) => {
     assert(me?.isSubjectTeacher && me.teachingSubjects.length > 0, "Ödev atama yetkisi branş öğretmenlerinde — koçlar ödevlerin takibini yapar", 403);
     const students = await prisma.user.findMany({
       where: { role: "STUDENT", banned: false, gradeLevel: { in: GRADE_LEVELS } },
-      select: { id: true, name: true, gradeLevel: true, className: true },
+      select: { id: true, name: true, avatar: true, gradeLevel: true, className: true },
       orderBy: [{ gradeLevel: "asc" }, { className: "asc" }, { name: "asc" }],
     });
     res.json({ students, teachingSubjects: me.teachingSubjects });
@@ -230,7 +230,7 @@ assignmentsRouter.get("/", async (req, res) => {
         where, orderBy: { scheduledDate: "desc" },
         include: {
           teacher: { select: { id: true, name: true } },
-          recipients: { include: { student: { select: { id: true, name: true, className: true } }, submission: true } },
+          recipients: { include: { student: { select: { id: true, name: true, avatar: true, className: true } }, submission: true } },
         },
       });
       return res.json({ assignments: rows.map(withSuccessStats) });

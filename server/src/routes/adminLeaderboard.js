@@ -51,7 +51,7 @@ adminLeaderboardRouter.get("/", async (req, res) => {
       }),
       prisma.user.findMany({
         where: { role: "STUDENT", banned: false },
-        select: { id: true, name: true, gradeLevel: true, className: true },
+        select: { id: true, name: true, avatar: true, gradeLevel: true, className: true },
       }),
     ]);
 

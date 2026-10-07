@@ -313,7 +313,7 @@ export default function StudentOverviewScreen({ studentId, onBack, onOpenReport,
     <div>
       {hero(
         <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 18 }}>
-          <Avatar name={student.name} size={60} lime />
+          <Avatar name={student.name} size={60} lime avatar={student.avatar} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ margin: 0, fontFamily: displayFont, fontSize: 26, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15, color: C.onBrand, overflowWrap: "anywhere", textWrap: "balance" }}>{student.name}</h1>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>

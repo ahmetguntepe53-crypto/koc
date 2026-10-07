@@ -91,7 +91,7 @@ principalRouter.get("/students", async (req, res) => {
     const [students, recipients, study] = await Promise.all([
       prisma.user.findMany({
         where: { role: "STUDENT", banned: false },
-        select: { id: true, name: true, className: true, gradeLevel: true, field: true, lastSeenAt: true, teacher: { select: { name: true } } },
+        select: { id: true, name: true, avatar: true, className: true, gradeLevel: true, field: true, lastSeenAt: true, teacher: { select: { name: true } } },
         orderBy: { name: "asc" },
       }),
       loadRecipients(period, now),
@@ -129,7 +129,7 @@ principalRouter.get("/students/:id", async (req, res) => {
     const now = new Date();
     const student = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, name: true, role: true, className: true, gradeLevel: true, field: true, lastSeenAt: true, teacher: { select: { name: true } } },
+      select: { id: true, name: true, avatar: true, role: true, className: true, gradeLevel: true, field: true, lastSeenAt: true, teacher: { select: { name: true } } },
     });
     assert(student && student.role === "STUDENT", "Öğrenci bulunamadı", 404);
     const recipients = await loadRecipients(period, now, { studentId: student.id });
@@ -172,7 +172,7 @@ principalRouter.get("/students/:id/overview", async (req, res) => {
   try {
     const student = await prisma.user.findUnique({
       where: { id: req.params.id },
-      select: { id: true, name: true, email: true, username: true, className: true, gradeLevel: true, field: true, banned: true, teacherId: true, role: true, lastSeenAt: true, createdAt: true, teacher: { select: { name: true } } },
+      select: { id: true, name: true, avatar: true, email: true, username: true, className: true, gradeLevel: true, field: true, banned: true, teacherId: true, role: true, lastSeenAt: true, createdAt: true, teacher: { select: { name: true } } },
     });
     assert(student && student.role === "STUDENT", "Öğrenci bulunamadı", 404);
     const [recipients, studySessions] = await Promise.all([
@@ -210,7 +210,7 @@ principalRouter.get("/activity-people", async (req, res) => {
     const [users, days] = await Promise.all([
       prisma.user.findMany({
         where: { role, banned: false },
-        select: { id: true, name: true, className: true, gradeLevel: true, isSubjectTeacher: true, teachingSubjects: true, lastSeenAt: true, createdAt: true, teacher: { select: { name: true } } },
+        select: { id: true, name: true, avatar: true, className: true, gradeLevel: true, isSubjectTeacher: true, teachingSubjects: true, lastSeenAt: true, createdAt: true, teacher: { select: { name: true } } },
       }),
       prisma.loginDay.findMany({ where: { day: { gte: weekFrom }, user: { role } }, select: { userId: true, day: true } }),
     ]);

@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import { prisma } from "../db.js";
 import { requireAuth } from "../middleware/auth.js";
 import { safeUser } from "../serialize.js";
+import { AVATAR_IDS } from "../avatars.js";
 import { sendPasswordResetEmail } from "../mailer.js";
 import { handleErr } from "../handleErr.js";
 import { loginLimiter, loginIpLimiter, forgotPasswordLimiter, forgotPasswordIpLimiter, resetPasswordLimiter, setPasswordLimiter, deleteAccountLimiter } from "../middleware/rateLimiters.js";
@@ -210,6 +211,21 @@ authRouter.patch("/me/field", requireAuth, async (req, res) => {
     const field = normalizeField(req.body.field);
     assert(field !== undefined, "Geçersiz YKS alanı — SAY, EA, SÖZ ya da DİL olmalı");
     const user = await prisma.user.update({ where: { id: req.userId }, data: { field } });
+    res.json({ user: await meResponse(user) });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+// Öğrenci profil resmini hazır avatarlardan seçer; koçu, öğretmenleri, müdür ve yönetici görür. Gövde { avatar }: null siler.
+authRouter.patch("/me/avatar", requireAuth, async (req, res) => {
+  try {
+    assert(req.userRole === "STUDENT", "Profil resmini yalnızca öğrenci seçer", 403);
+    assert(req.body && Object.prototype.hasOwnProperty.call(req.body, "avatar"), "avatar gerekli");
+    const raw = req.body.avatar;
+    const avatar = raw === null || raw === "" ? null : String(raw);
+    assert(avatar === null || AVATAR_IDS.includes(avatar), "Geçersiz avatar");
+    const user = await prisma.user.update({ where: { id: req.userId }, data: { avatar } });
     res.json({ user: await meResponse(user) });
   } catch (e) {
     handleErr(res, e);

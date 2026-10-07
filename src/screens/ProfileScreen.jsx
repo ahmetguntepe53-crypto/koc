@@ -1,11 +1,77 @@
 import { useState } from "react";
-import { Target, KeyRound, LogOut, Check, Sun, Moon, Palette, Plus } from "lucide-react";
+import { Target, KeyRound, LogOut, Check, Sun, Moon, Palette, Plus, Smile } from "lucide-react";
 import { C, displayFont, bodyFont, ACCENTS, TEXT_COLORS } from "../theme.js";
 import { Avatar, roleLabel } from "../components/common.jsx";
 import { HeroHeader, HeroBell, SectionCard, StatusChip, FieldLabel, fieldBox, PrimaryButton } from "../components/brand.jsx";
 import { api, setToken } from "../api.js";
 import { gradeLabel } from "../subjects.js";
+import { AVATARS, avatarSrc, avatarInfo } from "../avatars.js";
 import { STUDENT_FIELDS, FIELD_SHORT, FIELD_LABELS } from "../studentField.js";
+
+// Öğrenci profil resmini 15 "ruh hayvanı"ndan seçer; koçu, öğretmenleri, müdür ve yönetici görür. Seçiliye yeniden
+// dokunmak ya da "Kaldır" baş harflere döndürür.
+function AvatarCard({ user, onUserUpdated }) {
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const value = user.avatar || null;
+  const pick = async (id) => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      const res = await api.setMyAvatar(id === value ? null : id);
+      onUserUpdated?.(res.user);
+    } catch (e) {
+      setError(e.message || "Kaydedilemedi");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const info = avatarInfo(value);
+  return (
+    <SectionCard
+      icon={Smile} iconBg={C.brandTint} iconFg={C.brandText} title="Profil resmim"
+      right={info ? <StatusChip tone="success">{info.name}</StatusChip> : <StatusChip tone="track">Seçilmedi</StatusChip>}
+    >
+      <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted, margin: "8px 0 12px", lineHeight: 1.5 }}>
+        {saving ? "Kaydediliyor..." : info ? `${info.name} · ${info.trait}. Koçun ve öğretmenlerin bu resmi görür.` : "Ruh hayvanını seç — koçun ve öğretmenlerin seni bu resimle görür."}
+      </div>
+      <div role="group" aria-label="Profil resmi" style={{ display: "grid", gridTemplateColumns: "repeat(5, minmax(0, 1fr))", gap: 10 }}>
+        {AVATARS.map((a) => {
+          const on = value === a.id;
+          return (
+            <button
+              key={a.id}
+              type="button"
+              aria-pressed={on}
+              aria-label={`${a.name} — ${a.trait}`}
+              title={`${a.name} · ${a.trait}`}
+              onClick={() => pick(a.id)}
+              style={{
+                position: "relative", padding: 0, border: "none", background: "none", cursor: "pointer", borderRadius: 999,
+                aspectRatio: "1 / 1", width: "100%", maxWidth: 64, justifySelf: "center",
+                boxShadow: on ? `0 0 0 3px ${C.surface}, 0 0 0 6px ${C.cta}` : "none", opacity: saving && !on ? 0.6 : 1,
+              }}
+            >
+              <img src={avatarSrc(a.id)} alt="" style={{ width: "100%", height: "100%", display: "block", borderRadius: 999 }} />
+              {on && (
+                <span aria-hidden="true" style={{ position: "absolute", right: -2, bottom: -2, width: 22, height: 22, borderRadius: 999, background: C.cta, color: C.onCta, display: "flex", alignItems: "center", justifyContent: "center", border: `2px solid ${C.surface}` }}>
+                  <Check size={13} strokeWidth={3} />
+                </span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {value && (
+        <button type="button" onClick={() => pick(value)} disabled={saving} style={{ marginTop: 12, minHeight: 40, padding: "0 14px", borderRadius: 12, border: `1px solid ${C.brandOutline}`, background: C.surface, color: C.inkMuted, fontFamily: bodyFont, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+          Resmi kaldır (baş harflerim görünsün)
+        </button>
+      )}
+      {error && <div role="alert" style={{ color: C.danger, fontFamily: bodyFont, fontSize: 13, fontWeight: 600, marginTop: 8 }}>{error}</div>}
+    </SectionCard>
+  );
+}
 
 // Öğrenci kendi YKS alanını seçer (koçu ve rapor buradan okur). Seçili seçeneğe yeniden dokunmak alanı siler.
 function FieldCard({ user, onUserUpdated }) {
@@ -163,7 +229,7 @@ export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCou
     <div>
       <HeroHeader compact>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <Avatar name={user.name} size={60} lime />
+          <Avatar name={user.name} size={60} lime avatar={user.avatar} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ margin: 0, fontFamily: displayFont, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15, color: C.onBrand, overflowWrap: "anywhere" }}>{user.name}</h1>
             <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.onBrandMuted, marginTop: 2, overflowWrap: "anywhere" }}>{user.username ? `Kullanıcı adı: ${user.username}` : user.email}</div>
@@ -176,6 +242,7 @@ export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCou
       </HeroHeader>
 
       <div style={{ maxWidth: 580, margin: "0 auto", padding: "16px 16px 24px", display: "flex", flexDirection: "column", gap: 10 }}>
+        {user.role === "STUDENT" && <AvatarCard user={user} onUserUpdated={onUserUpdated} />}
         {user.role === "STUDENT" && <FieldCard user={user} onUserUpdated={onUserUpdated} />}
         {onChangeTheme && <ThemeCard theme={theme} onChange={onChangeTheme} accent={accent} onChangeAccent={onChangeAccent} textColor={textColor} onChangeTextColor={onChangeTextColor} />}
 
