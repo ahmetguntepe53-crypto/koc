@@ -69,7 +69,7 @@ adminLeaderboardRouter.get("/", async (req, res) => {
       const totalQuestions = t.correct + t.wrong + t.blank;
       const netRate = totalQuestions > 0 ? Math.round(((t.correct - t.wrong / 4) / totalQuestions) * 1000) / 10 : null;
       return {
-        id: s.id, name: s.name, gradeLevel: s.gradeLevel, className: s.className,
+        id: s.id, name: s.name, avatar: s.avatar, gradeLevel: s.gradeLevel, className: s.className,
         totalQuestions, correct: t.correct, wrong: t.wrong, blank: t.blank, netRate,
         ranked: totalQuestions >= minQuestions,
       };

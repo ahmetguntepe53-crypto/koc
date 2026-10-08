@@ -111,7 +111,7 @@ principalRouter.get("/students", async (req, res) => {
     res.json({
       period,
       students: students.map((s) => ({
-        id: s.id, name: s.name, className: s.className, gradeLevel: s.gradeLevel, field: s.field, lastSeenAt: s.lastSeenAt,
+        id: s.id, name: s.name, avatar: s.avatar, className: s.className, gradeLevel: s.gradeLevel, field: s.field, lastSeenAt: s.lastSeenAt,
         coachName: s.teacher?.name || null, ...finish(by.get(s.id) || emptyAgg()), studyQuestions: studyQ.get(s.id) || 0,
       })),
     });
@@ -224,7 +224,7 @@ principalRouter.get("/activity-people", async (req, res) => {
       : group === "week" ? (u) => daysOf.has(u.id)
       : (u) => !u.lastSeenAt || u.lastSeenAt < inactiveCutoff;
     const people = users.filter(pick).map((u) => ({
-      id: u.id, name: u.name, className: u.className, gradeLevel: u.gradeLevel, coachName: u.teacher?.name || null,
+      id: u.id, name: u.name, avatar: u.avatar, className: u.className, gradeLevel: u.gradeLevel, coachName: u.teacher?.name || null,
       isSubjectTeacher: u.isSubjectTeacher, teachingSubjects: u.teachingSubjects,
       lastSeenAt: u.lastSeenAt, createdAt: u.createdAt, daysThisWeek: daysOf.get(u.id) || 0,
     }));
