@@ -1,4 +1,5 @@
-// Öğrencinin profil resmi olarak seçebileceği "ruh hayvanı" avatarları (KULLANICI İSTEĞİ 2026-10-07). Dosyalar
+// Öğrencinin profil resmi olarak seçebileceği "ruh hayvanı" avatarları (KULLANICI İSTEĞİ 2026-10-07; tavşan 2026-10-08'de
+// kaldırıldı — eski bir kayıtta kalırsa avatarSrc null döner, baş harfler görünür). Dosyalar
 // public/avatars/<id>.svg; sunucudaki server/src/avatars.js ile AYNI kimlik listesi. Fotoğraf yükleme yok (KVKK).
 export const AVATARS = [
   { id: "baykus", name: "Baykuş", trait: "Gece Kuşu" },
@@ -6,7 +7,6 @@ export const AVATARS = [
   { id: "tilki", name: "Tilki", trait: "Zeki" },
   { id: "kelebek", name: "Kelebek", trait: "Dönüşüm" },
   { id: "panda", name: "Panda", trait: "Sakin Güç" },
-  { id: "tavsan", name: "Tavşan", trait: "Hızlı" },
   { id: "geyik", name: "Geyik", trait: "Zarif" },
   { id: "kugu", name: "Kuğu", trait: "Asil" },
   { id: "yunus", name: "Yunus", trait: "Neşeli" },

@@ -15,6 +15,7 @@ describe("Avatar", () => {
   });
   it("bilinmeyen kimlik resme dönüşmez (yol enjeksiyonu yok)", () => {
     expect(avatarSrc("../../etc")).toBeNull();
-    expect(AVATARS).toHaveLength(15);
+    expect(AVATARS).toHaveLength(14);
+    expect(avatarSrc("tavsan")).toBeNull(); // 2026-10-08'de kaldırıldı
   });
 });
