@@ -74,4 +74,17 @@ describe("GET /api/parent/overview", () => {
     expect((await api(t.student).get("/api/parent/overview")).status).toBe(403);
     expect((await api(t.coach).get("/api/parent/overview")).status).toBe(403);
   });
+
+  it("istatistik: tamamlama, zamanında, ders kırılımı, çalışılan gün; doğru/yanlış yok", async () => {
+    const r = await api(parentToken).get("/api/parent/stats");
+    expect(r.status).toBe(200);
+    expect(r.body.overall).toMatchObject({ total: 2, done: 1, open: 1, onTime: 1, onTimeRate: 100, questions: 20 });
+    expect(r.body.studyQuestions).toBe(10);
+    expect(r.body.activeDays).toMatchObject({ total: 1, last30: 1, streak: 1 });
+    expect(r.body.subjects.map((x) => x.subject).sort()).toEqual(["Fizik", "Matematik"]);
+    expect(r.body.weeks).toHaveLength(8);
+    const json = JSON.stringify(r.body);
+    for (const k of ["correct", "wrong", "blank", "net", "successPct"]) expect(json).not.toContain(`"${k}`);
+    expect((await api(t.student).get("/api/parent/stats")).status).toBe(403);
+  });
 });

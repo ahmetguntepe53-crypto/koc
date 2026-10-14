@@ -1,8 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3, GraduationCap, Trophy } from "lucide-react";
+import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3, GraduationCap, Trophy, PieChart } from "lucide-react";
 import { PrincipalStudentsScreen, PrincipalLeaderboardScreen, PrincipalTeachersScreen } from "./screens/principal/PrincipalScreens.jsx";
 import { PrincipalStatsScreen } from "./screens/principal/PrincipalStats.jsx";
-import { ParentHomeScreen, ParentAssignmentsScreen } from "./screens/parent/ParentScreens.jsx";
+import { ParentHomeScreen, ParentAssignmentsScreen, ParentStatsScreen } from "./screens/parent/ParentScreens.jsx";
 import { C, THEMES, DEFAULT_THEME, DEFAULT_ACCENT, accentTokens, DEFAULT_TEXT_COLOR, textTokens, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID, LoadingState } from "./components/common.jsx";
@@ -123,7 +123,7 @@ export default function App() {
   const [screen, setScreen] = useState(null);
   // Mor üst alanlı ekran: genel başlık gizlenir (ekran kendi başlığını mor alanın içinde çizer), durum
   // çubuğu şeridi de aynı mora boyanır — yoksa saatin olduğu şerit ile mor alan arasında renk kırılırdı.
-  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview", "myAssignments", "studyLog", "profile", "assignmentSubmit", "principalOverview", "principalStudents", "principalLeaderboard", "principalTeachers", "parentHome", "parentAssignments"].includes(screen)
+  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview", "myAssignments", "studyLog", "profile", "assignmentSubmit", "principalOverview", "principalStudents", "principalLeaderboard", "principalTeachers", "parentHome", "parentAssignments", "parentStats"].includes(screen)
     || (screen === "assignmentCreate" && authUser?.isSubjectTeacher);
   // Oturum açıkken her ekranın üstü mor (kendi üst alanı ya da mor PageHeader) — şerit de mor.
   const signedIn = !!authUser;
@@ -643,6 +643,7 @@ const TABS_BY_ROLE = {
   PARENT: [
     { id: "parentHome", label: "Öğrencim", icon: BarChart3 },
     { id: "parentAssignments", label: "Ödevler", icon: ClipboardList },
+    { id: "parentStats", label: "İstatistik", icon: PieChart },
   ],
   STUDENT: [
     { id: "myAssignments", label: "Bu hafta", icon: ClipboardList },
@@ -668,6 +669,7 @@ function renderScreen({
   if (authUser.role === "PARENT") {
     const common = { user: authUser, unreadCount, onOpenNotifications: openNotifications };
     if (screen === "parentAssignments") return <ParentAssignmentsScreen {...common} />;
+    if (screen === "parentStats") return <ParentStatsScreen {...common} />;
     return <ParentHomeScreen {...common} onOpenAssignments={() => selectTab("parentAssignments")} />;
   }
   if (authUser.role === "PRINCIPAL" || authUser.role === "ADMIN") {

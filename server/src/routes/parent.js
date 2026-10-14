@@ -80,3 +80,91 @@ parentRouter.get("/overview", async (req, res) => {
     handleErr(res, e);
   }
 });
+
+// GET /api/parent/stats — öğrencinin ödevlerdeki genel durumu (KULLANICI İSTEĞİ 2026-10-14). Yine doğru/yanlış/net YOK.
+//  • Tamamlama: süresi dolmuş ya da tamamlanmış ödevlerin yüzde kaçını tamamladı (Öğrencilerim ekranıyla aynı tanım).
+//  • Zamanında: tamamlananların yüzde kaçını son gün bitmeden girdi.
+//  • Çalıştığı gün: ödev ya da serbest çalışmada soru çözdüğü farklı gün sayısı; seri = bugünden (ya da dünden) geriye kesintisiz gün.
+parentRouter.get("/stats", async (req, res) => {
+  try {
+    const me = await prisma.user.findUnique({ where: { id: req.userId }, select: { childId: true } });
+    assert(me?.childId, "Bu hesaba bağlı öğrenci yok", 404);
+    const now = new Date();
+    const GRACE = 21 * 60 * 60 * 1000;
+    const [recipients, sessions] = await Promise.all([
+      prisma.assignmentRecipient.findMany({
+        where: { studentId: me.childId, assignment: { status: "SENT" } },
+        select: {
+          completed: true, completedAt: true, skippedAt: true,
+          submission: { select: { correctCount: true, wrongCount: true, createdAt: true } },
+          assignment: { select: { subject: true, examType: true, endDate: true } },
+        },
+      }),
+      prisma.studySession.findMany({ where: { studentId: me.childId }, select: { studyDate: true, subject: true, correctCount: true, wrongCount: true } }),
+    ]);
+
+    const empty = () => ({ total: 0, due: 0, done: 0, onTime: 0, missed: 0, skipped: 0, open: 0, questions: 0 });
+    const addTo = (g, r) => {
+      const st = recipientStatus(r, now);
+      g.total += 1;
+      if (st !== "open") g.due += 1;
+      if (st === "done") {
+        g.done += 1;
+        const at = r.completedAt || r.submission?.createdAt;
+        if (at && new Date(at).getTime() <= r.assignment.endDate.getTime() + GRACE) g.onTime += 1;
+      }
+      if (st === "missed") g.missed += 1;
+      if (st === "skipped") g.skipped += 1;
+      if (st === "open") g.open += 1;
+      if (r.submission) g.questions += r.submission.correctCount + r.submission.wrongCount;
+    };
+    const pct = (a, b) => (b ? Math.round((a / b) * 100) : null);
+    const finish = (g) => ({ ...g, completionRate: pct(g.done, g.due), onTimeRate: pct(g.onTime, g.done) });
+
+    const all = empty();
+    const bySubject = new Map();
+    for (const r of recipients) {
+      addTo(all, r);
+      const k = `${r.assignment.examType}|${r.assignment.subject}`;
+      if (!bySubject.has(k)) bySubject.set(k, { examType: r.assignment.examType, subject: r.assignment.subject, ...empty(), studyQuestions: 0 });
+      addTo(bySubject.get(k), r);
+    }
+    let studyQuestions = 0;
+    for (const s of sessions) {
+      const q = s.correctCount + s.wrongCount;
+      studyQuestions += q;
+      const hit = [...bySubject.values()].find((x) => x.subject === s.subject);
+      if (hit) hit.studyQuestions += q;
+    }
+
+    // Haftalık (son 8 hafta, ödevin bitiş haftası): tamamlama
+    const { mon } = trWeekRange(now);
+    const weeks = Array.from({ length: 8 }, (_, i) => {
+      const s = new Date(mon.getTime() - (7 - i) * 7 * DAY);
+      const e = new Date(s.getTime() + 7 * DAY);
+      const g = empty();
+      for (const r of recipients) if (r.assignment.endDate >= s && r.assignment.endDate < e) addTo(g, r);
+      return { start: ymd(s), total: g.total, done: g.done, completionRate: pct(g.done, g.due) };
+    });
+
+    // Çalışılan günler ve seri
+    const days = new Set();
+    for (const r of recipients) if (r.submission && r.submission.correctCount + r.submission.wrongCount > 0) days.add(trDayKey(r.completedAt || r.submission.createdAt));
+    for (const s of sessions) if (s.correctCount + s.wrongCount > 0) days.add(trDayKey(s.studyDate));
+    const today = trTodayAsDateOnly(now);
+    const last30 = [...days].filter((k) => Date.parse(k) > today.getTime() - 30 * DAY).length;
+    let streak = 0;
+    let cursor = days.has(ymd(today)) ? today : new Date(today.getTime() - DAY);
+    while (days.has(ymd(cursor))) { streak += 1; cursor = new Date(cursor.getTime() - DAY); }
+
+    res.json({
+      overall: finish(all),
+      studyQuestions,
+      activeDays: { total: days.size, last30, streak },
+      subjects: [...bySubject.values()].map(finish).sort((a, b) => b.total - a.total || a.subject.localeCompare(b.subject, "tr")),
+      weeks,
+    });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});

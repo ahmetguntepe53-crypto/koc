@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { BarChart3, ClipboardList, ChevronRight, CalendarDays } from "lucide-react";
+import { BarChart3, ClipboardList, ChevronRight, CalendarDays, PieChart, BookOpen, Flame, TrendingUp } from "lucide-react";
 import { C, bodyFont, displayFont } from "../../theme.js";
 import { Avatar, EmptyState, LoadingState } from "../../components/common.jsx";
 import { HeroHeader, HeroBell, HeroStat, SectionCard, SegmentFilter, StatusChip, NUM } from "../../components/brand.jsx";
@@ -174,6 +174,113 @@ export function ParentAssignmentsScreen({ unreadCount, onOpenNotifications }) {
         <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, lineHeight: 1.5 }}>
           Ödevlerin sonuçları (doğru/yanlış) öğrenci ile koçu arasındadır; burada yalnızca yapılıp yapılmadığı görünür.
         </div>
+      </Body>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- İstatistik (2026-10-14): genel durum, doğru/yanlış yok
+const pctText = (v) => (v == null ? "—" : `%${v}`);
+function Meter({ label, value, color }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 6, fontFamily: bodyFont, fontSize: 12.5, color: C.inkMuted }}>
+        <span>{label}</span><span style={{ ...NUM, fontWeight: 800, color: C.numText }}>{pctText(value)}</span>
+      </div>
+      <div style={{ height: 7, borderRadius: 4, background: C.track, marginTop: 5, overflow: "hidden" }}>
+        <div style={{ width: `${Math.max(0, Math.min(100, value ?? 0))}%`, height: "100%", borderRadius: 4, background: color }} />
+      </div>
+    </div>
+  );
+}
+const Tile = ({ value, label, tone }) => (
+  <div style={{ padding: "10px 12px", borderRadius: 14, background: C.pageTint, minWidth: 0 }}>
+    <div style={{ ...NUM, fontSize: 20, fontWeight: 800, lineHeight: 1.15, color: tone === "danger" ? C.danger : tone === "warning" ? C.warningText : C.numText }}>{value}</div>
+    <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, marginTop: 2, lineHeight: 1.3 }}>{label}</div>
+  </div>
+);
+const Grid = ({ children, cols = 3 }) => <div style={{ display: "grid", gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gap: 8, marginTop: 12 }}>{children}</div>;
+
+export function ParentStatsScreen({ unreadCount, onOpenNotifications }) {
+  const [ov] = useLoad(() => api.parentOverview(), []);
+  const [data, error] = useLoad(() => api.parentStats(), []);
+  const o = data?.overall;
+  return (
+    <div>
+      <ChildHero
+        child={ov?.child} title="İstatistik" unreadCount={unreadCount} onOpenNotifications={onOpenNotifications}
+        stats={<>
+          <HeroStat lime label="tamamlama" value={o ? pctText(o.completionRate) : "…"} />
+          <HeroStat label="zamanında" value={o ? pctText(o.onTimeRate) : "…"} />
+          <HeroStat label="gün seri" value={data ? data.activeDays.streak : "…"} />
+        </>}
+      />
+      <Body>
+        {error ? <EmptyState text={error} /> : !data ? <LoadingState /> : (
+          <>
+            <SectionCard icon={PieChart} iconBg={C.cta} iconFg={C.onCta} title="Ödevlerin genel durumu" count={o.total}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12, marginTop: 12 }}>
+                <Meter label="Tamamlama" value={o.completionRate} color={C.success} />
+                <Meter label="Zamanında teslim" value={o.onTimeRate} color={C.cta} />
+              </div>
+              <Grid>
+                <Tile value={o.done} label="tamamladı" />
+                <Tile value={o.open} label="süresi devam eden" />
+                <Tile value={o.missed} label="gecikti" tone={o.missed ? "danger" : undefined} />
+                <Tile value={o.skipped} label="pas geçti" tone={o.skipped ? "warning" : undefined} />
+                <Tile value={o.done - o.onTime} label="geç teslim" tone={o.done - o.onTime ? "warning" : undefined} />
+                <Tile value={o.total} label="toplam ödev" />
+              </Grid>
+              <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, lineHeight: 1.5, marginTop: 10 }}>
+                Tamamlama, süresi dolan ödevler üzerinden hesaplanır; süresi devam eden ödevler henüz sayılmaz.
+              </div>
+            </SectionCard>
+
+            <SectionCard icon={Flame} iconBg={C.warningTint} iconFg={C.warningText} title="Çalışma düzeni">
+              <Grid>
+                <Tile value={data.activeDays.streak} label="gün üst üste" />
+                <Tile value={data.activeDays.last30} label="son 30 günde çalıştığı gün" />
+                <Tile value={fmt(o.questions + data.studyQuestions)} label="toplam çözdüğü soru" />
+              </Grid>
+              <Grid cols={2}>
+                <Tile value={fmt(o.questions)} label="ödevlerde" />
+                <Tile value={fmt(data.studyQuestions)} label="kendi çalışmasında" />
+              </Grid>
+            </SectionCard>
+
+            <SectionCard icon={TrendingUp} iconBg={C.brandTint} iconFg={C.brandText} title="Haftalık tamamlama">
+              <div role="img" aria-label={data.weeks.map((w) => `${dayLabel(w.start)} ${w.total ? `${w.done}/${w.total}` : "ödev yok"}`).join(", ")}
+                style={{ display: "grid", gridTemplateColumns: `repeat(${data.weeks.length}, minmax(0, 1fr))`, gap: 6, alignItems: "end", marginTop: 14 }}>
+                {data.weeks.map((w) => (
+                  <div key={w.start} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
+                    <span style={{ ...NUM, fontSize: 10, fontWeight: 700, color: w.total ? C.numText : C.inkMuted, whiteSpace: "nowrap" }}>{w.total ? `${w.done}/${w.total}` : "·"}</span>
+                    <span style={{ width: "100%", maxWidth: 26, height: w.completionRate == null ? 3 : Math.max(4, Math.round((w.completionRate / 100) * 64)), borderRadius: 6, background: w.completionRate == null ? C.track : C.success }} />
+                    <span style={{ ...NUM, fontSize: 9.5, color: C.inkMuted, whiteSpace: "nowrap" }}>{dayLabel(w.start)}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ fontFamily: bodyFont, fontSize: 12, color: C.inkMuted, marginTop: 10 }}>Her hafta: tamamladığı / o hafta biten ödev.</div>
+            </SectionCard>
+
+            <SectionCard icon={BookOpen} iconBg={C.successTint} iconFg={C.successText} title="Derslere göre" count={data.subjects.length}>
+              {data.subjects.length === 0 ? <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.inkMuted, marginTop: 10 }}>Henüz ödev yok.</div> : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                  {data.subjects.map((x) => (
+                    <div key={`${x.examType}|${x.subject}`} style={{ padding: 12, borderRadius: 14, background: C.pageTint }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontFamily: bodyFont, fontSize: 15, fontWeight: 700, color: C.inkText }}>{x.subject}</span>
+                        <StatusChip tone="brand">{x.examType}</StatusChip>
+                        {x.missed > 0 && <span style={{ marginLeft: "auto" }}><StatusChip tone="danger">{x.missed} gecikti</StatusChip></span>}
+                      </div>
+                      <div style={{ ...NUM, fontSize: 12, color: C.inkMuted, marginTop: 3 }}>{x.done}/{x.total} ödev · {fmt(x.questions + x.studyQuestions)} soru</div>
+                      <div style={{ marginTop: 8 }}><Meter label="Tamamlama" value={x.completionRate} color={C.success} /></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+          </>
+        )}
       </Body>
     </div>
   );
