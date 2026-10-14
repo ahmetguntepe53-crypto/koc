@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { Users, PlusCircle, ClipboardList, Bell, UserCircle2, BookOpen, Images, BarChart3, GraduationCap, Trophy } from "lucide-react";
 import { PrincipalStudentsScreen, PrincipalLeaderboardScreen, PrincipalTeachersScreen } from "./screens/principal/PrincipalScreens.jsx";
 import { PrincipalStatsScreen } from "./screens/principal/PrincipalStats.jsx";
+import { ParentHomeScreen, ParentAssignmentsScreen } from "./screens/parent/ParentScreens.jsx";
 import { C, THEMES, DEFAULT_THEME, DEFAULT_ACCENT, accentTokens, DEFAULT_TEXT_COLOR, textTokens, bodyFont, monoFont } from "./theme.js";
 import { useAuthSession } from "./hooks/useAuthSession.js";
 import { Sidebar, PageHeader, BottomNav, Button, closeTopModal, DialogHost, HeaderIconButton, HeaderTextButton, HEADER_SLOT_ID, LoadingState } from "./components/common.jsx";
@@ -32,7 +33,7 @@ const ReportScreen = lazy(() => import("./screens/ReportScreen.jsx"));
 import BranchScreen from "./screens/teacher/BranchScreen.jsx";
 import MonthlyReportsScreen from "./screens/teacher/MonthlyReportsScreen.jsx";
 
-const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments", PRINCIPAL: "principalLeaderboard" };
+const DEFAULT_SCREEN_BY_ROLE = { ADMIN: "users", TEACHER: "students", STUDENT: "myAssignments", PRINCIPAL: "principalLeaderboard", PARENT: "parentHome" };
 
 // Kompozisyon kökü: router yok, `screen` string state'i hangi ekranın render edileceğini belirler
 // (PP'deki HalisahaApp.jsx ile aynı desen). Düzen: sol kenar çubuğu (rol'e göre sekmeler) + sağda
@@ -122,7 +123,7 @@ export default function App() {
   const [screen, setScreen] = useState(null);
   // Mor üst alanlı ekran: genel başlık gizlenir (ekran kendi başlığını mor alanın içinde çizer), durum
   // çubuğu şeridi de aynı mora boyanır — yoksa saatin olduğu şerit ile mor alan arasında renk kırılırdı.
-  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview", "myAssignments", "studyLog", "profile", "assignmentSubmit", "principalOverview", "principalStudents", "principalLeaderboard", "principalTeachers"].includes(screen)
+  const heroScreen = ["assignmentDetail", "assignments", "students", "studentOverview", "myAssignments", "studyLog", "profile", "assignmentSubmit", "principalOverview", "principalStudents", "principalLeaderboard", "principalTeachers", "parentHome", "parentAssignments"].includes(screen)
     || (screen === "assignmentCreate" && authUser?.isSubjectTeacher);
   // Oturum açıkken her ekranın üstü mor (kendi üst alanı ya da mor PageHeader) — şerit de mor.
   const signedIn = !!authUser;
@@ -540,7 +541,7 @@ export default function App() {
         {/* key={screen}: ekran değişince hafif belirme animasyonu (index.html > .k-screen). */}
         <div key={screen} className="k-screen" style={{ flex: 1 }}>
           {renderScreen({
-            screen, authUser, logout, theme, setTheme, accent, setAccent, textColor, setTextColor,
+            screen, authUser, logout, theme, setTheme, accent, setAccent, textColor, setTextColor, selectTab,
             selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated, assignmentDetailReturnTo,
             selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
             selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
@@ -638,6 +639,11 @@ const TABS_BY_ROLE = {
     { id: "principalOverview", label: "İstatistik", icon: BarChart3 },
     { id: "principalTeachers", label: "Öğretmen", icon: GraduationCap },
   ],
+  // Veli: yalnızca kendi öğrencisinin takibi (bkz. screens/parent/ParentScreens.jsx).
+  PARENT: [
+    { id: "parentHome", label: "Öğrencim", icon: BarChart3 },
+    { id: "parentAssignments", label: "Ödevler", icon: ClipboardList },
+  ],
   STUDENT: [
     { id: "myAssignments", label: "Bu hafta", icon: ClipboardList },
     { id: "studyLog", label: "Çalışmam", icon: BookOpen },
@@ -646,7 +652,7 @@ const TABS_BY_ROLE = {
 };
 
 function renderScreen({
-  screen, authUser, logout, theme, setTheme, accent, setAccent, textColor, setTextColor,
+  screen, authUser, logout, theme, setTheme, accent, setAccent, textColor, setTextColor, selectTab,
   selectedAssignmentId, assignmentsRefreshKey, openAssignment, backToAssignments, onAssignmentCreated, assignmentDetailReturnTo,
   selectedRecipientId, myAssignmentsRefreshKey, openRecipient, backToMyAssignments,
   selectedStudentId, openStudent, backToStudents, createAssignmentForStudent, assignmentCreateInitialStudentId,
@@ -659,6 +665,11 @@ function renderScreen({
   const focusStudentId = (assignmentDetailReturnTo === "studentOverview" || assignmentDetailReturnTo === "reports") ? selectedStudentId : null;
   if (screen === "profile") return <ProfileScreen user={authUser} onLogout={logout} onOpenReport={() => openReport("profile")} theme={theme} onChangeTheme={setTheme} accent={accent} onChangeAccent={setAccent} textColor={textColor} onChangeTextColor={setTextColor} onUserUpdated={setAuthUser} unreadCount={unreadCount} onOpenNotifications={openNotifications} />;
   if (screen === "notifications") return <NotificationsScreen onOpenTarget={openNotificationTarget} />;
+  if (authUser.role === "PARENT") {
+    const common = { user: authUser, unreadCount, onOpenNotifications: openNotifications };
+    if (screen === "parentAssignments") return <ParentAssignmentsScreen {...common} />;
+    return <ParentHomeScreen {...common} onOpenAssignments={() => selectTab("parentAssignments")} />;
+  }
   if (authUser.role === "PRINCIPAL" || authUser.role === "ADMIN") {
     const common = { user: authUser, unreadCount, onOpenNotifications: openNotifications };
     if (screen === "principalOverview") return <PrincipalStatsScreen {...common} onOpenStudent={(id, name) => openStudent(id, name, "principalOverview")} />;

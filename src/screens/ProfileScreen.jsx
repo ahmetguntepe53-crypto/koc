@@ -232,7 +232,7 @@ export default function ProfileScreen({ user, onLogout, onUserUpdated, unreadCou
           <Avatar name={user.name} size={60} lime avatar={user.avatar} />
           <div style={{ flex: 1, minWidth: 0 }}>
             <h1 style={{ margin: 0, fontFamily: displayFont, fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em", lineHeight: 1.15, color: C.onBrand, overflowWrap: "anywhere" }}>{user.name}</h1>
-            <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.onBrandMuted, marginTop: 2, overflowWrap: "anywhere" }}>{user.username ? `Kullanıcı adı: ${user.username}` : user.email}</div>
+            <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.onBrandMuted, marginTop: 2, overflowWrap: "anywhere" }}>{user.role === "PARENT" ? `Öğrencisi: ${user.child?.name || "—"}${user.child?.username ? ` · ${user.child.username}` : ""}` : user.username ? `Kullanıcı adı: ${user.username}` : user.email}</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
               {chips.map((c) => <StatusChip key={c} tone="onBrand">{c}</StatusChip>)}
             </div>

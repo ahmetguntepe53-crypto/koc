@@ -17,6 +17,10 @@ import { recipientPhotosDir } from "../uploads.js";
 
 // İstemciye dönen kullanıcı — öğrenciye koçunun adı eklenir (ana ekran başlığı "Koçun: …").
 async function meResponse(user) {
+  if (user.role === "PARENT") {
+    const child = user.childId ? await prisma.user.findUnique({ where: { id: user.childId }, select: { id: true, name: true, username: true, className: true, gradeLevel: true, avatar: true } }) : null;
+    return { ...safeUser(user), child };
+  }
   if (user.role !== "STUDENT" || !user.teacherId) return safeUser(user);
   const coach = await prisma.user.findUnique({ where: { id: user.teacherId }, select: { id: true, name: true } });
   return { ...safeUser(user), coach };
@@ -64,6 +68,39 @@ authRouter.post("/login", loginLimiter, loginIpLimiter, async (req, res) => {
     // Askıya alınma bilgisi yalnızca şifre doğrulandıktan SONRA söylenir — aksi halde yanıt, şifreyi
     // bilmeyen birine hesabın var olduğunu (ve banlı olduğunu) sızdırırdı.
     if (user.banned) return res.status(403).json({ error: "Hesabın askıya alınmış — okul yöneticinle iletişime geç." });
+    const token = signToken(user.id, user.tokenVersion);
+    res.json({ token, user: await meResponse(user) });
+  } catch (e) {
+    handleErr(res, e);
+  }
+});
+
+const PARENT_LOGIN_FAILED = "Okul numarası veya şifre hatalı. İlk girişte şifre öğrencinin okul numarasıdır; şifrenizi unuttuysanız okul yönetimine başvurun.";
+// VELİ GİRİŞİ (KULLANICI İSTEĞİ 2026-10-14): veli öğrencisinin OKUL NUMARASI ile girer; ilk şifre de okul numarasıdır,
+// ilk girişte kendi şifresini belirler (mustChangePassword) ve metinleri kabul eder. Veli hesabı bu ilk girişte açılır —
+// öğrenci başına tek hesap. Sonrasında okul numarası veli şifresi olarak ÇALIŞMAZ (set-password aynısını reddeder).
+// Gövde alanı "email" (okul numarası) — login hız sınırlayıcıları bu alana göre anahtarlar.
+authRouter.post("/parent-login", loginLimiter, loginIpLimiter, async (req, res) => {
+  try {
+    const { email: number, password } = req.body || {};
+    if (typeof number !== "string" || typeof password !== "string" || !number.trim() || !password) {
+      return res.status(400).json({ error: "Öğrencinin okul numarası ve şifre gerekli" });
+    }
+    const student = await prisma.user.findFirst({ where: { username: number.trim().toLowerCase(), role: "STUDENT" } });
+    const parent = student ? await prisma.user.findUnique({ where: { childId: student.id } }) : null;
+    let user = parent;
+    if (parent) {
+      const ok = await bcrypt.compare(password, parent.passwordHash || DUMMY_PASSWORD_HASH);
+      if (!ok || !parent.passwordHash) return res.status(401).json({ error: PARENT_LOGIN_FAILED });
+    } else {
+      // İlk giriş: şifre okul numarasıyla aynı olmalı (süre eşitlemek için yine bir karşılaştırma yapılır).
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
+      if (!student || password.trim().toLowerCase() !== student.username) return res.status(401).json({ error: PARENT_LOGIN_FAILED });
+      user = await prisma.user.create({
+        data: { role: "PARENT", name: `${student.name} — Veli`, childId: student.id, passwordHash: await bcrypt.hash(password, 10), mustChangePassword: true },
+      });
+    }
+    if (user.banned || student.banned) return res.status(403).json({ error: "Hesap askıya alınmış — okul yönetimiyle iletişime geçin." });
     const token = signToken(user.id, user.tokenVersion);
     res.json({ token, user: await meResponse(user) });
   } catch (e) {
@@ -238,8 +275,10 @@ authRouter.post("/set-password", setPasswordLimiter, requireAuth, async (req, re
   try {
     const { currentPassword, newPassword, acceptedTerms } = req.body || {};
     const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    // Okul numarası herkesçe bilinebilir — kullanıcı adıyla aynı şifre, zorunlu değişikliği anlamsız kılar.
-    const problem = passwordProblem(newPassword, user.username);
+    // Okul numarası herkesçe bilinebilir — kullanıcı adıyla aynı şifre, zorunlu değişikliği anlamsız kılar. Velide
+    // yasak olan öğrencinin okul numarası (veli hesabının kullanıcı adı yok).
+    const child = user.role === "PARENT" && user.childId ? await prisma.user.findUnique({ where: { id: user.childId }, select: { username: true } }) : null;
+    const problem = passwordProblem(newPassword, child ? child.username : user.username);
     if (problem) return res.status(400).json({ error: problem });
     if (user.passwordHash) {
       // İlk girişteki zorunlu değişiklikte kullanıcı az önce bu şifreyle giriş yaptı — tekrar sorulmaz

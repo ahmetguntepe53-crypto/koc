@@ -40,8 +40,8 @@ export function useAuthSession({ setAuthUser, setAuthChecked, setScreen, setAuth
     return () => setUnauthorizedHandler(null);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const login = async (email, password) => {
-    const res = await api.login(email, password);
+  const login = async (email, password, asParent = false) => {
+    const res = asParent ? await api.parentLogin(email, password) : await api.login(email, password);
     setToken(res.token);
     setSessionNotice("");
     setAuthUser(res.user);

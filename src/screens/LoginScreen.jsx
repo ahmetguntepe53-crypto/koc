@@ -37,6 +37,8 @@ export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
   const [loading, setLoading] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
   const [forgotSent, setForgotSent] = useState(false);
+  // Veli girişi (2026-10-14): öğrencinin okul numarası + şifre; ilk girişte şifre de okul numarası (bkz. server > parent-login).
+  const [parentMode, setParentMode] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -47,7 +49,7 @@ export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
         await onForgotPassword(email);
         setForgotSent(true);
       } else {
-        await onLogin(email, password);
+        await onLogin(email, password, parentMode);
       }
     } catch (err) {
       setError(err.message || "Bir şeyler ters gitti");
@@ -106,7 +108,7 @@ export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
             </div>
             {!forgotSent && (
               <div style={{ fontFamily: bodyFont, fontSize: 13, color: C.muted, marginTop: 4 }}>
-                {forgotMode ? "E-posta adresini gir, sana bir bağlantı gönderelim. Okul numarasıyla giriyorsan şifreni koçun ya da okul yönetimi sıfırlar." : "Devam etmek için hesabına giriş yap."}
+                {forgotMode ? "E-posta adresini gir, sana bir bağlantı gönderelim. Okul numarasıyla giriyorsan şifreni koçun ya da okul yönetimi sıfırlar." : parentMode ? "Öğrencinizin ödevlerini ve çözdüğü soru sayısını takip edin." : "Devam etmek için hesabına giriş yap."}
               </div>
             )}
           </div>
@@ -121,6 +123,24 @@ export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
               </div>
             ) : (
               <form onSubmit={submit}>
+                {!forgotMode && (
+                  <div role="group" aria-label="Giriş türü" style={{ display: "flex", gap: 4, padding: 4, borderRadius: 14, background: C.surface2, marginBottom: 16 }}>
+                    {[[false, "Öğrenci / Öğretmen"], [true, "Veli"]].map(([val, label]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={parentMode === val}
+                        onClick={() => { setParentMode(val); setError(""); }}
+                        style={{
+                          flex: 1, minHeight: 40, borderRadius: 11, border: "none", cursor: "pointer", fontFamily: bodyFont, fontSize: 13.5, fontWeight: 700,
+                          background: parentMode === val ? C.accent : "transparent", color: parentMode === val ? C.onAccent : C.muted,
+                        }}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 {notice && !forgotMode && !error && (
                   <div style={{ marginBottom: 14, padding: "10px 12px", borderRadius: C.radiusSm, background: C.amberSoft, color: C.amber, fontSize: 12.5, fontWeight: 600 }}>{notice}</div>
                 )}
@@ -130,7 +150,7 @@ export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
                     bağlantısı gönderdiği için orada biçim doğrulaması anlamlı, o yüzden korunuyor. */}
                 {/* Giriş modunda kimlik okul numarası (öğrenci), kullanıcı adı (öğretmen) ya da e-posta olabilir. */}
                 <Input
-                  label={forgotMode ? "E-posta" : "Okul numarası veya e-posta"}
+                  label={forgotMode ? "E-posta" : parentMode ? "Öğrencinizin okul numarası" : "Okul numarası veya e-posta"}
                   type={forgotMode ? "email" : "text"}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -143,11 +163,19 @@ export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
                 {!forgotMode && (
                   <Input label="Şifre" type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" required />
                 )}
+                {parentMode && !forgotMode && (
+                  <div style={{ fontFamily: bodyFont, fontSize: 12.5, color: C.muted, lineHeight: 1.5, margin: "-4px 0 14px" }}>
+                    İlk girişte şifre de öğrencinizin okul numarasıdır; giriş yapınca kendi şifrenizi belirlersiniz.
+                  </div>
+                )}
                 {error && <div style={{ color: C.red, fontSize: 12.5, fontWeight: 600, marginBottom: 14 }}>{error}</div>}
                 <Button full type="submit" disabled={loading}>
                   {loading ? "..." : forgotMode ? "Sıfırlama Bağlantısı Gönder" : "Giriş Yap"}
                 </Button>
                 <div style={{ textAlign: "center", marginTop: 16 }}>
+                  {parentMode ? (
+                    <span style={{ color: C.muted, fontSize: 12.5, fontFamily: bodyFont }}>Şifrenizi unuttuysanız okul yönetimine başvurun.</span>
+                  ) : (
                   <button
                     type="button"
                     className="k-link-btn"
@@ -156,6 +184,7 @@ export default function LoginScreen({ onLogin, onForgotPassword, notice }) {
                   >
                     {forgotMode ? "Girişe dön" : "Şifremi unuttum"}
                   </button>
+                  )}
                 </div>
               </form>
             )}

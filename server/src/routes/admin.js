@@ -29,7 +29,7 @@ adminRouter.use("/leaderboard", adminLeaderboardRouter);
 // süre bu linklerin çoğunu kullanılamaz hale getiriyordu. "Şifremi unuttum" linki ise kullanıcının
 // kendisi o an istediği için 1 saat kalır (bkz. auth.js > RESET_TOKEN_TTL_MS).
 const ACCOUNT_SETUP_TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const ROLES = ["ADMIN", "TEACHER", "STUDENT", "PRINCIPAL"];
+const ROLES = ["ADMIN", "TEACHER", "STUDENT", "PRINCIPAL", "PARENT"]; // PARENT yalnız listelenir/süzülür; veli hesabını velinin ilk girişi açar
 
 async function issueAccountSetupToken(userId) {
   const resetToken = crypto.randomBytes(32).toString("hex");

@@ -102,6 +102,9 @@ export const api = {
 
   // --- auth ---
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
+  // Veli: öğrencinin okul numarası + şifre (ilk girişte şifre de okul numarası). Alan adı "email" — bkz. server > parent-login.
+  parentLogin: (number, password) => request("/auth/parent-login", { method: "POST", body: { email: number, password } }),
+  parentOverview: () => request("/parent/overview"),
   me: () => request("/auth/me"),
   forgotPassword: (email) => request("/auth/forgot-password", { method: "POST", body: { email } }),
   setPassword: (currentPassword, newPassword, acceptedTerms) => request("/auth/set-password", { method: "POST", body: { currentPassword, newPassword, acceptedTerms } }),

@@ -13,6 +13,8 @@ enum Role {
   STUDENT
   // Okul müdürü: yalnızca okur — sınıf/öğrenci/ders/öğretmen bazında takip (routes/principal.js); hesap yönetemez.
   PRINCIPAL
+  // Veli: yalnızca KENDİ öğrencisinin ödev durumunu ve çözdüğü soru sayısını görür; doğru/yanlış yok (routes/parent.js).
+  PARENT
 }
 
 // LGS: 7-8. sınıf (ortaokul, liselere geçiş sınavı). TYT/AYT: 9-12. sınıf (lise, YKS'nin iki bileşeni).
@@ -119,6 +121,11 @@ model User {
   // Deneme sınavları (bkz. PracticeExam): öğrencinin kendi denemeleri ve bu kullanıcının (öğrenci ya da koç) girdikleri.
   practiceExams        PracticeExam[] @relation("PracticeExamStudent")
   practiceExamsCreated PracticeExam[] @relation("PracticeExamCreator")
+  // --- Yalnızca role=PARENT için: velinin öğrencisi (öğrenci başına tek veli hesabı; iki ebeveyn aynı hesabı paylaşır).
+  // Hesap velinin İLK girişinde açılır (bkz. routes/auth.js > parent-login); öğrenci silinirse veli hesabı da silinir.
+  childId String? @unique
+  child   User?   @relation("ParentChild", fields: [childId], references: [id], onDelete: Cascade)
+  parent  User?   @relation("ParentChild")
   // --- Yalnızca role=TEACHER için anlamlı ters ilişki ---
   students User[] @relation("CoachAssignment")
   // --- Yalnızca role=TEACHER için anlamlı ---

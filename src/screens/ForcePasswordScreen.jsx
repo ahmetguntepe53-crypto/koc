@@ -31,7 +31,9 @@ export default function ForcePasswordScreen({ user, onDone, onLogout }) {
   const [saving, setSaving] = useState(false);
   const needsTerms = !user.termsAcceptedAt;
   const isStudent = user.role === "STUDENT";
-  const username = user.username || "";
+  const isParent = user.role === "PARENT";
+  // Veli hesabının kullanıcı adı yok; ilk şifresi öğrencinin okul numarasıydı — yeni şifre o olamaz.
+  const username = (isParent ? user.child?.username : user.username) || "";
 
   const rules = {
     length: next.length >= 8,
@@ -62,6 +64,9 @@ export default function ForcePasswordScreen({ user, onDone, onLogout }) {
   };
 
   const idLabel = isStudent ? "okul numaran" : "kullanıcı adın";
+  const intro = isParent
+    ? <>Hoş geldiniz! Öğrencinizin okul numarası <span style={{ fontFamily: monoFont, color: C.text }}>{username}</span> ile ilk kez giriş yaptınız. Bu numara başkaları tarafından bilinebileceği için devam etmeden kendi şifrenizi belirleyin; bundan sonra okul numarası ve bu şifreyle girersiniz.</>
+    : null;
 
   return (
     <div className="k-login-root" style={{ minHeight: "100vh", background: C.bg, display: "flex", flexDirection: "column" }}>
@@ -70,9 +75,9 @@ export default function ForcePasswordScreen({ user, onDone, onLogout }) {
           <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, color: C.mutedLight }}>İLK GİRİŞ · 1. ADIM</div>
           <h1 style={{ margin: "10px 0 0", fontFamily: displayFont, fontSize: 27, fontWeight: 700, letterSpacing: -1, color: C.text }}>Kendi şifreni belirle</h1>
           <p style={{ margin: "10px 0 24px", fontFamily: bodyFont, fontSize: 15, color: C.muted, lineHeight: 1.55 }}>
-            Merhaba {user.name?.split(" ")[0]}! {username
+            {intro || <>Merhaba {user.name?.split(" ")[0]}! {username
               ? <>Kullanıcı adın <span style={{ fontFamily: monoFont, color: C.text }}>{username}</span> — ilk şifren de genelde {idLabel}. Başkaları tarafından bilinebileceği için devam etmeden değiştirmen gerekiyor.</>
-              : "Hesabının güvenliği için devam etmeden kendi şifreni belirlemen gerekiyor."}
+              : "Hesabının güvenliği için devam etmeden kendi şifreni belirlemen gerekiyor."}</>}
           </p>
 
           <Input label="Yeni şifre" type="password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" required />
@@ -81,7 +86,7 @@ export default function ForcePasswordScreen({ user, onDone, onLogout }) {
           <ul aria-label="Şifre kuralları" style={{ listStyle: "none", margin: "-4px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 8 }}>
             <Rule ok={rules.length}>En az 8 karakter</Rule>
             <Rule ok={rules.letterDigit}>Bir harf ve bir rakam</Rule>
-            <Rule ok={rules.notUsername}>{isStudent ? "Okul numaranla aynı olamaz" : "Kullanıcı adınla aynı olamaz"}</Rule>
+            <Rule ok={rules.notUsername}>{isParent ? "Öğrencinin okul numarasıyla aynı olamaz" : isStudent ? "Okul numaranla aynı olamaz" : "Kullanıcı adınla aynı olamaz"}</Rule>
           </ul>
 
           {needsTerms && (
@@ -89,9 +94,19 @@ export default function ForcePasswordScreen({ user, onDone, onLogout }) {
               <div style={{ fontFamily: bodyFont, fontSize: 10.5, fontWeight: 700, letterSpacing: 1.4, color: C.mutedLight, marginTop: 30 }}>2. ADIM · KVKK AYDINLATMA METNİ</div>
               <div style={{ position: "relative", marginTop: 12, borderRadius: 16, border: `1px solid ${C.border}`, background: C.surface }}>
                 <div tabIndex={0} aria-label="Aydınlatma metni özeti" style={{ height: 116, overflowY: "auto", padding: "14px 18px 22px", fontFamily: bodyFont, fontSize: 14, color: C.text2, lineHeight: 1.65 }}>
-                  Bu uygulamada adın, okul numaran, sınıfın, çözdüğün ödevlerin sonuçları, pas geçme sebeplerin, serbest çalışma kayıtların, yüklediğin kanıt fotoğrafları ve uygulamayı en son ne zaman kullandığın işlenir.
-                  Uygulama içinde verilerine yalnızca sana atanmış koç öğretmen, ödevi veren branş öğretmeni ve okul yönetimi erişebilir.
-                  Verilerin ne kadar süre saklandığı, veri sorumlusu ve başvuru hakların metnin tamamında yazılıdır.
+                  {isParent ? (
+                    <>
+                      Veli hesabında yalnızca hesabın bağlı olduğu öğrenci, şifreniz ve uygulamayı en son ne zaman kullandığınız işlenir.
+                      Bu hesapla öğrencinizin ödevlerinin yapılıp yapılmadığını ve çözdüğü toplam soru sayısını görürsünüz; ödev sonuçları (doğru/yanlış) gösterilmez.
+                      Verilerin ne kadar süre saklandığı, veri sorumlusu ve başvuru haklarınız metnin tamamında yazılıdır.
+                    </>
+                  ) : (
+                    <>
+                      Bu uygulamada adın, okul numaran, sınıfın, çözdüğün ödevlerin sonuçları, pas geçme sebeplerin, serbest çalışma kayıtların, yüklediğin kanıt fotoğrafları ve uygulamayı en son ne zaman kullandığın işlenir.
+                      Uygulama içinde verilerine yalnızca sana atanmış koç öğretmen, ödevi veren branş öğretmeni ve okul yönetimi erişebilir.
+                      Verilerin ne kadar süre saklandığı, veri sorumlusu ve başvuru hakların metnin tamamında yazılıdır.
+                    </>
+                  )}
                 </div>
                 <div aria-hidden="true" style={{ position: "absolute", left: 1, right: 1, bottom: 1, height: 30, borderRadius: "0 0 15px 15px", background: `linear-gradient(to bottom, transparent, ${C.surface})`, pointerEvents: "none" }} />
               </div>

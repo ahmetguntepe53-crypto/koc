@@ -302,7 +302,7 @@ export function Modal({ children, onClose, title }) {
 }
 
 export function roleLabel(role) {
-  return { ADMIN: "Yönetici", TEACHER: "Koç / Öğretmen", STUDENT: "Öğrenci", PRINCIPAL: "Müdür" }[role] || role;
+  return { ADMIN: "Yönetici", TEACHER: "Koç / Öğretmen", STUDENT: "Öğrenci", PRINCIPAL: "Müdür", PARENT: "Veli" }[role] || role;
 }
 
 // Sol kenar çubuğu — koyu, sabit genişlikli, dar ekranlarda simge-yalnız moda düşer (bkz.
